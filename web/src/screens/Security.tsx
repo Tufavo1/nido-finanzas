@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { Household } from '../App'
 import Icon from '../components/Icon'
+import WidgetTokens from '../components/WidgetTokens'
+import PushToggle from '../components/PushToggle'
 import { supabase } from '../lib/supabase'
 import { memberColor } from '../lib/ui'
 
@@ -78,6 +80,10 @@ export default function Security({ hh, reload }: { hh: Household; reload: () => 
         <strong>Bloqueo con huella o rostro</strong>
         <span className="muted">Llega en la siguiente fase.</span>
       </section>
+
+      <PushToggle />
+
+      <WidgetTokens />
 
       <button className="btn danger" type="button" onClick={() => void supabase.auth.signOut()}>
         Cerrar sesión

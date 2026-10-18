@@ -295,3 +295,5 @@ button { cursor: pointer; }
   font-weight: 700;
   font-size: 18px;
 }
+
+.token-box { word-break: break-all; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 12px; font-size: 13px; user-select: all; }

@@ -10,8 +10,8 @@ export default defineConfig({
       injectRegister: false,
       includeAssets: ['favicon.ico', 'icon.svg', 'apple-touch-icon-180x180.png'],
       manifest: {
-        name: 'Nido Finanzas',
-        short_name: 'Nido',
+        name: 'Contigo',
+        short_name: 'Contigo',
         description: 'Las finanzas de los dos, en un solo lugar',
         lang: 'es-CL',
         theme_color: '#0E1719',
@@ -26,7 +26,7 @@ export default defineConfig({
           { src: 'maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      workbox: { navigateFallback: '/index.html' },
+      workbox: { navigateFallback: '/index.html', importScripts: ['push-sw.js'] },
     }),
   ],
 })
