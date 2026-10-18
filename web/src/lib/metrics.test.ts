@@ -75,3 +75,54 @@ describe('seguridad', () => {
     expect(t.remaining()).toBe(0)
   })
 })
+
+import { analyzeSalary, monthsToPayoff, summarizeDebts } from './finance'
+
+const debt = (o: Record<string, unknown> = {}) =>
+  ({ id: 'd1', household_id: 'h', name: 'Tarjeta', kind: 'tarjeta', owner_id: null, original_amount: 100000, monthly_payment: 20000, monthly_rate: 0, due_day: null, archived: false, created_at: '', ...o }) as never
+const pay = (amount: number, paid_on = '2026-10-02', debt_id = 'd1') =>
+  ({ id: `${amount}${paid_on}`, household_id: 'h', debt_id, amount, paid_by: 'a', paid_on, created_at: '' }) as never
+
+describe('deudas', () => {
+  it('calcula meses para saldar con y sin interés', () => {
+    expect(monthsToPayoff(100000, 20000, 0)).toBe(5)
+    expect(monthsToPayoff(100000, 2000, 2)).toBeNull()
+    expect(monthsToPayoff(100000, 10000, 2)).toBe(12)
+    expect(monthsToPayoff(0, 0, 5)).toBe(0)
+  })
+  it('descuenta pagos y avisa si la cuota no cubre el interés', () => {
+    const now = new Date(2026, 9, 15)
+    const s = summarizeDebts([debt({ monthly_payment: 1000, monthly_rate: 3 })], [pay(10000)], now)
+    expect(s.remaining).toBe(90000)
+    expect(s.freeInMonths).toBeNull()
+    expect(s.findings.some((f) => f.level === 'bad')).toBe(true)
+  })
+  it('sugiere atacar primero la de mayor interés', () => {
+    const s = summarizeDebts(
+      [debt({ id: 'a', name: 'Barata', monthly_rate: 1 }), debt({ id: 'b', name: 'Cara', monthly_rate: 4 })],
+      [],
+      new Date(2026, 9, 15),
+    )
+    expect(s.focus?.debt.name).toBe('Cara')
+  })
+})
+
+describe('sueldo', () => {
+  const month = new Date(2026, 9, 1)
+  const now = new Date(2026, 9, 15)
+  it('buen mes: queda ahorro', () => {
+    const a = analyzeSalary({ income: 1000000, spent: 300000, commitments: 100000, month, now })
+    expect(a.level).toBe('ok')
+    expect(a.free).toBe(600000)
+    expect(a.debtPct).toBe(10)
+  })
+  it('detecta que no le alcanza al ritmo actual', () => {
+    const a = analyzeSalary({ income: 1000000, spent: 700000, commitments: 100000, month, now })
+    expect(a.level).toBe('bad')
+    expect(a.projectedFree!).toBeLessThan(0)
+  })
+  it('deudas sobre 40 % del sueldo es malo', () => {
+    const a = analyzeSalary({ income: 1000000, spent: 100000, commitments: 450000, month, now })
+    expect(a.level).toBe('bad')
+  })
+})

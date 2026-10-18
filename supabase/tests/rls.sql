@@ -92,6 +92,38 @@ begin
   select count(*) into n from public.expenses;
   assert n = 0, 'C no debe ver gastos ajenos';
 
+  -- Sueldo: privado. B no ve el de A ni puede escribir uno a nombre de A. C tampoco.
+  perform set_config('request.jwt.claims', json_build_object('sub', a)::text, true);
+  insert into public.salaries (user_id, household_id, amount, pay_day) values (a, h1, 1500000, 28);
+  select count(*) into n from public.salaries;
+  assert n = 1, 'A debe ver su sueldo';
+  perform set_config('request.jwt.claims', json_build_object('sub', b)::text, true);
+  select count(*) into n from public.salaries;
+  assert n = 0, 'B NO debe ver el sueldo de A';
+  perform public.debe_fallar(format(
+    $q$insert into public.salaries (user_id, household_id, amount) values (%L, %L, 1)$q$, a, h1));
+  perform public.debe_fallar(format($q$update public.salaries set amount = 1 where user_id = %L$q$, a));
+  insert into public.salaries (user_id, household_id, amount) values (b, h1, 900000);
+  perform set_config('request.jwt.claims', json_build_object('sub', c)::text, true);
+  select count(*) into n from public.salaries;
+  assert n = 0, 'C no debe ver sueldos ajenos';
+
+  -- Deudas: las ven los dos del hogar, no los ajenos
+  perform set_config('request.jwt.claims', json_build_object('sub', a)::text, true);
+  insert into public.debts (household_id, name, kind, original_amount, monthly_payment, monthly_rate)
+    values (h1, 'Tarjeta', 'tarjeta', 500000, 50000, 2.5);
+  perform set_config('request.jwt.claims', json_build_object('sub', b)::text, true);
+  select count(*) into n from public.debts;
+  assert n = 1, 'B debe ver las deudas del hogar';
+  insert into public.debt_payments (household_id, debt_id, amount, paid_by)
+    select h1, id, 50000, b from public.debts limit 1;
+  perform public.debe_fallar(format(
+    $q$insert into public.debt_payments (household_id, debt_id, amount, paid_by)
+       select %L, id, 1000, %L from public.debts limit 1$q$, h1, a));
+  perform set_config('request.jwt.claims', json_build_object('sub', c)::text, true);
+  select count(*) into n from public.debts;
+  assert n = 0, 'C no debe ver deudas ajenas';
+
   raise notice 'TODAS LAS PRUEBAS PASARON';
 end $$;
 

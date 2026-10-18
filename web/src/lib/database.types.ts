@@ -126,6 +126,108 @@ export type Database = {
           },
         ]
       }
+      debts: {
+        Row: {
+          archived: boolean
+          created_at: string
+          due_day: number | null
+          household_id: string
+          id: string
+          kind: string
+          monthly_payment: number
+          monthly_rate: number
+          name: string
+          original_amount: number
+          owner_id: string | null
+        }
+        Insert: {
+          archived?: boolean
+          created_at?: string
+          due_day?: number | null
+          household_id: string
+          id?: string
+          kind?: string
+          monthly_payment?: number
+          monthly_rate?: number
+          name: string
+          original_amount: number
+          owner_id?: string | null
+        }
+        Update: {
+          archived?: boolean
+          created_at?: string
+          due_day?: number | null
+          household_id?: string
+          id?: string
+          kind?: string
+          monthly_payment?: number
+          monthly_rate?: number
+          name?: string
+          original_amount?: number
+          owner_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "debts_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "debts_household_id_owner_id_fkey"
+            columns: ["household_id", "owner_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["household_id", "user_id"]
+          },
+        ]
+      }
+      debt_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          debt_id: string
+          household_id: string
+          id: string
+          paid_by: string
+          paid_on: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          debt_id: string
+          household_id: string
+          id?: string
+          paid_by: string
+          paid_on?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          debt_id?: string
+          household_id?: string
+          id?: string
+          paid_by?: string
+          paid_on?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "debt_payments_debt_id_household_id_fkey"
+            columns: ["debt_id", "household_id"]
+            isOneToOne: false
+            referencedRelation: "debts"
+            referencedColumns: ["id", "household_id"]
+          },
+          {
+            foreignKeyName: "debt_payments_household_id_paid_by_fkey"
+            columns: ["household_id", "paid_by"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["household_id", "user_id"]
+          },
+        ]
+      }
       expenses: {
         Row: {
           amount: number
@@ -311,6 +413,45 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      salaries: {
+        Row: {
+          amount: number
+          household_id: string
+          pay_day: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          household_id: string
+          pay_day?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          household_id?: string
+          pay_day?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salaries_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "salaries_household_id_user_id_fkey"
+            columns: ["household_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["household_id", "user_id"]
+          },
+        ]
       }
       widget_tokens: {
         Row: {

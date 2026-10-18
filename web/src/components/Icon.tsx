@@ -18,6 +18,13 @@ const PATHS = {
       <path d="M5 15V6a2 2 0 0 1 2-2h9" />
     </>
   ),
+  wallet: (
+    <>
+      <path d="M4 7a2 2 0 0 1 2-2h12v4" />
+      <path d="M4 7v11a2 2 0 0 0 2 2h14V9H6a2 2 0 0 1-2-2z" />
+      <path d="M16 14.5h.01" />
+    </>
+  ),
   chevL: <path d="M15 6l-6 6 6 6" />,
   chevR: <path d="M9 6l6 6-6 6" />,
   back: (
