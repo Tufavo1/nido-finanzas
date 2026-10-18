@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import Icon from '../components/Icon'
-import { money } from '../lib/format'
+import { money, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import { notifyPartner } from '../lib/push'
 
@@ -15,17 +15,19 @@ export default function Register({
 }: {
   hh: Household
   data: HouseholdData
-  onSaved: () => void
+  onSaved: (message: string) => void
 }) {
   const [digits, setDigits] = useState('')
   const [catId, setCatId] = useState<string>(data.categories[0]?.id ?? '')
   const [paidBy, setPaidBy] = useState(hh.me.user_id)
   const [shared, setShared] = useState(true)
   const [note, setNote] = useState('')
+  const [date, setDate] = useState(todayISO)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const amount = digits ? Number(digits) : 0
+  const today = todayISO()
 
   function press(k: (typeof KEYS)[number]) {
     setDigits((d) => {
@@ -36,7 +38,7 @@ export default function Register({
   }
 
   async function save() {
-    if (amount <= 0 || !catId) return
+    if (amount <= 0 || !catId || !date || date > today) return
     setBusy(true)
     setError(null)
     const { data: created, error: err } = await supabase.from('expenses').insert({
@@ -46,6 +48,7 @@ export default function Register({
       paid_by: paidBy,
       shared,
       note: note.trim() || null,
+      spent_on: date,
     }).select('id').single()
     if (err) {
       setError('No se pudo guardar. Intenta de nuevo.')
@@ -54,12 +57,13 @@ export default function Register({
     }
     if (created) notifyPartner('expense', created.id)
     await data.refresh()
-    onSaved()
+    onSaved(`Guardado: ${money(amount)}`)
   }
 
   return (
     <main className="screen">
       <h1 className="title">Nuevo gasto</h1>
+      {data.categories.length === 0 && <p className="muted">Aún no hay categorías para elegir.</p>}
       <div className="amount big num" aria-live="polite">
         {money(amount)}
       </div>
@@ -92,6 +96,19 @@ export default function Register({
         />
       </div>
 
+      <div className="field">
+        <label htmlFor="spent-on">Fecha del gasto</label>
+        <input
+          id="spent-on"
+          className="input"
+          type="date"
+          max={today}
+          required
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
+      </div>
+
       <input
         className="input"
         placeholder="Nota (opcional)"
@@ -114,7 +131,7 @@ export default function Register({
           {error}
         </p>
       )}
-      <button className="btn" type="button" disabled={busy || amount <= 0 || !catId} onClick={() => void save()}>
+      <button className="btn" type="button" disabled={busy || amount <= 0 || !catId || !date || date > today} onClick={() => void save()}>
         Guardar gasto
       </button>
     </main>

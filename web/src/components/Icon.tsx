@@ -18,6 +18,8 @@ const PATHS = {
       <path d="M5 15V6a2 2 0 0 1 2-2h9" />
     </>
   ),
+  chevL: <path d="M15 6l-6 6 6 6" />,
+  chevR: <path d="M9 6l6 6-6 6" />,
   back: (
     <>
       <path d="M21 5H9l-6 7 6 7h12z" />

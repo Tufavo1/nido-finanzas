@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { Household } from './App'
 import Icon from './components/Icon'
+import Toast from './components/Toast'
 import { useData } from './lib/data'
 import Expenses from './screens/Expenses'
 import Goals from './screens/Goals'
@@ -13,23 +14,42 @@ const TABS = [
   { key: 'expenses', label: 'Gastos', icon: 'list' },
   { key: 'add', label: 'Registrar', icon: 'plus' },
   { key: 'goals', label: 'Metas', icon: 'target' },
-  { key: 'security', label: 'Seguridad', icon: 'shield' },
+  { key: 'security', label: 'Ajustes', icon: 'shield' },
 ] as const
 
 type Tab = (typeof TABS)[number]['key']
 
 export default function Shell({ hh, reload }: { hh: Household; reload: () => Promise<void> }) {
   const [tab, setTab] = useState<Tab>('home')
-  const data = useData(hh.household.id)
+  const [ym, setYm] = useState(() => {
+    const n = new Date()
+    return { y: n.getFullYear(), m: n.getMonth() }
+  })
+  const [toast, setToast] = useState<string | null>(null)
+  const clearToast = useCallback(() => setToast(null), [])
+  const data = useData(hh.household.id, ym.y, ym.m)
+
+  const now = new Date()
+  const isCurrent = ym.y === now.getFullYear() && ym.m === now.getMonth()
+  const month = new Date(ym.y, ym.m, 1)
+
+  function shiftMonth(delta: number) {
+    if (delta > 0 && isCurrent) return
+    setYm(({ y, m }) => {
+      const d = new Date(y, m + delta, 1)
+      return { y: d.getFullYear(), m: d.getMonth() }
+    })
+  }
+
+  function backToNow(message?: string) {
+    if (message) setToast(message)
+    const n = new Date()
+    setYm({ y: n.getFullYear(), m: n.getMonth() })
+    setTab('home')
+  }
 
   let body
-  if (data.loading) {
-    body = (
-      <main className="screen center-y">
-        <p className="muted">Cargando…</p>
-      </main>
-    )
-  } else if (data.error) {
+  if (data.error) {
     body = (
       <main className="screen center-y">
         <p className="error" role="alert">
@@ -40,12 +60,18 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
         </button>
       </main>
     )
+  } else if (!data.ready) {
+    body = (
+      <main className="screen center-y">
+        <p className="muted">Cargando…</p>
+      </main>
+    )
   } else if (tab === 'home') {
-    body = <Home hh={hh} data={data} />
+    body = <Home hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} />
   } else if (tab === 'expenses') {
-    body = <Expenses hh={hh} data={data} />
+    body = <Expenses hh={hh} data={data} onToast={setToast} />
   } else if (tab === 'add') {
-    body = <Register hh={hh} data={data} onSaved={() => setTab('home')} />
+    body = <Register hh={hh} data={data} onSaved={backToNow} />
   } else if (tab === 'goals') {
     body = <Goals hh={hh} data={data} />
   } else {
@@ -75,6 +101,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
           </button>
         ))}
       </nav>
+      {toast && <Toast text={toast} onDone={clearToast} />}
     </div>
   )
 }
