@@ -1,73 +1,336 @@
+import { useEffect, useMemo, useState } from 'react'
 import type { Household } from '../App'
-import type { HouseholdData } from '../lib/data'
+import type { Expense, HouseholdData } from '../lib/data'
+import Icon from '../components/Icon'
 import Ring from '../components/Ring'
+import { compact, monthGrid } from '../lib/calendar'
 import { daysLeftInMonth, money } from '../lib/format'
+import { computeMetrics } from '../lib/metrics'
 import { memberColor, monthName, shortDate } from '../lib/ui'
 
-export default function Home({ hh, data }: { hh: Household; data: HouseholdData }) {
-  const { expenses, categories, goals, contributions } = data
-  const total = expenses.reduce((s, e) => s + e.amount, 0)
-  const budget = categories.reduce((s, c) => s + c.monthly_budget, 0)
-  const left = budget - total
-  const denom = Math.max(budget, total, 1)
+interface Props {
+  hh: Household
+  data: HouseholdData
+  month: Date
+  isCurrent: boolean
+  onMonth: (delta: number) => void
+}
 
-  const byPayer = new Map<string, number>()
-  for (const e of expenses) byPayer.set(e.paid_by, (byPayer.get(e.paid_by) ?? 0) + e.amount)
+const DOW = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 
-  const members = new Map(hh.members.map((m) => [m.user_id, m] as const))
-  const catName = new Map(categories.map((c) => [c.id, c.name] as const))
+function Line({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="row between">
+      <span className={strong ? 'strong' : 'muted'}>{label}</span>
+      <span className={strong ? 'num strong' : 'num'}>{value}</span>
+    </div>
+  )
+}
 
-  const goal = goals[0]
-  const saved = goal
-    ? contributions.filter((c) => c.goal_id === goal.id).reduce((s, c) => s + c.amount, 0)
-    : 0
-  const pct = goal ? Math.min(100, Math.round((saved * 100) / goal.target_amount)) : 0
+export default function Home({ hh, data, month, isCurrent, onMonth }: Props) {
+  const [requestedView, setView] = useState<string>('all')
+  const [day, setDay] = useState<number | null>(null)
+
+  const members = hh.members
+  const partner = members.find((m) => m.user_id !== hh.me.user_id)
+  const byId = useMemo(() => new Map(members.map((m) => [m.user_id, m] as const)), [members])
+  const catName = useMemo(() => new Map(data.categories.map((c) => [c.id, c.name] as const)), [data.categories])
+
+  // Si la persona elegida ya no está en el hogar, volver a la vista del hogar
+  const view = requestedView === 'all' || byId.has(requestedView) ? requestedView : 'all'
+
+  // Al cambiar de mes el día elegido deja de tener sentido
+  const monthKey = `${month.getFullYear()}-${month.getMonth()}`
+  useEffect(() => {
+    setDay(null)
+  }, [monthKey])
+
+  const all = useMemo(
+    () => computeMetrics(data.expenses, data.prevExpenses, data.categories, members, month),
+    [data.expenses, data.prevExpenses, data.categories, members, month],
+  )
+  const viewExpenses = useMemo<Expense[]>(
+    () => (view === 'all' ? data.expenses : data.expenses.filter((e) => e.paid_by === view)),
+    [data.expenses, view],
+  )
+  const sub = useMemo(() => {
+    if (view === 'all') return all
+    const prev = data.prevExpenses.filter((e) => e.paid_by === view)
+    return computeMetrics(viewExpenses, prev, data.categories, members, month)
+  }, [view, all, viewExpenses, data.prevExpenses, data.categories, members, month])
+  const person = view === 'all' ? null : (all.people.find((p) => p.userId === view) ?? null)
+
+  const budget = data.categories.reduce((s, c) => s + c.monthly_budget, 0)
+  const left = budget - all.total
+  const denom = Math.max(budget, all.total, 1)
+
+  const d = sub.deltaPct
+  const deltaText =
+    d === null
+      ? null
+      : d === 0
+        ? 'Igual que el mes pasado'
+        : `${Math.abs(d)} % ${d > 0 ? 'más' : 'menos'} que el mes pasado${isCurrent ? ' a esta fecha' : ''}`
 
   let status = 'Define presupuestos en la pestaña Gastos.'
   if (budget > 0) {
-    status =
-      left >= 0
-        ? `Quedan ${money(left)} · ${daysLeftInMonth()} días`
-        : `Te pasaste por ${money(-left)}`
+    if (left >= 0) status = isCurrent ? `Quedan ${money(left)} · ${daysLeftInMonth()} días` : `Sobraron ${money(left)}`
+    else status = `Se pasaron por ${money(-left)}`
+  }
+
+  let settleText = 'Aún no hay gastos compartidos'
+  if (all.shared > 0) {
+    settleText = all.settle
+      ? `${all.settle.from.name} le debe ${money(all.settle.amount)} a ${all.settle.to.name}`
+      : 'Están a mano'
+  }
+
+  const goal = data.goals[0]
+  const saved = goal ? data.contributions.filter((c) => c.goal_id === goal.id).reduce((s, c) => s + c.amount, 0) : 0
+  const goalPct = goal && goal.target_amount > 0 ? Math.min(100, Math.round((saved * 100) / goal.target_amount)) : 0
+
+  const cells = useMemo(() => monthGrid(month.getFullYear(), month.getMonth()), [month])
+  const maxDay = Math.max(1, ...sub.daily.values())
+  const today = isCurrent ? new Date().getDate() : -1
+
+  const cats = sub.byCategory.filter((c) => c.spent > 0 || (view === 'all' && c.budget > 0)).slice(0, 6)
+  const shown =
+    day === null ? viewExpenses.slice(0, 5) : viewExpenses.filter((e) => Number(e.spent_on.slice(8, 10)) === day)
+
+  function change(delta: number) {
+    setDay(null)
+    onMonth(delta)
   }
 
   return (
-    <main className="screen">
+    <main className={data.loading ? 'screen dim' : 'screen'} aria-busy={data.loading}>
       <div>
-        <span className="eyebrow" style={{ textTransform: 'capitalize' }}>
-          {monthName()}
-        </span>
+        <span className="eyebrow">{partner ? `Tú y ${partner.display_name}` : 'Tu hogar'}</span>
         <h1 className="title">Hola, {hh.me.display_name}</h1>
       </div>
 
+      <div className="row between">
+        <button type="button" className="icon-btn" aria-label="Mes anterior" onClick={() => change(-1)}>
+          <Icon name="chevL" />
+        </button>
+        <span className="month-title" aria-live="polite">
+          {monthName(month)} {month.getFullYear()}
+        </span>
+        <button type="button" className="icon-btn" aria-label="Mes siguiente" disabled={isCurrent} onClick={() => change(1)}>
+          <Icon name="chevR" />
+        </button>
+      </div>
+
+      <div className="seg" role="group" aria-label="Ver gastos de">
+        <button type="button" aria-pressed={view === 'all'} onClick={() => setView('all')}>
+          Hogar
+        </button>
+        {[hh.me, ...(partner ? [partner] : [])].map((m) => (
+          <button key={m.user_id} type="button" aria-pressed={view === m.user_id} onClick={() => setView(m.user_id)}>
+            {m.user_id === hh.me.user_id ? 'Yo' : m.display_name}
+          </button>
+        ))}
+      </div>
+
       <section className="card">
-        <span className="muted">Gastado este mes</span>
-        <span className="amount num">{money(total)}</span>
-        <div className="bar big" aria-hidden="true">
-          {hh.members.map((m) => (
-            <span
-              key={m.user_id}
-              style={{ width: `${((byPayer.get(m.user_id) ?? 0) * 100) / denom}%`, background: memberColor(m) }}
-            />
-          ))}
-        </div>
+        <span className="muted">{view === 'all' ? 'Gastado en el mes' : `Pagó ${byId.get(view)?.display_name ?? ''}`}</span>
+        <span className="amount num">{money(sub.total)}</span>
+        {view === 'all' && (
+          <>
+            <div className="bar big" aria-hidden="true">
+              {members.map((m) => (
+                <span
+                  key={m.user_id}
+                  style={{
+                    width: `${((all.people.find((p) => p.userId === m.user_id)?.paid ?? 0) * 100) / denom}%`,
+                    background: memberColor(m),
+                  }}
+                />
+              ))}
+            </div>
+            <span className={budget > 0 && left < 0 ? 'over' : 'muted'}>{status}</span>
+          </>
+        )}
         <div className="row between">
-          {hh.members.map((m) => (
-            <span key={m.user_id} className="row" style={{ gap: 8 }}>
-              <span className="dot" style={{ background: memberColor(m) }} />
-              <span className="num">
-                {m.display_name} {money(byPayer.get(m.user_id) ?? 0)}
-              </span>
-            </span>
-          ))}
+          <span className="muted small-text">Compartido {money(sub.shared)}</span>
+          <span className="muted small-text">Personal {money(sub.personal)}</span>
         </div>
-        <span className={left < 0 && budget > 0 ? 'over' : 'muted'}>{status}</span>
+        {deltaText && <span className="muted small-text">{deltaText}</span>}
+        <div className="row between">
+          <span className="muted small-text">Promedio por día {money(sub.avgPerDay)}</span>
+          {sub.projection !== null && <span className="muted small-text">Proyección {money(sub.projection)}</span>}
+        </div>
       </section>
 
-      {goal && (
+      {data.expenses.length === 0 && (
+        <section className="card empty">
+          <div className="logo" aria-hidden="true" />
+          <strong>Este mes aún no hay gastos</strong>
+          <span className="muted">Registra el primero con el botón + de abajo y aquí aparecerá el resumen de los dos.</span>
+        </section>
+      )}
+
+      {sub.total > 0 && (
+        <section className="card">
+          <strong>Resumen</strong>
+          {budget > 0 && (
+            <div className="stack tight">
+              <span className={all.pace === 'pasado' ? 'over' : 'muted'}>
+                {all.pace === 'bien' && 'Van a buen ritmo: el gasto va acorde al avance del mes.'}
+                {all.pace === 'atento' && 'Ojo: llevan gastado más de lo que corresponde a esta fecha.'}
+                {all.pace === 'pasado' && 'Superaron el presupuesto total del mes.'}
+              </span>
+              <div className="meter" aria-hidden="true">
+                <span
+                  style={{
+                    width: `${Math.min(100, (all.total * 100) / budget)}%`,
+                    background: all.pace === 'bien' ? 'var(--accent)' : 'var(--warn)',
+                  }}
+                />
+                <i style={{ left: `${Math.round(all.monthProgress * 100)}%` }} />
+              </div>
+              <span className="muted small-text">La marca vertical indica cuánto del mes ya pasó.</span>
+            </div>
+          )}
+          {sub.topDay && (
+            <div className="insight">
+              <span className="muted">Día de más gasto:</span>
+              <span className="num">
+                {sub.topDay.day} de {monthName(month)} · {money(sub.topDay.amount)}
+              </span>
+            </div>
+          )}
+          {sub.byCategory[0] && sub.byCategory[0].spent > 0 && (
+            <div className="insight">
+              <span className="muted">Categoría principal:</span>
+              <span>
+                {sub.byCategory[0].name} ({Math.round((sub.byCategory[0].spent * 100) / sub.total)} %)
+              </span>
+            </div>
+          )}
+          {sub.biggest && (
+            <div className="insight">
+              <span className="muted">Gasto más grande:</span>
+              <span className="num">
+                {money(sub.biggest.amount)}
+                {sub.biggest.note ? ` · ${sub.biggest.note}` : ''}
+              </span>
+            </div>
+          )}
+        </section>
+      )}
+
+      {view === 'all' ? (
+        <section className="card">
+          <strong>Entre ustedes</strong>
+          <span className="settle">{settleText}</span>
+          <div>
+            {all.people.map((p) => (
+              <div className="item" key={p.userId}>
+                <span className="dot" style={{ background: memberColor({ color: p.color }) }} />
+                <div className="grow">
+                  <div>{p.name}</div>
+                  <div className="muted small-text">
+                    Pagó compartido {money(p.paidShared)} · le tocaba {money(p.fairShare)}
+                  </div>
+                </div>
+                <span className="num">{money(p.trueCost)}</span>
+              </div>
+            ))}
+          </div>
+          <span className="muted small-text">
+            El número de la derecha es el costo real de cada uno: sus gastos personales más su mitad de lo compartido.
+          </span>
+        </section>
+      ) : (
+        person && (
+          <section className="card">
+            <strong>Costo real de {person.name}</strong>
+            <Line label="Pagó en total" value={money(person.paid)} />
+            <Line label="De eso, compartido" value={money(person.paidShared)} />
+            <Line label="De eso, personal" value={money(person.paidPersonal)} />
+            <Line label="Su mitad de lo compartido" value={money(person.fairShare)} />
+            <Line label="Costo real" value={money(person.trueCost)} strong />
+            <span className={person.balance < 0 ? 'over' : 'muted'}>
+              {person.balance > 0
+                ? `Le deben ${money(person.balance)}`
+                : person.balance < 0
+                  ? `Debe ${money(-person.balance)}`
+                  : 'Está a mano'}
+            </span>
+          </section>
+        )
+      )}
+
+      <section className="card">
+        <div className="row between">
+          <strong>Calendario</strong>
+          {day !== null && (
+            <button type="button" className="link-btn" onClick={() => setDay(null)}>
+              Ver todo el mes
+            </button>
+          )}
+        </div>
+        <div className="cal">
+          {DOW.map((l, i) => (
+            <span key={i} className="cal-dow" aria-hidden="true">
+              {l}
+            </span>
+          ))}
+          {cells.map((c, i) => {
+            if (c === null) return <span key={i} />
+            const amt = sub.daily.get(c) ?? 0
+            return (
+              <button
+                key={i}
+                type="button"
+                className={c === today ? 'cal-day today' : 'cal-day'}
+                aria-pressed={day === c}
+                aria-label={`Día ${c}: ${money(amt)}`}
+                style={
+                  amt > 0
+                    ? { background: `color-mix(in srgb, var(--accent) ${Math.round((amt / maxDay) * 60)}%, var(--surface-2))` }
+                    : undefined
+                }
+                onClick={() => setDay(day === c ? null : c)}
+              >
+                <span>{c}</span>
+                {amt > 0 && <small>{compact(amt)}</small>}
+              </button>
+            )
+          })}
+        </div>
+      </section>
+
+      {cats.length > 0 && (
+        <section className="card">
+          <strong>Por categoría</strong>
+          {cats.map((c) => {
+            const useBudget = view === 'all' && c.budget > 0
+            const pct = useBudget ? Math.min(100, (c.spent * 100) / c.budget) : sub.total > 0 ? (c.spent * 100) / sub.total : 0
+            const over = useBudget && c.spent > c.budget
+            return (
+              <div className="stack tight" key={c.id}>
+                <div className="row between">
+                  <span>{c.name}</span>
+                  <span className="num muted">
+                    <span className={over ? 'over' : ''}>{money(c.spent)}</span>
+                    {useBudget ? ` / ${money(c.budget)}` : ''}
+                  </span>
+                </div>
+                <div className="bar" aria-hidden="true">
+                  <span style={{ width: `${pct}%`, background: over ? 'var(--warn)' : 'var(--accent)' }} />
+                </div>
+              </div>
+            )
+          })}
+        </section>
+      )}
+
+      {view === 'all' && goal && (
         <section className="card">
           <div className="row">
-            <Ring pct={pct} />
+            <Ring pct={goalPct} />
             <div className="grow">
               <strong>{goal.name}</strong>
               <div className="muted num">
@@ -79,16 +342,17 @@ export default function Home({ hh, data }: { hh: Household; data: HouseholdData 
       )}
 
       <section className="card">
-        <strong>Últimos movimientos</strong>
-        {expenses.length === 0 && <span className="muted">Aún no hay gastos este mes.</span>}
+        <strong>{day === null ? 'Últimos movimientos' : `Movimientos del ${day} de ${monthName(month)}`}</strong>
+        {shown.length === 0 && <span className="muted">Sin movimientos.</span>}
         <div>
-          {expenses.slice(0, 5).map((e) => (
+          {shown.map((e) => (
             <div className="item" key={e.id}>
-              <span className="dot" style={{ background: memberColor(members.get(e.paid_by)) }} />
+              <span className="dot" style={{ background: memberColor(byId.get(e.paid_by)) }} />
               <div className="grow">
                 <div className="ellipsis">{e.note || catName.get(e.category_id) || 'Gasto'}</div>
                 <div className="muted small-text">
-                  {catName.get(e.category_id)} · {shortDate(e.spent_on)}
+                  {catName.get(e.category_id) ?? 'Sin categoría'} · {shortDate(e.spent_on)}
+                  {e.shared ? '' : ' · personal'}
                 </div>
               </div>
               <span className="num">{money(e.amount)}</span>

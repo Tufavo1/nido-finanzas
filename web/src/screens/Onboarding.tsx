@@ -16,8 +16,8 @@ export default function Onboarding({ onDone }: { onDone: () => Promise<void> }) 
     setError(null)
     const res =
       mode === 'create'
-        ? await supabase.rpc('create_household', { p_name: hhName, p_display_name: name })
-        : await supabase.rpc('join_household', { p_code: code, p_display_name: name })
+        ? await supabase.rpc('create_household', { p_name: hhName.trim(), p_display_name: name.trim() })
+        : await supabase.rpc('join_household', { p_code: code.trim().toUpperCase(), p_display_name: name.trim() })
     if (res.error) {
       setError(res.error.message)
     } else {

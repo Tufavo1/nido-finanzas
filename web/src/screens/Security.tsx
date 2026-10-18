@@ -1,14 +1,21 @@
 import { useState } from 'react'
+import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import Icon from '../components/Icon'
 import WidgetTokens from '../components/WidgetTokens'
 import PushToggle from '../components/PushToggle'
+import ThemeToggle from '../components/ThemeToggle'
+import { STRENGTH_LABEL, friendlyError, passwordStrength } from '../lib/security'
 import { supabase } from '../lib/supabase'
 import { memberColor } from '../lib/ui'
 
 export default function Security({ hh, reload }: { hh: Household; reload: () => Promise<void> }) {
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [pw, setPw] = useState('')
+  const [busy, setBusy] = useState(false)
+  const strength = passwordStrength(pw)
   const code = hh.household.invite_code
   const incomplete = hh.members.length < 2
 
@@ -20,6 +27,33 @@ export default function Security({ hh, reload }: { hh: Household; reload: () => 
     } catch {
       setError('No se pudo copiar. Selecciona el código y cópialo a mano.')
     }
+  }
+
+  async function changePassword(e: FormEvent) {
+    e.preventDefault()
+    if (strength < 2) {
+      setError('Usa al menos 10 caracteres y que no sea tan obvia.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setNotice(null)
+    const { error: err } = await supabase.auth.updateUser({ password: pw })
+    setBusy(false)
+    if (err) {
+      setError(friendlyError(err.message))
+      return
+    }
+    setPw('')
+    setNotice('Contraseña actualizada.')
+  }
+
+  async function signOutOthers() {
+    setError(null)
+    setNotice(null)
+    const { error: err } = await supabase.auth.signOut({ scope: 'others' })
+    if (err) setError(friendlyError(err.message))
+    else setNotice('Cerraste sesión en tus otros dispositivos.')
   }
 
   async function rotate() {
@@ -34,11 +68,16 @@ export default function Security({ hh, reload }: { hh: Household; reload: () => 
 
   return (
     <main className="screen">
-      <h1 className="title">Seguridad</h1>
+      <h1 className="title">Ajustes y seguridad</h1>
 
       {error && (
         <p className="error" role="alert">
           {error}
+        </p>
+      )}
+      {notice && (
+        <p className="notice" role="status">
+          {notice}
         </p>
       )}
 
@@ -76,9 +115,44 @@ export default function Security({ hh, reload }: { hh: Household; reload: () => 
         )}
       </section>
 
+      <ThemeToggle />
+
       <section className="card">
-        <strong>Bloqueo con huella o rostro</strong>
-        <span className="muted">Llega en la siguiente fase.</span>
+        <strong>Cuenta y contraseña</strong>
+        <form className="stack tight" onSubmit={(e) => void changePassword(e)}>
+          <div className="field">
+            <label htmlFor="newpw">Nueva contraseña</label>
+            <input
+              id="newpw"
+              className="input"
+              type="password"
+              autoComplete="new-password"
+              minLength={10}
+              maxLength={72}
+              value={pw}
+              onChange={(e) => setPw(e.target.value)}
+            />
+          </div>
+          {pw && (
+            <>
+              <div className={strength <= 1 ? 'strength weak' : 'strength'} aria-hidden="true">
+                {[1, 2, 3, 4].map((i) => (
+                  <span key={i} className={strength >= i ? 'on' : ''} />
+                ))}
+              </div>
+              <span className="hint" aria-live="polite">
+                {STRENGTH_LABEL[strength]}
+              </span>
+            </>
+          )}
+          <button className="btn ghost small" type="submit" disabled={busy || !pw}>
+            Cambiar contraseña
+          </button>
+        </form>
+        <button type="button" className="btn ghost small" onClick={() => void signOutOthers()}>
+          Cerrar sesión en otros dispositivos
+        </button>
+        <span className="hint">Úsalo si perdiste el teléfono o entraste desde un equipo ajeno.</span>
       </section>
 
       <PushToggle />
