@@ -4,6 +4,7 @@ import type { HouseholdData } from '../lib/data'
 import Icon from '../components/Icon'
 import { money } from '../lib/format'
 import { supabase } from '../lib/supabase'
+import { notifyPartner } from '../lib/push'
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', 'back'] as const
 
@@ -38,19 +39,20 @@ export default function Register({
     if (amount <= 0 || !catId) return
     setBusy(true)
     setError(null)
-    const { error: err } = await supabase.from('expenses').insert({
+    const { data: created, error: err } = await supabase.from('expenses').insert({
       household_id: hh.household.id,
       category_id: catId,
       amount,
       paid_by: paidBy,
       shared,
       note: note.trim() || null,
-    })
+    }).select('id').single()
     if (err) {
       setError('No se pudo guardar. Intenta de nuevo.')
       setBusy(false)
       return
     }
+    if (created) notifyPartner('expense', created.id)
     await data.refresh()
     onSaved()
   }

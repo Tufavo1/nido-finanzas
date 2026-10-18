@@ -39,7 +39,7 @@ export default function AuthScreen() {
     <div className="app">
       <main className="screen center-y">
         <div className="logo" aria-hidden="true" />
-        <h1 className="title">Nido</h1>
+        <h1 className="title">Contigo</h1>
         <p className="muted">
           {mode === 'login'
             ? 'Inicia sesión para ver las finanzas de los dos.'

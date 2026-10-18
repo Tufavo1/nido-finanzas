@@ -5,6 +5,7 @@ import type { HouseholdData } from '../lib/data'
 import Icon from '../components/Icon'
 import { money } from '../lib/format'
 import { supabase } from '../lib/supabase'
+import { notifyPartner } from '../lib/push'
 import { digitsOnly, memberColor, shortDate } from '../lib/ui'
 
 export default function Goals({ hh, data }: { hh: Household; data: HouseholdData }) {
@@ -50,12 +51,12 @@ export default function Goals({ hh, data }: { hh: Household; data: HouseholdData
     if (n <= 0) return
     setBusy(true)
     setError(null)
-    const { error: err } = await supabase.from('contributions').insert({
+    const { data: created, error: err } = await supabase.from('contributions').insert({
       household_id: hh.household.id,
       goal_id: goalId,
       user_id: hh.me.user_id,
       amount: n,
-    })
+    }).select('id').single()
     setBusy(false)
     if (err) {
       setError('No se pudo registrar el aporte')
@@ -63,6 +64,7 @@ export default function Goals({ hh, data }: { hh: Household; data: HouseholdData
     }
     setAmt('')
     setOpenId(null)
+    if (created) notifyPartner('contribution', created.id)
     await data.refresh()
   }
 
