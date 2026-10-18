@@ -377,3 +377,15 @@ button { cursor: pointer; }
 }
 .item-main { background: none; border: 0; padding: 0; text-align: left; color: inherit; cursor: pointer; }
 .item-edit { padding: 12px 0; border-top: 1px solid var(--line); }
+.pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.find { display: flex; gap: 10px; align-items: flex-start; }
+.find-mark { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--ink); background: var(--accent); }
+.find.warn .find-mark { background: var(--amber); }
+.find.bad .find-mark { background: var(--warn); color: var(--surface); }
+.verdict { border-left: 6px solid var(--accent); }
+.verdict.warn { border-left-color: var(--amber); }
+.verdict.bad { border-left-color: var(--warn); }
+.verdict-title { font-family: var(--font-display); font-size: 20px; line-height: 26px; }
+.amount.small { font-size: 28px; line-height: 32px; }
+.dot.inline { display: inline-block; vertical-align: middle; margin-right: 2px; }
+.tab { font-size: 10.5px; }

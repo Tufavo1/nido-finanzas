@@ -5,6 +5,7 @@ import Icon from '../components/Icon'
 import Ring from '../components/Ring'
 import { compact, monthGrid } from '../lib/calendar'
 import { daysLeftInMonth, money } from '../lib/format'
+import { analyzeSalary, myDebtShare } from '../lib/finance'
 import { computeMetrics } from '../lib/metrics'
 import { memberColor, monthName, shortDate } from '../lib/ui'
 
@@ -59,6 +60,18 @@ export default function Home({ hh, data, month, isCurrent, onMonth }: Props) {
     return computeMetrics(viewExpenses, prev, data.categories, members, month)
   }, [view, all, viewExpenses, data.prevExpenses, data.categories, members, month])
   const person = view === 'all' ? null : (all.people.find((p) => p.userId === view) ?? null)
+
+  // Sueldo: dato privado, solo se calcula para mí y nunca para la pareja
+  const mine = all.people.find((p) => p.userId === hh.me.user_id)
+  const salaryCheck =
+    data.salary && mine && (view === 'all' || view === hh.me.user_id)
+      ? analyzeSalary({
+          income: data.salary.amount,
+          spent: mine.trueCost,
+          commitments: myDebtShare(data.debts, data.debtPayments, hh.me.user_id, members.length),
+          month,
+        })
+      : null
 
   const budget = data.categories.reduce((s, c) => s + c.monthly_budget, 0)
   const left = budget - all.total
@@ -217,6 +230,31 @@ export default function Home({ hh, data, month, isCurrent, onMonth }: Props) {
               </span>
             </div>
           )}
+        </section>
+      )}
+
+      {salaryCheck && (
+        <section className={`card verdict ${salaryCheck.level}`}>
+          <div className="row between">
+            <strong>Tu sueldo</strong>
+            <span className="pill">🔒 Solo tú</span>
+          </div>
+          <strong className="verdict-title">{salaryCheck.headline}</strong>
+          <div className="row between">
+            <span className="muted">Te queda</span>
+            <span className={salaryCheck.free < 0 ? 'over num' : 'num'}>{money(salaryCheck.free)}</span>
+          </div>
+          <div className="bar" aria-hidden="true">
+            <span
+              style={{
+                width: `${Math.min(100, salaryCheck.spentPct + salaryCheck.debtPct)}%`,
+                background: salaryCheck.level === 'ok' ? 'var(--accent)' : salaryCheck.level === 'warn' ? 'var(--amber)' : 'var(--warn)',
+              }}
+            />
+          </div>
+          <span className="muted small-text">
+            Gastos {salaryCheck.spentPct} % + cuotas {salaryCheck.debtPct} % de tu sueldo. Detalle en la pestaña Plata.
+          </span>
         </section>
       )}
 

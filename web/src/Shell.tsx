@@ -6,6 +6,7 @@ import { useData } from './lib/data'
 import Expenses from './screens/Expenses'
 import Goals from './screens/Goals'
 import Home from './screens/Home'
+import Money from './screens/Money'
 import Register from './screens/Register'
 import Security from './screens/Security'
 
@@ -13,6 +14,7 @@ const TABS = [
   { key: 'home', label: 'Inicio', icon: 'home' },
   { key: 'expenses', label: 'Gastos', icon: 'list' },
   { key: 'add', label: 'Registrar', icon: 'plus' },
+  { key: 'money', label: 'Plata', icon: 'wallet' },
   { key: 'goals', label: 'Metas', icon: 'target' },
   { key: 'security', label: 'Ajustes', icon: 'shield' },
 ] as const
@@ -72,6 +74,8 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
     body = <Expenses hh={hh} data={data} onToast={setToast} />
   } else if (tab === 'add') {
     body = <Register hh={hh} data={data} onSaved={backToNow} />
+  } else if (tab === 'money') {
+    body = <Money hh={hh} data={data} month={month} onToast={setToast} />
   } else if (tab === 'goals') {
     body = <Goals hh={hh} data={data} />
   } else {
