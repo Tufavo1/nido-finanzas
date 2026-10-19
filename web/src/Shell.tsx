@@ -1,14 +1,17 @@
-import { useCallback, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
 import type { Household } from './App'
 import Icon from './components/Icon'
 import Toast from './components/Toast'
 import { useData } from './lib/data'
-import Expenses from './screens/Expenses'
-import Goals from './screens/Goals'
+import { buildAlerts } from './lib/engine'
+import type { AlertTab } from './lib/engine'
+import { notifyNewAlerts } from './lib/smartNotify'
+const Expenses = lazy(() => import('./screens/Expenses'))
+const Goals = lazy(() => import('./screens/Goals'))
 import Home from './screens/Home'
-import Money from './screens/Money'
-import Register from './screens/Register'
-import Security from './screens/Security'
+const Money = lazy(() => import('./screens/Money'))
+const Register = lazy(() => import('./screens/Register'))
+const Security = lazy(() => import('./screens/Security'))
 
 const TABS = [
   { key: 'home', label: 'Inicio', icon: 'home' },
@@ -34,6 +37,17 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   const now = new Date()
   const isCurrent = ym.y === now.getFullYear() && ym.m === now.getMonth()
   const month = new Date(ym.y, ym.m, 1)
+
+  // Motor de avisos: se recalcula en cada cambio de datos
+  const alerts = useMemo(
+    () => (data.ready ? buildAlerts(hh, data, month) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hh, data.ready, data.expenses, data.prevExpenses, data.categories, data.goals, data.contributions, data.debts, data.debtPayments, data.salary, data.profiles, ym.y, ym.m],
+  )
+  const urgent = alerts.filter((a) => a.level === 'bad' || a.level === 'warn').length
+  useEffect(() => {
+    if (data.ready && !data.loading && isCurrent) void notifyNewAlerts(alerts)
+  }, [alerts, data.ready, data.loading, isCurrent])
 
   function shiftMonth(delta: number) {
     if (delta > 0 && isCurrent) return
@@ -69,7 +83,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
       </main>
     )
   } else if (tab === 'home') {
-    body = <Home hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} />
+    body = <Home hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} alerts={alerts} onGo={(t: AlertTab) => setTab(t === 'security' ? 'security' : t)} />
   } else if (tab === 'expenses') {
     body = <Expenses hh={hh} data={data} onToast={setToast} />
   } else if (tab === 'add') {
@@ -79,12 +93,20 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   } else if (tab === 'goals') {
     body = <Goals hh={hh} data={data} />
   } else {
-    body = <Security hh={hh} reload={reload} />
+    body = <Security hh={hh} reload={reload} data={data} onToast={setToast} />
   }
 
   return (
     <div className="app">
-      {body}
+      <Suspense
+        fallback={
+          <main className="screen center-y">
+            <p className="muted">Cargando…</p>
+          </main>
+        }
+      >
+        {body}
+      </Suspense>
       <nav className="tabbar" aria-label="Principal">
         {TABS.map((t) => (
           <button
@@ -102,6 +124,11 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
               <Icon name={t.icon} />
             )}
             <span>{t.label}</span>
+            {t.key === 'home' && urgent > 0 && (
+              <span className="badge" aria-label={`${urgent} avisos`}>
+                {urgent}
+              </span>
+            )}
           </button>
         ))}
       </nav>

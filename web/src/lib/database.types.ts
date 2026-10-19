@@ -387,6 +387,48 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          dependents: number
+          employment: string
+          household_id: string
+          profession: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          dependents?: number
+          employment?: string
+          household_id: string
+          profession?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          dependents?: number
+          employment?: string
+          household_id?: string
+          profession?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_household_id_user_id_fkey"
+            columns: ["household_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["household_id", "user_id"]
+          },
+        ]
+      }
       push_subscriptions: {
         Row: {
           auth_key: string

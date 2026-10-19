@@ -124,6 +124,17 @@ begin
   select count(*) into n from public.debts;
   assert n = 0, 'C no debe ver deudas ajenas';
 
+  -- Perfil: lo ven los dos del hogar, solo el dueño lo edita, el ajeno no lo ve
+  perform set_config('request.jwt.claims', json_build_object('sub', a)::text, true);
+  insert into public.profiles (user_id, household_id, profession) values (a, h1, 'Enfermera');
+  perform set_config('request.jwt.claims', json_build_object('sub', b)::text, true);
+  select count(*) into n from public.profiles;
+  assert n = 1, 'B debe ver el perfil de A';
+  perform public.debe_fallar(format($q$update public.profiles set profession = 'x' where user_id = %L$q$, a));
+  perform set_config('request.jwt.claims', json_build_object('sub', c)::text, true);
+  select count(*) into n from public.profiles;
+  assert n = 0, 'C no debe ver perfiles ajenos';
+
   raise notice 'TODAS LAS PRUEBAS PASARON';
 end $$;
 

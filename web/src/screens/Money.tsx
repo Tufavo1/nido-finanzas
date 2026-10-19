@@ -82,14 +82,19 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
     }
     setBusy(true)
     setError(null)
-    const { error: err } = await supabase
-      .from('salaries')
-      .upsert(
-        { user_id: hh.me.user_id, household_id: hh.household.id, amount: n, pay_day: d, updated_at: new Date().toISOString() },
-        { onConflict: 'user_id' },
-      )
+    const now = new Date().toISOString()
+    // Sin upsert: la base solo permite modificar monto y día, no user_id ni household_id
+    const { error: err } = salary
+      ? await supabase
+          .from('salaries')
+          .update({ amount: n, pay_day: d, updated_at: now })
+          .eq('user_id', hh.me.user_id)
+      : await supabase
+          .from('salaries')
+          .insert({ user_id: hh.me.user_id, household_id: hh.household.id, amount: n, pay_day: d })
     setBusy(false)
     if (err) {
+      console.error(err)
       setError('No se pudo guardar tu sueldo. Intenta de nuevo.')
       return
     }
@@ -238,8 +243,15 @@ function DebtCard({
   const [paying, setPaying] = useState(false)
   const [value, setValue] = useState(String(d.monthly_payment || ''))
   const [confirm, setConfirm] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [showPays, setShowPays] = useState(false)
+  const [editPay, setEditPay] = useState<string | null>(null)
+  const [pAmt, setPAmt] = useState('')
+  const [pDate, setPDate] = useState('')
+  const [payConfirm, setPayConfirm] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const myPays = data.debtPayments.filter((p) => p.debt_id === d.id)
   const owner = d.owner_id ? hh.members.find((m) => m.user_id === d.owner_id) : null
 
   async function pay(e: FormEvent) {
@@ -283,6 +295,39 @@ function DebtCard({
     await data.refresh()
   }
 
+  async function savePayment(id: string) {
+    const n = Number(pAmt)
+    if (!n || n <= 0 || !pDate || pDate > todayISO()) {
+      setError('Revisa el monto y que la fecha no sea futura')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    const { error: err } = await supabase.from('debt_payments').update({ amount: n, paid_on: pDate }).eq('id', id)
+    setBusy(false)
+    if (err) {
+      setError('No se pudo corregir el pago')
+      return
+    }
+    setEditPay(null)
+    await data.refresh()
+  }
+
+  async function deletePayment(id: string) {
+    if (payConfirm !== id) {
+      setPayConfirm(id)
+      return
+    }
+    const { error: err } = await supabase.from('debt_payments').delete().eq('id', id)
+    setPayConfirm(null)
+    if (err) {
+      setError('No se pudo borrar el pago')
+      return
+    }
+    onToast('Pago borrado')
+    await data.refresh()
+  }
+
   async function archive() {
     const { error: err } = await supabase.from('debts').update({ archived: true }).eq('id', d.id)
     if (err) {
@@ -294,6 +339,7 @@ function DebtCard({
   }
 
   const done = v.remaining === 0
+  if (editing) return <DebtForm hh={hh} data={data} existing={d} onClose={() => setEditing(false)} onToast={onToast} />
   return (
     <section className="card">
       <div className="row between">
@@ -311,6 +357,9 @@ function DebtCard({
             {d.due_day ? ` · vence el ${d.due_day}` : ''}
           </div>
         </div>
+        <button type="button" className="icon-btn" aria-label={`Editar deuda ${d.name}`} onClick={() => setEditing(true)}>
+          <Icon name="edit" size={20} />
+        </button>
         <button
           type="button"
           className={confirm ? 'icon-btn confirm' : 'icon-btn'}
@@ -352,6 +401,55 @@ function DebtCard({
           {error}
         </p>
       )}
+      {myPays.length > 0 && (
+        <button type="button" className="link-btn" onClick={() => setShowPays((x) => !x)}>
+          {showPays ? 'Ocultar pagos' : `Ver los ${myPays.length} pagos`}
+        </button>
+      )}
+      {showPays && (
+        <div>
+          {myPays.map((p) =>
+            editPay === p.id ? (
+              <div className="stack tight item-edit" key={p.id}>
+                <input className="input" inputMode="numeric" value={pAmt} onChange={(e) => setPAmt(digitsOnly(e.target.value))} aria-label="Monto del pago" />
+                <input className="input" type="date" max={todayISO()} value={pDate} onChange={(e) => setPDate(e.target.value)} aria-label="Fecha del pago" />
+                <div className="row">
+                  <button type="button" className="btn small" disabled={busy} onClick={() => void savePayment(p.id)}>
+                    Guardar
+                  </button>
+                  <button type="button" className="btn ghost small" onClick={() => setEditPay(null)}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="item" key={p.id}>
+                <button
+                  type="button"
+                  className="item-main grow muted small-text"
+                  aria-label="Corregir pago"
+                  onClick={() => {
+                    setEditPay(p.id)
+                    setPAmt(String(p.amount))
+                    setPDate(p.paid_on)
+                  }}
+                >
+                  {hh.members.find((m) => m.user_id === p.paid_by)?.display_name ?? ''} · {p.paid_on.slice(8, 10)}/{p.paid_on.slice(5, 7)}
+                </button>
+                <span className="num">{money(p.amount)}</span>
+                <button
+                  type="button"
+                  className={payConfirm === p.id ? 'icon-btn confirm' : 'icon-btn'}
+                  aria-label={payConfirm === p.id ? 'Confirmar borrado del pago' : 'Borrar pago'}
+                  onClick={() => void deletePayment(p.id)}
+                >
+                  {payConfirm === p.id ? <strong>¿Seguro?</strong> : <Icon name="trash" size={20} />}
+                </button>
+              </div>
+            ),
+          )}
+        </div>
+      )}
       {paying ? (
         <form className="row" onSubmit={(e) => void pay(e)}>
           <input
@@ -381,14 +479,26 @@ function DebtCard({
   )
 }
 
-function DebtForm({ hh, data, onClose, onToast }: { hh: Household; data: HouseholdData; onClose: () => void; onToast: (t: string) => void }) {
-  const [name, setName] = useState('')
-  const [kind, setKind] = useState<(typeof KINDS)[number]['key']>('tarjeta')
-  const [owner, setOwner] = useState<string>('')
-  const [total, setTotal] = useState('')
-  const [fee, setFee] = useState('')
-  const [rate, setRate] = useState('')
-  const [due, setDue] = useState('')
+function DebtForm({
+  hh,
+  data,
+  onClose,
+  onToast,
+  existing,
+}: {
+  hh: Household
+  data: HouseholdData
+  onClose: () => void
+  onToast: (t: string) => void
+  existing?: HouseholdData['debts'][number]
+}) {
+  const [name, setName] = useState(existing?.name ?? '')
+  const [kind, setKind] = useState<(typeof KINDS)[number]['key']>((existing?.kind as (typeof KINDS)[number]['key']) ?? 'tarjeta')
+  const [owner, setOwner] = useState<string>(existing?.owner_id ?? '')
+  const [total, setTotal] = useState(existing ? String(existing.original_amount) : '')
+  const [fee, setFee] = useState(existing && existing.monthly_payment ? String(existing.monthly_payment) : '')
+  const [rate, setRate] = useState(existing && existing.monthly_rate ? String(existing.monthly_rate).replace('.', ',') : '')
+  const [due, setDue] = useState(existing?.due_day ? String(existing.due_day) : '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -403,8 +513,7 @@ function DebtForm({ hh, data, onClose, onToast }: { hh: Household; data: Househo
     if (dueDay !== null && (dueDay < 1 || dueDay > 31)) return setError('El día de vencimiento va de 1 a 31')
     setBusy(true)
     setError(null)
-    const { error: err } = await supabase.from('debts').insert({
-      household_id: hh.household.id,
+    const fields = {
       name: name.trim(),
       kind,
       owner_id: owner || null,
@@ -412,20 +521,23 @@ function DebtForm({ hh, data, onClose, onToast }: { hh: Household; data: Househo
       monthly_payment: Number(fee || '0'),
       monthly_rate: r,
       due_day: dueDay,
-    })
+    }
+    const { error: err } = existing
+      ? await supabase.from('debts').update(fields).eq('id', existing.id)
+      : await supabase.from('debts').insert({ household_id: hh.household.id, ...fields })
     setBusy(false)
     if (err) {
       setError('No se pudo guardar la deuda')
       return
     }
-    onToast('Deuda agregada')
+    onToast(existing ? 'Deuda actualizada' : 'Deuda agregada')
     onClose()
     await data.refresh()
   }
 
   return (
     <form className="card" onSubmit={(e) => void submit(e)}>
-      <strong>Nueva deuda</strong>
+      <strong>{existing ? 'Editar deuda' : 'Nueva deuda'}</strong>
       <div className="field">
         <label htmlFor="d-name">Nombre</label>
         <input id="d-name" className="input" maxLength={60} placeholder="Ej. Tarjeta Banco" value={name} onChange={(e) => setName(e.target.value)} />
@@ -448,7 +560,7 @@ function DebtForm({ hh, data, onClose, onToast }: { hh: Household; data: Househo
         ))}
       </div>
       <div className="field">
-        <label htmlFor="d-total">Cuánto deben hoy</label>
+        <label htmlFor="d-total">{existing ? 'Monto total de la deuda' : 'Cuánto deben hoy'}</label>
         <input id="d-total" className="input" inputMode="numeric" value={total} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
       </div>
       <div className="field">

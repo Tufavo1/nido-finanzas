@@ -25,6 +25,13 @@ const PATHS = {
       <path d="M16 14.5h.01" />
     </>
   ),
+  edit: (
+    <>
+      <path d="M4 20h4L19 9l-4-4L4 16z" />
+      <path d="M13.5 6.5l4 4" />
+    </>
+  ),
+  bell: <path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7M10 20a2 2 0 0 0 4 0" />,
   chevL: <path d="M15 6l-6 6 6 6" />,
   chevR: <path d="M9 6l6 6-6 6" />,
   back: (
