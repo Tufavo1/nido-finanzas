@@ -4,12 +4,25 @@ import type { Household } from '../App'
 import Icon from '../components/Icon'
 import WidgetTokens from '../components/WidgetTokens'
 import PushToggle from '../components/PushToggle'
+import ProfileCard from '../components/ProfileCard'
+import SmartAlertsSetting from '../components/SmartAlertsSetting'
 import ThemeToggle from '../components/ThemeToggle'
+import type { HouseholdData } from '../lib/data'
 import { STRENGTH_LABEL, friendlyError, passwordStrength } from '../lib/security'
 import { supabase } from '../lib/supabase'
 import { memberColor } from '../lib/ui'
 
-export default function Security({ hh, reload }: { hh: Household; reload: () => Promise<void> }) {
+export default function Security({
+  hh,
+  reload,
+  data,
+  onToast,
+}: {
+  hh: Household
+  reload: () => Promise<void>
+  data: HouseholdData
+  onToast: (text: string) => void
+}) {
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -80,6 +93,8 @@ export default function Security({ hh, reload }: { hh: Household; reload: () => 
           {notice}
         </p>
       )}
+
+      <ProfileCard hh={hh} data={data} reload={reload} onToast={onToast} />
 
       <section className="card">
         <strong>{hh.household.name}</strong>
@@ -156,6 +171,8 @@ export default function Security({ hh, reload }: { hh: Household; reload: () => 
       </section>
 
       <PushToggle />
+
+      <SmartAlertsSetting />
 
       <WidgetTokens />
 

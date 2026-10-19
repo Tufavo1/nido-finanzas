@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Household } from '../App'
 import type { Expense, HouseholdData } from '../lib/data'
+import AlertsCard from '../components/AlertsCard'
 import Icon from '../components/Icon'
 import Ring from '../components/Ring'
 import { compact, monthGrid } from '../lib/calendar'
 import { daysLeftInMonth, money } from '../lib/format'
 import { analyzeSalary, myDebtShare } from '../lib/finance'
 import { computeMetrics } from '../lib/metrics'
+import type { Alert, AlertTab } from '../lib/engine'
 import { memberColor, monthName, shortDate } from '../lib/ui'
 
 interface Props {
@@ -15,6 +17,8 @@ interface Props {
   month: Date
   isCurrent: boolean
   onMonth: (delta: number) => void
+  alerts: Alert[]
+  onGo: (tab: AlertTab) => void
 }
 
 const DOW = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
@@ -28,7 +32,7 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
   )
 }
 
-export default function Home({ hh, data, month, isCurrent, onMonth }: Props) {
+export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo }: Props) {
   const [requestedView, setView] = useState<string>('all')
   const [day, setDay] = useState<number | null>(null)
 
@@ -121,6 +125,8 @@ export default function Home({ hh, data, month, isCurrent, onMonth }: Props) {
         <span className="eyebrow">{partner ? `Tú y ${partner.display_name}` : 'Tu hogar'}</span>
         <h1 className="title">Hola, {hh.me.display_name}</h1>
       </div>
+
+      <AlertsCard alerts={alerts} onGo={onGo} />
 
       <div className="row between">
         <button type="button" className="icon-btn" aria-label="Mes anterior" onClick={() => change(-1)}>

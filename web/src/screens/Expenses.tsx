@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import Icon from '../components/Icon'
-import { money } from '../lib/format'
+import { money, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import { digitsOnly, memberColor, shortDate } from '../lib/ui'
 
@@ -24,6 +24,13 @@ export default function Expenses({
   const [eNote, setENote] = useState('')
   const [eCat, setECat] = useState('')
   const [eShared, setEShared] = useState(true)
+  const [ePaidBy, setEPaidBy] = useState('')
+  const [eDate, setEDate] = useState('')
+  const [nameValue, setNameValue] = useState('')
+  const [archiveId, setArchiveId] = useState<string | null>(null)
+  const [newCat, setNewCat] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newBudget, setNewBudget] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -39,7 +46,7 @@ export default function Expenses({
     setError(null)
     const { error: err } = await supabase
       .from('categories')
-      .update({ monthly_budget: Number(value || '0') })
+      .update({ monthly_budget: Number(value || '0'), name: nameValue.trim() || undefined })
       .eq('id', id)
     setBusy(false)
     if (err) {
@@ -47,6 +54,51 @@ export default function Expenses({
       return
     }
     setEditing(null)
+    onToast('Categoría actualizada')
+    await data.refresh()
+  }
+
+  async function archiveCategory(id: string) {
+    if (archiveId !== id) {
+      setArchiveId(id)
+      return
+    }
+    setBusy(true)
+    const { error: err } = await supabase.from('categories').update({ archived: true }).eq('id', id)
+    setBusy(false)
+    setArchiveId(null)
+    if (err) {
+      setError('No se pudo quitar la categoría')
+      return
+    }
+    setEditing(null)
+    onToast('Categoría quitada (los gastos se conservan)')
+    await data.refresh()
+  }
+
+  async function addCategory() {
+    const name = newName.trim()
+    if (!name) {
+      setError('Ponle un nombre a la categoría')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    const { error: err } = await supabase.from('categories').insert({
+      household_id: hh.household.id,
+      name,
+      monthly_budget: Number(newBudget || '0'),
+      position: data.categories.reduce((mx, c) => Math.max(mx, c.position), 0) + 1,
+    })
+    setBusy(false)
+    if (err) {
+      setError(err.code === '23505' ? 'Ya existe una categoría con ese nombre' : 'No se pudo crear la categoría')
+      return
+    }
+    setNewCat(false)
+    setNewName('')
+    setNewBudget('')
+    onToast('Categoría creada')
     await data.refresh()
   }
 
@@ -56,10 +108,16 @@ export default function Expenses({
     setENote(e.note ?? '')
     setECat(e.category_id)
     setEShared(e.shared)
+    setEPaidBy(e.paid_by)
+    setEDate(e.spent_on)
   }
 
   async function saveEdit(id: string) {
     const amount = Number(eAmount)
+    if (!eDate || eDate > todayISO()) {
+      setError('Elige una fecha que no sea futura')
+      return
+    }
     if (!amount || amount <= 0) {
       setError('Ingresa un monto mayor a cero')
       return
@@ -68,7 +126,7 @@ export default function Expenses({
     setError(null)
     const { error: err } = await supabase
       .from('expenses')
-      .update({ amount, note: eNote.trim() || null, category_id: eCat, shared: eShared })
+      .update({ amount, note: eNote.trim() || null, category_id: eCat, shared: eShared, paid_by: ePaidBy, spent_on: eDate })
       .eq('id', id)
     setBusy(false)
     if (err) {
@@ -131,9 +189,12 @@ export default function Expenses({
                   <button
                     type="button"
                     className="link-btn num"
+                    aria-label={`Editar categoría ${c.name}`}
                     onClick={() => {
                       setEditing(c.id)
                       setValue(String(c.monthly_budget))
+                      setNameValue(c.name)
+                      setArchiveId(null)
                     }}
                   >
                     <span className={over ? 'over' : ''}>{money(s)}</span> /{' '}
@@ -145,7 +206,15 @@ export default function Expenses({
                 <span style={{ width: `${pct}%`, background: over ? 'var(--warn)' : 'var(--accent)' }} />
               </div>
               {editing === c.id && (
-                <div className="row">
+                <div className="stack tight">
+                  <input
+                    className="input"
+                    maxLength={40}
+                    value={nameValue}
+                    onChange={(e) => setNameValue(e.target.value)}
+                    aria-label="Nombre de la categoría"
+                  />
+                  <div className="row">
                   <input
                     className="input"
                     inputMode="numeric"
@@ -159,11 +228,33 @@ export default function Expenses({
                   <button type="button" className="btn ghost small" onClick={() => setEditing(null)}>
                     Cancelar
                   </button>
+                  </div>
+                  <button type="button" className="btn danger small" disabled={busy} onClick={() => void archiveCategory(c.id)}>
+                    {archiveId === c.id ? '¿Seguro? Se conservan sus gastos' : 'Quitar categoría'}
+                  </button>
                 </div>
               )}
             </div>
           )
         })}
+        {newCat ? (
+          <div className="stack tight">
+            <input className="input" maxLength={40} placeholder="Nombre de la categoría" value={newName} onChange={(e) => setNewName(e.target.value)} aria-label="Nombre de la nueva categoría" />
+            <input className="input" inputMode="numeric" placeholder="Presupuesto mensual (opcional)" value={newBudget} onChange={(e) => setNewBudget(digitsOnly(e.target.value))} aria-label="Presupuesto mensual" />
+            <div className="row">
+              <button type="button" className="btn small" disabled={busy} onClick={() => void addCategory()}>
+                Crear
+              </button>
+              <button type="button" className="btn ghost small" onClick={() => setNewCat(false)}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="btn ghost small" onClick={() => setNewCat(true)}>
+            Nueva categoría
+          </button>
+        )}
       </section>
 
       <section className="card">
@@ -196,6 +287,21 @@ export default function Expenses({
                     </button>
                   ))}
                 </div>
+                <div className="seg" role="group" aria-label="Quién pagó">
+                  {hh.members.map((m) => (
+                    <button key={m.user_id} type="button" aria-pressed={ePaidBy === m.user_id} onClick={() => setEPaidBy(m.user_id)}>
+                      {m.display_name}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  className="input"
+                  type="date"
+                  max={todayISO()}
+                  value={eDate}
+                  onChange={(ev) => setEDate(ev.target.value)}
+                  aria-label="Fecha del gasto"
+                />
                 <div className="row between">
                   <span>Gasto compartido</span>
                   <button

@@ -389,3 +389,10 @@ button { cursor: pointer; }
 .amount.small { font-size: 28px; line-height: 32px; }
 .dot.inline { display: inline-block; vertical-align: middle; margin-right: 2px; }
 .tab { font-size: 10.5px; }
+.find.info .find-mark { background: var(--blue); }
+.find.ok .find-mark { background: var(--accent); }
+.go { color: var(--accent-ink); font-weight: 600; padding: 6px 0 0; }
+.badge { position: absolute; top: 2px; right: calc(50% - 22px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--warn); color: var(--surface); font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.tab { position: relative; }
+.stepper { display: flex; align-items: center; gap: 12px; }
+.stepper .icon-btn { border: 1px solid var(--line); }

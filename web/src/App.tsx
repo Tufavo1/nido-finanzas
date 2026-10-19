@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import type { Tables } from './lib/database.types'
-import AuthScreen from './screens/AuthScreen'
-import Onboarding from './screens/Onboarding'
 import Shell from './Shell'
+
+const AuthScreen = lazy(() => import('./screens/AuthScreen'))
+const Onboarding = lazy(() => import('./screens/Onboarding'))
 
 export interface Household {
   household: Tables<'households'>
@@ -73,9 +74,19 @@ export default function App() {
   }, [reload])
 
   if (session === undefined) return <Splash />
-  if (!session) return <AuthScreen />
+  if (!session)
+    return (
+      <Suspense fallback={<Splash />}>
+        <AuthScreen />
+      </Suspense>
+    )
   if (loadError) return <Splash text={loadError} onRetry={() => void reload()} />
   if (hh === undefined) return <Splash />
-  if (hh === null) return <Onboarding onDone={reload} />
+  if (hh === null)
+    return (
+      <Suspense fallback={<Splash />}>
+        <Onboarding onDone={reload} />
+      </Suspense>
+    )
   return <Shell hh={hh} reload={reload} />
 }

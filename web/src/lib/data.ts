@@ -10,6 +10,7 @@ export type Contribution = Tables<'contributions'>
 export type Debt = Tables<'debts'>
 export type DebtPayment = Tables<'debt_payments'>
 export type Salary = Tables<'salaries'>
+export type Profile = Tables<'profiles'>
 
 export interface HouseholdData {
   categories: Category[]
@@ -24,6 +25,10 @@ export interface HouseholdData {
   debtPayments: DebtPayment[]
   /** Mi sueldo. La base solo entrega el propio; null si aún no lo he puesto. */
   salary: Salary | null
+  /** Perfiles (profesión) de las personas del hogar */
+  profiles: Profile[]
+  /** false si la tabla de perfiles aún no existe (migración pendiente) */
+  profileReady: boolean
   /** false si las tablas de sueldo/deudas aún no existen en la base (migración pendiente) */
   financeReady: boolean
   /** Ya se cargó al menos una vez */
@@ -43,6 +48,8 @@ export function useData(householdId: string, year: number, monthIndex: number): 
   const [debts, setDebts] = useState<Debt[]>([])
   const [debtPayments, setDebtPayments] = useState<DebtPayment[]>([])
   const [salary, setSalary] = useState<Salary | null>(null)
+  const [profiles, setProfiles] = useState<Profile[]>([])
+  const [profileReady, setProfileReady] = useState(true)
   const [financeReady, setFinanceReady] = useState(true)
   const [loadedKey, setLoadedKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -56,7 +63,7 @@ export function useData(householdId: string, year: number, monthIndex: number): 
     const prevStart = toISO(new Date(year, monthIndex - 1, 1))
     const end = toISO(new Date(year, monthIndex + 1, 1))
 
-    const [cats, exps, gls, cons, sal, dts, pays] = await Promise.all([
+    const [cats, exps, gls, cons, sal, dts, pays, profs] = await Promise.all([
       supabase.from('categories').select('*').eq('household_id', householdId).eq('archived', false).order('position'),
       supabase
         .from('expenses')
@@ -71,6 +78,7 @@ export function useData(householdId: string, year: number, monthIndex: number): 
       supabase.from('salaries').select('*').maybeSingle(),
       supabase.from('debts').select('*').eq('household_id', householdId).eq('archived', false).order('created_at'),
       supabase.from('debt_payments').select('*').eq('household_id', householdId).order('paid_on', { ascending: false }),
+      supabase.from('profiles').select('*').eq('household_id', householdId),
     ])
     if (mine !== seq.current) return
 
@@ -91,6 +99,8 @@ export function useData(householdId: string, year: number, monthIndex: number): 
     setSalary(finErr ? null : (sal.data ?? null))
     setDebts(finErr ? [] : (dts.data ?? []))
     setDebtPayments(finErr ? [] : (pays.data ?? []))
+    setProfileReady(!profs.error)
+    setProfiles(profs.error ? [] : (profs.data ?? []))
     setError(null)
     setLoadedKey(thisKey)
   }, [householdId, year, monthIndex])
@@ -130,6 +140,15 @@ export function useData(householdId: string, year: number, monthIndex: number): 
       )
     }
     money.subscribe()
+    const prof = supabase.channel(`prof-${householdId}`)
+    prof.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'profiles', filter: `household_id=eq.${householdId}` },
+      () => {
+        void refreshRef.current()
+      },
+    )
+    prof.subscribe()
     const onVisible = () => {
       if (document.visibilityState === 'visible') void refreshRef.current()
     }
@@ -138,6 +157,7 @@ export function useData(householdId: string, year: number, monthIndex: number): 
       document.removeEventListener('visibilitychange', onVisible)
       void supabase.removeChannel(channel)
       void supabase.removeChannel(money)
+      void supabase.removeChannel(prof)
     }
   }, [householdId])
 
@@ -150,6 +170,8 @@ export function useData(householdId: string, year: number, monthIndex: number): 
     debts,
     debtPayments,
     salary,
+    profiles,
+    profileReady,
     financeReady,
     ready: loadedKey !== null,
     loading: loadedKey !== key,
