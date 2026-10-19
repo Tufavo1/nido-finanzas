@@ -9,7 +9,10 @@ const Onboarding = lazy(() => import('./screens/Onboarding'))
 
 export interface Household {
   household: Tables<'households'>
+  /** Personas activas del hogar (1 o 2) */
   members: Tables<'members'>[]
+  /** Activas y ex-miembros: solo para mostrar nombres en el historial */
+  everyone: Tables<'members'>[]
   me: Tables<'members'>
 }
 
@@ -18,6 +21,7 @@ async function loadHousehold(userId: string): Promise<Household | null> {
     .from('members')
     .select('*')
     .eq('user_id', userId)
+    .is('left_at', null)
     .maybeSingle()
   if (error) throw error
   if (!me) return null
@@ -28,7 +32,7 @@ async function loadHousehold(userId: string): Promise<Household | null> {
   ])
   if (h.error) throw h.error
   if (m.error) throw m.error
-  return { household: h.data, members: m.data, me }
+  return { household: h.data, members: m.data.filter((x) => !x.left_at), everyone: m.data, me }
 }
 
 function Splash({ text, onRetry }: { text?: string; onRetry?: () => void }) {

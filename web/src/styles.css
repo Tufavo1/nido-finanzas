@@ -396,3 +396,6 @@ button { cursor: pointer; }
 .tab { position: relative; }
 .stepper { display: flex; align-items: center; gap: 12px; }
 .stepper .icon-btn { border: 1px solid var(--line); }
+
+.amount-sm { font-family: var(--font-display); font-weight: 700; font-size: 20px; line-height: 26px; }
+.danger-zone { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }

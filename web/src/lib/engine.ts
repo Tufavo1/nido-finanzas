@@ -1,6 +1,6 @@
 import type { Household } from '../App'
 import type { HouseholdData } from './data'
-import { analyzeSalary, myDebtShare, summarizeDebts } from './finance'
+import { analyzeSalary, monthIncome, myDebtShare, summarizeDebts } from './finance'
 import { money, toISO } from './format'
 import { computeMetrics } from './metrics'
 import { adviceFor } from './profile'
@@ -225,7 +225,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
     } else {
       const me = m.people.find((p) => p.userId === hh.me.user_id)
       const a = analyzeSalary({
-        income: data.salary.amount,
+        income: monthIncome(data.salary, data.incomes),
         spent: me?.trueCost ?? 0,
         commitments: myDebtShare(data.debts, data.debtPayments, hh.me.user_id, hh.members.length),
         month,

@@ -4,3 +4,4 @@ node_modules
 *.local
 supabase/.temp
 supabase/.branches
+!.env.production.example

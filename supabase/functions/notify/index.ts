@@ -56,6 +56,7 @@ Deno.serve(async (req) => {
       .from('members')
       .select('household_id, display_name')
       .eq('user_id', uid)
+      .is('left_at', null)
       .maybeSingle()
     if (!meRow) return reply(403, { error: 'sin hogar' })
 
@@ -74,6 +75,8 @@ Deno.serve(async (req) => {
         .select('user_id')
         .eq('household_id', meRow.household_id)
         .neq('user_id', uid)
+        // Quien salió del hogar ya no recibe avisos
+        .is('left_at', null)
       recipients = (others ?? []).map((m: { user_id: string }) => m.user_id)
 
       if (kind === 'expense') {

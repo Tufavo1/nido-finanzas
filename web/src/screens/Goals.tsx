@@ -29,7 +29,7 @@ export default function Goals({ hh, data }: { hh: Household; data: HouseholdData
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const members = new Map(hh.members.map((m) => [m.user_id, m] as const))
+  const members = new Map(hh.everyone.map((m) => [m.user_id, m] as const))
 
   async function createGoal(e: FormEvent) {
     e.preventDefault()

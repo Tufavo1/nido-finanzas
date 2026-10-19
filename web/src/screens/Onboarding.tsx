@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import DeleteAccountInline from '../components/DeleteAccountInline'
 import { supabase } from '../lib/supabase'
 
 export default function Onboarding({ onDone }: { onDone: () => Promise<void> }) {
@@ -20,6 +21,8 @@ export default function Onboarding({ onDone }: { onDone: () => Promise<void> }) 
         : await supabase.rpc('join_household', { p_code: code.trim().toUpperCase(), p_display_name: name.trim() })
     if (res.error) {
       setError(res.error.message)
+    } else if (mode === 'join' && !res.data) {
+      setError('Código inválido, vencido o ya utilizado. Pide uno nuevo a tu pareja.')
     } else {
       await onDone()
     }
@@ -30,7 +33,8 @@ export default function Onboarding({ onDone }: { onDone: () => Promise<void> }) 
     <div className="app">
       <main className="screen">
         <span className="eyebrow">Bienvenida</span>
-        <h1 className="title">Armemos su hogar</h1>
+        <h1 className="title">Armemos tu hogar</h1>
+        <p className="muted">A solas o en pareja (máximo 2 personas). Cada hogar ve solo sus propios datos.</p>
 
         <div className="seg" role="group" aria-label="Elegir una opción">
           <button type="button" aria-pressed={mode === 'create'} onClick={() => setMode('create')}>
@@ -93,6 +97,7 @@ export default function Onboarding({ onDone }: { onDone: () => Promise<void> }) 
         <button className="btn ghost" type="button" onClick={() => void supabase.auth.signOut()}>
           Cerrar sesión
         </button>
+        <DeleteAccountInline />
       </main>
     </div>
   )

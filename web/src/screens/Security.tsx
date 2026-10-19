@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import Icon from '../components/Icon'
+import LeaveAccount from '../components/LeaveAccount'
 import WidgetTokens from '../components/WidgetTokens'
 import PushToggle from '../components/PushToggle'
 import ProfileCard from '../components/ProfileCard'
@@ -9,6 +10,7 @@ import SmartAlertsSetting from '../components/SmartAlertsSetting'
 import ThemeToggle from '../components/ThemeToggle'
 import type { HouseholdData } from '../lib/data'
 import { STRENGTH_LABEL, friendlyError, passwordStrength } from '../lib/security'
+import { confirmPassword } from '../lib/reauth'
 import { supabase } from '../lib/supabase'
 import { memberColor } from '../lib/ui'
 
@@ -27,9 +29,12 @@ export default function Security({
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [pw, setPw] = useState('')
+  const [currentPw, setCurrentPw] = useState('')
   const [busy, setBusy] = useState(false)
   const strength = passwordStrength(pw)
-  const code = hh.household.invite_code
+  const expires = hh.household.invite_expires_at
+  const expired = !expires || new Date(expires) <= new Date()
+  const code = expired ? null : hh.household.invite_code
   const incomplete = hh.members.length < 2
 
   async function copy(text: string) {
@@ -51,6 +56,14 @@ export default function Security({
     setBusy(true)
     setError(null)
     setNotice(null)
+    try {
+      // Con una sesión robada no se puede cambiar la contraseña sin conocer la actual
+      await confirmPassword(currentPw)
+    } catch (err) {
+      setBusy(false)
+      setError(err instanceof Error ? err.message : 'Contraseña actual incorrecta')
+      return
+    }
     const { error: err } = await supabase.auth.updateUser({ password: pw })
     setBusy(false)
     if (err) {
@@ -58,6 +71,7 @@ export default function Security({
       return
     }
     setPw('')
+    setCurrentPw('')
     setNotice('Contraseña actualizada.')
   }
 
@@ -113,7 +127,9 @@ export default function Security({
         <strong>Invitación</strong>
         {incomplete && code ? (
           <>
-            <span className="muted">Compártelo solo con tu pareja. Deja de servir cuando ella entre.</span>
+            <span className="muted">
+              Compártelo solo con tu pareja. Sirve una vez y vence el {new Date(expires ?? '').toLocaleDateString('es-CL')}.
+            </span>
             <div className="row between">
               <span className="code">{code}</span>
               <button type="button" className="icon-btn" aria-label="Copiar código" onClick={() => void copy(code)}>
@@ -125,8 +141,18 @@ export default function Security({
               Generar código nuevo
             </button>
           </>
+        ) : incomplete ? (
+          <>
+            <span className="muted">
+              {hh.household.invite_code ? 'El código venció. ' : ''}Si quieres sumar a tu pareja, genera un código y
+              compártelo con ella o él. Un hogar es de 1 o 2 personas.
+            </span>
+            <button type="button" className="btn ghost small" onClick={() => void rotate()}>
+              Generar código de invitación
+            </button>
+          </>
         ) : (
-          <span className="muted">El hogar está completo. El código de invitación ya no existe.</span>
+          <span className="muted">El hogar está completo (2 de 2). Nadie más puede unirse.</span>
         )}
       </section>
 
@@ -135,6 +161,17 @@ export default function Security({
       <section className="card">
         <strong>Cuenta y contraseña</strong>
         <form className="stack tight" onSubmit={(e) => void changePassword(e)}>
+          <div className="field">
+            <label htmlFor="curpw">Contraseña actual</label>
+            <input
+              id="curpw"
+              className="input"
+              type="password"
+              autoComplete="current-password"
+              value={currentPw}
+              onChange={(e) => setCurrentPw(e.target.value)}
+            />
+          </div>
           <div className="field">
             <label htmlFor="newpw">Nueva contraseña</label>
             <input
@@ -160,7 +197,7 @@ export default function Security({
               </span>
             </>
           )}
-          <button className="btn ghost small" type="submit" disabled={busy || !pw}>
+          <button className="btn ghost small" type="submit" disabled={busy || !pw || !currentPw}>
             Cambiar contraseña
           </button>
         </form>
@@ -175,6 +212,8 @@ export default function Security({
       <SmartAlertsSetting />
 
       <WidgetTokens />
+
+      <LeaveAccount hh={hh} reload={reload} />
 
       <button className="btn danger" type="button" onClick={() => void supabase.auth.signOut()}>
         Cerrar sesión

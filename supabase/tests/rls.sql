@@ -55,14 +55,14 @@ begin
 
   -- B entra con el código (en minúsculas también sirve)
   perform set_config('request.jwt.claims', json_build_object('sub', b)::text, true);
-  perform public.debe_fallar($q$select public.join_household('CODIGOMALO','Pareja')$q$);
+  assert public.join_household('CODIGOMALO', 'Pareja') is null, 'Código inválido no une a nadie';
   perform public.join_household(lower(code), 'Pareja');
   select count(*) into n from public.members;
   assert n = 2, 'B debe ver 2 miembros';
 
   -- C es ajeno: no entra con el código usado y no ve nada
   perform set_config('request.jwt.claims', json_build_object('sub', c)::text, true);
-  perform public.debe_fallar(format($q$select public.join_household(%L,'Intruso')$q$, code));
+  assert public.join_household(code, 'Intruso') is null, 'Código usado no sirve';
   select count(*) into n from public.households;
   assert n = 0, 'C no debe ver hogares ajenos';
   h3 := public.create_household('Ajena', 'Extraña');
@@ -102,7 +102,10 @@ begin
   assert n = 0, 'B NO debe ver el sueldo de A';
   perform public.debe_fallar(format(
     $q$insert into public.salaries (user_id, household_id, amount) values (%L, %L, 1)$q$, a, h1));
-  perform public.debe_fallar(format($q$update public.salaries set amount = 1 where user_id = %L$q$, a));
+  -- RLS no da error al tocar filas ajenas: simplemente no afecta ninguna
+  update public.salaries set amount = 1 where user_id = a;
+  get diagnostics n = row_count;
+  assert n = 0, 'B NO debe poder cambiar el sueldo de A';
   insert into public.salaries (user_id, household_id, amount) values (b, h1, 900000);
   perform set_config('request.jwt.claims', json_build_object('sub', c)::text, true);
   select count(*) into n from public.salaries;
@@ -130,7 +133,9 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', b)::text, true);
   select count(*) into n from public.profiles;
   assert n = 1, 'B debe ver el perfil de A';
-  perform public.debe_fallar(format($q$update public.profiles set profession = 'x' where user_id = %L$q$, a));
+  update public.profiles set profession = 'x' where user_id = a;
+  get diagnostics n = row_count;
+  assert n = 0, 'No se edita el perfil ajeno';
   perform set_config('request.jwt.claims', json_build_object('sub', c)::text, true);
   select count(*) into n from public.profiles;
   assert n = 0, 'C no debe ver perfiles ajenos';

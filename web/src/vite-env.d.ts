@@ -4,5 +4,7 @@
 interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL: string
   readonly VITE_SUPABASE_KEY: string
+  /** Clave de sitio de Cloudflare Turnstile (opcional; sin ella no hay CAPTCHA) */
+  readonly VITE_TURNSTILE_SITE_KEY?: string
   readonly VITE_VAPID_PUBLIC_KEY: string
 }

@@ -11,6 +11,8 @@ export type Debt = Tables<'debts'>
 export type DebtPayment = Tables<'debt_payments'>
 export type Salary = Tables<'salaries'>
 export type Profile = Tables<'profiles'>
+export type Income = Tables<'incomes'>
+export type Recurring = Tables<'recurring_expenses'>
 
 export interface HouseholdData {
   categories: Category[]
@@ -25,6 +27,10 @@ export interface HouseholdData {
   debtPayments: DebtPayment[]
   /** Mi sueldo. La base solo entrega el propio; null si aún no lo he puesto. */
   salary: Salary | null
+  /** Mis ingresos extra del mes seleccionado (privados, como el sueldo) */
+  incomes: Income[]
+  /** Gastos fijos del hogar */
+  recurring: Recurring[]
   /** Perfiles (profesión) de las personas del hogar */
   profiles: Profile[]
   /** false si la tabla de perfiles aún no existe (migración pendiente) */
@@ -39,7 +45,14 @@ export interface HouseholdData {
   refresh: () => Promise<void>
 }
 
-export function useData(householdId: string, year: number, monthIndex: number): HouseholdData {
+export function useData(
+  householdId: string,
+  userId: string,
+  year: number,
+  monthIndex: number,
+  /** Se llama cuando cambia quién está en el hogar (entra o sale la pareja) */
+  onMembersChange?: () => void,
+): HouseholdData {
   const [categories, setCategories] = useState<Category[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [prevExpenses, setPrevExpenses] = useState<Expense[]>([])
@@ -49,6 +62,8 @@ export function useData(householdId: string, year: number, monthIndex: number): 
   const [debtPayments, setDebtPayments] = useState<DebtPayment[]>([])
   const [salary, setSalary] = useState<Salary | null>(null)
   const [profiles, setProfiles] = useState<Profile[]>([])
+  const [incomes, setIncomes] = useState<Income[]>([])
+  const [recurring, setRecurring] = useState<Recurring[]>([])
   const [profileReady, setProfileReady] = useState(true)
   const [financeReady, setFinanceReady] = useState(true)
   const [loadedKey, setLoadedKey] = useState<string | null>(null)
@@ -63,7 +78,7 @@ export function useData(householdId: string, year: number, monthIndex: number): 
     const prevStart = toISO(new Date(year, monthIndex - 1, 1))
     const end = toISO(new Date(year, monthIndex + 1, 1))
 
-    const [cats, exps, gls, cons, sal, dts, pays, profs] = await Promise.all([
+    const [cats, exps, gls, cons, sal, dts, pays, profs, incs, recs] = await Promise.all([
       supabase.from('categories').select('*').eq('household_id', householdId).eq('archived', false).order('position'),
       supabase
         .from('expenses')
@@ -79,6 +94,14 @@ export function useData(householdId: string, year: number, monthIndex: number): 
       supabase.from('debts').select('*').eq('household_id', householdId).eq('archived', false).order('created_at'),
       supabase.from('debt_payments').select('*').eq('household_id', householdId).order('paid_on', { ascending: false }),
       supabase.from('profiles').select('*').eq('household_id', householdId),
+      supabase
+        .from('incomes')
+        .select('*')
+        .eq('household_id', householdId)
+        .gte('received_on', start)
+        .lt('received_on', end)
+        .order('received_on', { ascending: false }),
+      supabase.from('recurring_expenses').select('*').eq('household_id', householdId).order('day_of_month'),
     ])
     if (mine !== seq.current) return
 
@@ -101,65 +124,67 @@ export function useData(householdId: string, year: number, monthIndex: number): 
     setDebtPayments(finErr ? [] : (pays.data ?? []))
     setProfileReady(!profs.error)
     setProfiles(profs.error ? [] : (profs.data ?? []))
+    setIncomes(incs.error ? [] : (incs.data ?? []))
+    setRecurring(recs.error ? [] : (recs.data ?? []))
     setError(null)
     setLoadedKey(thisKey)
   }, [householdId, year, monthIndex])
 
   const refreshRef = useRef(refresh)
+  const membersRef = useRef(onMembersChange)
   useEffect(() => {
     refreshRef.current = refresh
-  }, [refresh])
+    membersRef.current = onMembersChange
+  }, [refresh, onMembersChange])
 
   // Carga al abrir y cada vez que cambia el mes
   useEffect(() => {
     void refresh()
   }, [refresh])
 
-  // Tiempo real: una sola suscripción por hogar
+  // Gastos fijos: se generan al abrir la app y al volver a ella (por si cambió el día)
   useEffect(() => {
-    const channel = supabase.channel(`hh-${householdId}`)
-    for (const table of ['expenses', 'contributions', 'goals', 'categories'] as const) {
-      channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table, filter: `household_id=eq.${householdId}` },
-        () => {
-          void refreshRef.current()
-        },
-      )
+    let cancelled = false
+    const apply = async () => {
+      const { data: created } = await supabase.rpc('apply_recurring')
+      if (!cancelled && created) void refreshRef.current()
     }
-    channel.subscribe()
-    // Canal aparte: si estas tablas no existen, no afecta a los gastos
-    const money = supabase.channel(`fin-${householdId}`)
-    for (const table of ['debts', 'debt_payments', 'salaries'] as const) {
-      money.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table, filter: `household_id=eq.${householdId}` },
-        () => {
-          void refreshRef.current()
-        },
-      )
+    void apply()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void apply()
     }
-    money.subscribe()
-    const prof = supabase.channel(`prof-${householdId}`)
-    prof.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'profiles', filter: `household_id=eq.${householdId}` },
-      () => {
-        void refreshRef.current()
-      },
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [householdId])
+
+  // Tiempo real por canales privados: 'hh:<hogar>' solo lo escuchan sus miembros y
+  // 'u:<usuario>' solo la misma persona (sueldo e ingresos). Solo avisan qué tabla cambió.
+  useEffect(() => {
+    let cancelled = false
+    const channels = [`hh:${householdId}`, `u:${userId}`].map((topic) =>
+      supabase
+        .channel(topic, { config: { private: true } })
+        .on('broadcast', { event: 'change' }, ({ payload }: { payload?: { table?: string } }) => {
+          if (payload?.table === 'members' || payload?.table === 'households') membersRef.current?.()
+          void refreshRef.current()
+        }),
     )
-    prof.subscribe()
+    void supabase.realtime.setAuth().then(() => {
+      if (!cancelled) for (const ch of channels) ch.subscribe()
+    })
     const onVisible = () => {
       if (document.visibilityState === 'visible') void refreshRef.current()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => {
+      cancelled = true
       document.removeEventListener('visibilitychange', onVisible)
-      void supabase.removeChannel(channel)
-      void supabase.removeChannel(money)
-      void supabase.removeChannel(prof)
+      for (const ch of channels) void supabase.removeChannel(ch)
     }
-  }, [householdId])
+  }, [householdId, userId])
 
   return {
     categories,
@@ -171,6 +196,8 @@ export function useData(householdId: string, year: number, monthIndex: number): 
     debtPayments,
     salary,
     profiles,
+    incomes,
+    recurring,
     profileReady,
     financeReady,
     ready: loadedKey !== null,
