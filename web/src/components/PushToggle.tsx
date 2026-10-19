@@ -24,7 +24,7 @@ export default function PushToggle() {
   }
 
   return (
-    <section className="card">
+    <section className="card" id="avisos">
       <strong>Avisos</strong>
       <span className="muted">Recibe una notificación cuando tu pareja registre un gasto o un aporte.</span>
 

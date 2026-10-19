@@ -25,8 +25,8 @@ function assert(c, m) {
   console.log('  ✓', m)
 }
 
-async function newPage(browser, name) {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } })
+async function newPage(browser, name, userAgent) {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, ...(userAgent ? { userAgent, hasTouch: true } : {}) })
   const page = await ctx.newPage()
   page.on('pageerror', (e) => console.log(`  [${name} pageerror]`, e.message))
   return page
@@ -92,6 +92,43 @@ async function addExpense(page, digits, note) {
     await register(ana, mail('ana'))
     await createHousehold(ana, 'Ana')
     assert(true, 'Ana entra a su hogar')
+
+    step('Instalar la app: aviso, "Ahora no" y botón en Ajustes')
+    const fakeInstall = (page, outcome) =>
+      page.evaluate((outcome) => {
+        const e = new Event('beforeinstallprompt', { cancelable: true })
+        e.prompt = async () => {}
+        e.userChoice = Promise.resolve({ outcome })
+        window.dispatchEvent(e)
+      }, outcome)
+    await fakeInstall(ana, 'dismissed')
+    await ana.getByText('¿Quieres instalar Contigo?').waitFor({ timeout: 10000 })
+    assert(true, 'aparece el aviso para instalar')
+    await ana.getByRole('button', { name: 'Ahora no' }).click()
+    await ana.getByText(/cuando quieras desde Ajustes/).waitFor({ timeout: 5000 })
+    assert((await ana.getByText('¿Quieres instalar Contigo?').count()) === 0, 'con "Ahora no" el aviso se cierra y avisa dónde instalar')
+    await ana.reload()
+    await ana.getByText('Hola, Ana').waitFor({ timeout: 30000 })
+    await fakeInstall(ana, 'accepted')
+    await ana.waitForTimeout(500)
+    assert((await ana.getByText('¿Quieres instalar Contigo?').count()) === 0, 'tras decir que no, no vuelve a molestar')
+    await tab(ana, 'Ajustes')
+    await ana.getByText('Permisos y datos').waitFor()
+    for (const t of ['Almacenamiento del navegador', 'Verificación anti-bots', 'Conexión a internet', 'Instalar la app', 'Notificaciones']) {
+      assert(await ana.getByText(t, { exact: true }).first().isVisible(), `Permisos y datos explica: ${t}`)
+    }
+    assert((await ana.locator('.need .pill', { hasText: /^Necesario$/ }).count()) === 3 && (await ana.locator('.need .pill', { hasText: /^Opcional$/ }).count()) === 2, '3 cosas necesarias y 2 opcionales')
+    await ana.getByRole('button', { name: 'Instalar app' }).click()
+    await ana.getByText('¡Contigo quedó instalada!').first().waitFor({ timeout: 5000 })
+    assert(true, 'el botón de Ajustes instala la app aunque hayas dicho que no')
+    const iphone = await newPage(browser, 'iphone', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1')
+    await login(iphone, mail('ana'))
+    await iphone.getByText('Añadir a pantalla de inicio').first().waitFor({ timeout: 30000 })
+    assert(await iphone.getByRole('button', { name: 'Entendido' }).isVisible(), 'en iPhone explica cómo instalar a mano')
+    const login0 = await newPage(browser, 'visita')
+    await login0.goto(BASE)
+    await login0.getByText('¿Qué necesita Contigo para funcionar?').click()
+    assert(await login0.getByText(/no usa cookies de publicidad ni de seguimiento/).isVisible(), 'la pantalla de entrada explica qué se necesita')
 
     step('Beto se une con el código de invitación')
     await tab(ana, 'Ajustes')

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { captchaToken } from '../lib/captcha'
+import { NEEDS } from '../lib/needs'
 import { supabase } from '../lib/supabase'
 import { STRENGTH_LABEL, createThrottle, friendlyError, passwordStrength } from '../lib/security'
 
@@ -143,6 +144,16 @@ export default function AuthScreen() {
         >
           {mode === 'login' ? 'Crear una cuenta' : 'Ya tengo cuenta'}
         </button>
+        <details className="auth-needs">
+          <summary>¿Qué necesita Contigo para funcionar?</summary>
+          <ul>
+            {NEEDS.map((n) => (
+              <li key={n.id}>
+                <strong>{n.title}</strong> ({n.required ? 'necesario' : 'opcional'}): {n.why}
+              </li>
+            ))}
+          </ul>
+        </details>
       </main>
     </div>
   )

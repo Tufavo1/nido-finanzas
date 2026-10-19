@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Household } from '../App'
+import AccessCard from '../components/AccessCard'
 import Icon from '../components/Icon'
 import LeaveAccount from '../components/LeaveAccount'
 import WidgetTokens from '../components/WidgetTokens'
@@ -206,6 +207,8 @@ export default function Security({
         </button>
         <span className="hint">Úsalo si perdiste el teléfono o entraste desde un equipo ajeno.</span>
       </section>
+
+      <AccessCard />
 
       <PushToggle />
 

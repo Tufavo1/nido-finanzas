@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
 import type { Household } from './App'
 import Icon from './components/Icon'
+import InstallBanner from './components/InstallBanner'
 import Toast from './components/Toast'
 import { useData } from './lib/data'
 import { buildAlerts } from './lib/engine'
@@ -132,6 +133,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
           </button>
         ))}
       </nav>
+      <InstallBanner onToast={setToast} />
       {toast && <Toast text={toast} onDone={clearToast} />}
     </div>
   )
