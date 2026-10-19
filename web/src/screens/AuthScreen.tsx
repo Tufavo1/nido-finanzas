@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import Logo from '../components/Logo'
 import { captchaToken } from '../lib/captcha'
 import { NEEDS } from '../lib/needs'
 import { supabase } from '../lib/supabase'
@@ -76,8 +77,11 @@ export default function AuthScreen() {
   return (
     <div className="app">
       <main className="screen center-y">
-        <div className="logo" aria-hidden="true" />
-        <h1 className="title">Contigo</h1>
+        <div className="auth-hero">
+          <Logo size={72} animate />
+          <h1 className="title brand-title">Contigo</h1>
+          <p className="tagline">Tus finanzas, contigo.</p>
+        </div>
         <p className="muted">
           {mode === 'login'
             ? 'Inicia sesión para ver las finanzas de los dos.'

@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
+import Avatar from '../components/Avatar'
 import Icon from '../components/Icon'
 import { money, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
-import { digitsOnly, memberColor, shortDate } from '../lib/ui'
+import { digitsOnly, shortDate } from '../lib/ui'
 
 export default function Expenses({
   hh,
@@ -324,7 +325,7 @@ export default function Expenses({
               </div>
             ) : (
               <div className="item" key={e.id}>
-                <span className="dot" style={{ background: memberColor(members.get(e.paid_by)) }} />
+                <Avatar name={members.get(e.paid_by)?.display_name} color={members.get(e.paid_by)?.color} />
                 <button
                   type="button"
                   className="item-main grow"

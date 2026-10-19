@@ -1,6 +1,17 @@
+import { execSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+
+const version = (JSON.parse(readFileSync('./package.json', 'utf8')) as { version: string }).version
+const commit = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+  } catch {
+    return '' // compilando sin git (por ejemplo, en un servidor de build): se omite
+  }
+})()
 
 export default defineConfig(({ command, mode }) => {
   // .env.local tiene prioridad sobre .env.production: sin este control, el build que se sube a
@@ -15,6 +26,11 @@ export default defineConfig(({ command, mode }) => {
     }
   }
   return {
+    define: {
+      __APP_VERSION__: JSON.stringify(version),
+      __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
+      __COMMIT__: JSON.stringify(commit),
+    },
     plugins: [
       react(),
       VitePWA({

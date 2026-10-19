@@ -4,7 +4,8 @@ import type { Household } from '../App'
 import type { HouseholdData, Recurring } from '../lib/data'
 import { money } from '../lib/format'
 import { supabase } from '../lib/supabase'
-import { digitsOnly, memberColor } from '../lib/ui'
+import { digitsOnly } from '../lib/ui'
+import Avatar from './Avatar'
 import Icon from './Icon'
 
 interface Props {
@@ -115,7 +116,7 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
         <section className="card">
           {data.recurring.map((r) => (
             <div className="item" key={r.id} style={r.active ? undefined : { opacity: 0.55 }}>
-              {!solo && <span className="dot" style={{ background: memberColor(people.get(r.paid_by)) }} />}
+              {!solo && <Avatar name={people.get(r.paid_by)?.display_name} color={people.get(r.paid_by)?.color} size={28} />}
               <div className="grow">
                 <div className="ellipsis">{r.note}</div>
                 <div className="muted small-text">

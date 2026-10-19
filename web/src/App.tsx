@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import type { Tables } from './lib/database.types'
+import Logo from './components/Logo'
 import Shell from './Shell'
 
 const AuthScreen = lazy(() => import('./screens/AuthScreen'))
@@ -38,7 +39,7 @@ async function loadHousehold(userId: string): Promise<Household | null> {
 function Splash({ text, onRetry }: { text?: string; onRetry?: () => void }) {
   return (
     <div className="splash">
-      <div className="logo" aria-hidden="true" />
+      <Logo size={56} pulse />
       {text && <p className="muted">{text}</p>}
       {onRetry && (
         <button className="btn" type="button" onClick={onRetry}>

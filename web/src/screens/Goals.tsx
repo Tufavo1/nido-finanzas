@@ -2,11 +2,13 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
+import Avatar from '../components/Avatar'
 import Icon from '../components/Icon'
+import Ring from '../components/Ring'
 import { money, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import { notifyPartner } from '../lib/push'
-import { digitsOnly, memberColor, shortDate } from '../lib/ui'
+import { digitsOnly, shortDate } from '../lib/ui'
 
 export default function Goals({ hh, data }: { hh: Household; data: HouseholdData }) {
   const { goals, contributions } = data
@@ -207,7 +209,6 @@ export default function Goals({ hh, data }: { hh: Household; data: HouseholdData
             <div className="row between">
               <strong>{g.name}</strong>
               <div className="row">
-                <span className="muted num">{pct}%</span>
                 <button type="button" className="icon-btn" aria-label={`Editar meta ${g.name}`} onClick={() => startEditGoal(g)}>
                   <Icon name="edit" size={20} />
                 </button>
@@ -231,12 +232,18 @@ export default function Goals({ hh, data }: { hh: Household; data: HouseholdData
                 </button>
               </div>
             )}
-            <div className="bar big" aria-hidden="true">
-              <span style={{ width: `${pct}%`, background: 'var(--accent)' }} />
-            </div>
-            <div className="muted num">
-              {money(saved)} de {money(g.target_amount)}
-              {g.target_date ? ` · para ${shortDate(g.target_date)}` : ''}
+            <div className="goal-body">
+              <Ring pct={pct} />
+              <div className="grow">
+                <span className="amount small num">{money(saved)}</span>
+                <div className="muted num small-text">
+                  de {money(g.target_amount)}
+                  {g.target_date ? ` · para ${shortDate(g.target_date)}` : ''}
+                </div>
+                <div className={saved >= g.target_amount ? 'notice small-text' : 'muted small-text'}>
+                  {saved >= g.target_amount ? '¡Meta cumplida!' : `Faltan ${money(g.target_amount - saved)}`}
+                </div>
+              </div>
             </div>
 
             {openId === g.id ? (
@@ -286,7 +293,7 @@ export default function Goals({ hh, data }: { hh: Household; data: HouseholdData
                   </div>
                 ) : (
                   <div className="item" key={c.id}>
-                    <span className="dot" style={{ background: memberColor(members.get(c.user_id)) }} />
+                    <Avatar name={members.get(c.user_id)?.display_name} color={members.get(c.user_id)?.color} size={28} />
                     <button
                       type="button"
                       className="item-main grow muted small-text"

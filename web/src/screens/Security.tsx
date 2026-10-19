@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Household } from '../App'
+import AboutCard from '../components/AboutCard'
 import AccessCard from '../components/AccessCard'
+import Avatar from '../components/Avatar'
 import Icon from '../components/Icon'
 import LeaveAccount from '../components/LeaveAccount'
 import WidgetTokens from '../components/WidgetTokens'
@@ -13,7 +15,6 @@ import type { HouseholdData } from '../lib/data'
 import { STRENGTH_LABEL, friendlyError, passwordStrength } from '../lib/security'
 import { confirmPassword } from '../lib/reauth'
 import { supabase } from '../lib/supabase'
-import { memberColor } from '../lib/ui'
 
 export default function Security({
   hh,
@@ -115,7 +116,7 @@ export default function Security({
         <strong>{hh.household.name}</strong>
         {hh.members.map((m) => (
           <div className="row" key={m.user_id}>
-            <span className="dot" style={{ background: memberColor(m) }} />
+            <Avatar name={m.display_name} color={m.color} />
             <span className="grow">
               {m.display_name}
               {m.user_id === hh.me.user_id ? ' (tú)' : ''}
@@ -217,6 +218,8 @@ export default function Security({
       <WidgetTokens />
 
       <LeaveAccount hh={hh} reload={reload} />
+
+      <AboutCard />
 
       <button className="btn danger" type="button" onClick={() => void supabase.auth.signOut()}>
         Cerrar sesión
