@@ -23,6 +23,8 @@ const base = {
   debts: [],
   debtPayments: [],
   salary: null,
+  incomes: [],
+  recurring: [],
   profiles: [],
   financeReady: true,
   profileReady: true,
@@ -64,6 +66,16 @@ describe('motor de avisos', () => {
     const salary = { user_id: 'a', household_id: 'h', amount: 100000, pay_day: 28, updated_at: '' }
     const a = run({ salary, expenses: [exp(90000, '2026-10-10', 'c1', 'a', false)] })
     expect(a.some((x) => x.area === 'sueldo' && x.level === 'bad')).toBe(true)
+  })
+
+  it('suma los ingresos extra al sueldo', () => {
+    const salary = { user_id: 'a', household_id: 'h', amount: 100000, pay_day: 28, updated_at: '' }
+    const gastos = [exp(90000, '2026-10-10', 'c1', 'a', false)]
+    const sinExtra = run({ salary, expenses: gastos }).filter((x) => x.area === 'sueldo' && x.level === 'bad')
+    const bono = { id: 'i1', user_id: 'a', household_id: 'h', amount: 400000, source: 'Bono', received_on: '2026-10-05', created_at: '' }
+    const conExtra = run({ salary, expenses: gastos, incomes: [bono] }).filter((x) => x.area === 'sueldo' && x.level === 'bad')
+    expect(sinExtra.length).toBeGreaterThan(0)
+    expect(conExtra.length).toBe(0)
   })
 
   it('sugiere fondo de emergencia según el perfil y no lo repite si existe', () => {

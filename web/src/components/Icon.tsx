@@ -31,6 +31,9 @@ const PATHS = {
       <path d="M13.5 6.5l4 4" />
     </>
   ),
+  pause: <path d="M9 5v14M15 5v14" />,
+  play: <path d="M7 5l12 7-12 7z" />,
+  logout: <path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3" />,
   bell: <path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7M10 20a2 2 0 0 0 4 0" />,
   chevL: <path d="M15 6l-6 6 6 6" />,
   chevR: <path d="M9 6l6 6-6 6" />,

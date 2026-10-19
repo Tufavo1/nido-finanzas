@@ -34,7 +34,7 @@ export default function Expenses({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const members = new Map(hh.members.map((m) => [m.user_id, m] as const))
+  const members = new Map(hh.everyone.map((m) => [m.user_id, m] as const))
   const catName = new Map(data.categories.map((c) => [c.id, c.name] as const))
   const list = data.expenses.filter((e) => who === 'all' || e.paid_by === who)
 
@@ -335,6 +335,7 @@ export default function Expenses({
                   <div className="muted small-text">
                     {catName.get(e.category_id) ?? 'Sin categoría'} · {shortDate(e.spent_on)}
                     {e.shared ? '' : ' · personal'}
+                    {e.recurring_id ? ' · fijo' : ''}
                   </div>
                 </button>
                 <span className="num">{money(e.amount)}</span>

@@ -165,6 +165,11 @@ export function myDebtShare(debts: Debt[], payments: DebtPayment[], meId: string
   )
 }
 
+/** Ingreso del mes: sueldo más ingresos extra (bonos, ventas…) */
+export function monthIncome(salary: { amount: number } | null, extras: { amount: number }[] = []): number {
+  return (salary?.amount ?? 0) + sumBy(extras, (x) => x.amount)
+}
+
 export interface SalaryAnalysis {
   income: number
   spent: number

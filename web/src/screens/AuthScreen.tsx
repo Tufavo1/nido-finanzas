@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import { captchaToken } from '../lib/captcha'
 import { supabase } from '../lib/supabase'
 import { STRENGTH_LABEL, createThrottle, friendlyError, passwordStrength } from '../lib/security'
 
@@ -33,8 +34,20 @@ export default function AuthScreen() {
     setBusy(true)
     setMsg(null)
     const cleanEmail = email.trim().toLowerCase()
+    let captcha: string | undefined
+    try {
+      captcha = await captchaToken()
+    } catch (err) {
+      setMsg({ text: err instanceof Error ? err.message : 'No se pudo verificar que no eres un robot', error: true })
+      setBusy(false)
+      return
+    }
     if (mode === 'login') {
-      const { error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password })
+      const { error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+        options: { captchaToken: captcha },
+      })
       if (error) {
         throttle.fail()
         setMsg({ text: 'Correo o contraseña incorrectos', error: true })
@@ -42,7 +55,11 @@ export default function AuthScreen() {
         throttle.reset()
       }
     } else {
-      const { data, error } = await supabase.auth.signUp({ email: cleanEmail, password })
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: { captchaToken: captcha },
+      })
       if (error) {
         setMsg({ text: friendlyError(error.message), error: true })
       } else if (!data.session) {

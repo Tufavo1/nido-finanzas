@@ -32,7 +32,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   })
   const [toast, setToast] = useState<string | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
-  const data = useData(hh.household.id, ym.y, ym.m)
+  const data = useData(hh.household.id, hh.me.user_id, ym.y, ym.m, reload)
 
   const now = new Date()
   const isCurrent = ym.y === now.getFullYear() && ym.m === now.getMonth()

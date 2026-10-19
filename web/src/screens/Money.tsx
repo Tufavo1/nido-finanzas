@@ -3,7 +3,9 @@ import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import Icon from '../components/Icon'
-import { analyzeSalary, myDebtShare, summarizeDebts } from '../lib/finance'
+import IncomesCard from '../components/IncomesCard'
+import RecurringPanel from '../components/RecurringPanel'
+import { analyzeSalary, monthIncome, myDebtShare, summarizeDebts } from '../lib/finance'
 import type { DebtView, Finding } from '../lib/finance'
 import { money, todayISO } from '../lib/format'
 import { computeMetrics } from '../lib/metrics'
@@ -104,7 +106,7 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
   }
 
   const a = salary
-    ? analyzeSalary({ income: salary.amount, spent: me?.trueCost ?? 0, commitments, month })
+    ? analyzeSalary({ income: monthIncome(salary, data.incomes), spent: me?.trueCost ?? 0, commitments, month })
     : null
 
   return (
@@ -178,6 +180,12 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
             </span>
             <strong className="verdict-title">{a.headline}</strong>
             <div className="stack tight">
+              {data.incomes.length > 0 && (
+                <div className="row between">
+                  <span className="muted">Ingresos (sueldo + extras)</span>
+                  <span className="num">{money(a.income)}</span>
+                </div>
+              )}
               <div className="row between">
                 <span className="muted">Tus gastos (personales + tu mitad)</span>
                 <span className="num">
@@ -252,7 +260,7 @@ function DebtCard({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const myPays = data.debtPayments.filter((p) => p.debt_id === d.id)
-  const owner = d.owner_id ? hh.members.find((m) => m.user_id === d.owner_id) : null
+  const owner = d.owner_id ? hh.everyone.find((m) => m.user_id === d.owner_id) : null
 
   async function pay(e: FormEvent) {
     e.preventDefault()
@@ -434,7 +442,7 @@ function DebtCard({
                     setPDate(p.paid_on)
                   }}
                 >
-                  {hh.members.find((m) => m.user_id === p.paid_by)?.display_name ?? ''} · {p.paid_on.slice(8, 10)}/{p.paid_on.slice(5, 7)}
+                  {hh.everyone.find((m) => m.user_id === p.paid_by)?.display_name ?? ''} · {p.paid_on.slice(8, 10)}/{p.paid_on.slice(5, 7)}
                 </button>
                 <span className="num">{money(p.amount)}</span>
                 <button
@@ -636,7 +644,7 @@ function DebtsPanel({ hh, data, onToast }: Props) {
 
 /* ------------------------------- Pantalla ------------------------------ */
 export default function Money(props: Props) {
-  const [tab, setTab] = useState<'salary' | 'debts'>('salary')
+  const [tab, setTab] = useState<'salary' | 'fixed' | 'debts'>('salary')
   const { data } = props
 
   return (
@@ -660,11 +668,21 @@ export default function Money(props: Props) {
             <button type="button" aria-pressed={tab === 'salary'} onClick={() => setTab('salary')}>
               Mi sueldo
             </button>
+            <button type="button" aria-pressed={tab === 'fixed'} onClick={() => setTab('fixed')}>
+              Fijos
+            </button>
             <button type="button" aria-pressed={tab === 'debts'} onClick={() => setTab('debts')}>
               Deudas
             </button>
           </div>
-          {tab === 'salary' ? <SalaryPanel {...props} /> : <DebtsPanel {...props} />}
+          {tab === 'salary' && (
+            <>
+              <SalaryPanel {...props} />
+              <IncomesCard {...props} />
+            </>
+          )}
+          {tab === 'fixed' && <RecurringPanel {...props} />}
+          {tab === 'debts' && <DebtsPanel {...props} />}
         </>
       )}
     </main>

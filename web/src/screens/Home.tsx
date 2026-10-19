@@ -38,7 +38,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
 
   const members = hh.members
   const partner = members.find((m) => m.user_id !== hh.me.user_id)
-  const byId = useMemo(() => new Map(members.map((m) => [m.user_id, m] as const)), [members])
+  const byId = useMemo(() => new Map(hh.everyone.map((m) => [m.user_id, m] as const)), [hh.everyone])
   const catName = useMemo(() => new Map(data.categories.map((c) => [c.id, c.name] as const)), [data.categories])
 
   // Si la persona elegida ya no está en el hogar, volver a la vista del hogar
@@ -397,6 +397,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
                 <div className="muted small-text">
                   {catName.get(e.category_id) ?? 'Sin categoría'} · {shortDate(e.spent_on)}
                   {e.shared ? '' : ' · personal'}
+                  {e.recurring_id ? ' · fijo' : ''}
                 </div>
               </div>
               <span className="num">{money(e.amount)}</span>
