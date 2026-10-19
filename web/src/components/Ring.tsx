@@ -15,6 +15,7 @@ export default function Ring({ pct }: { pct: number }) {
           strokeLinecap="round"
           strokeDasharray={c}
           strokeDashoffset={c * (1 - pct / 100)}
+          style={{ ['--c' as string]: c }}
           transform="rotate(-90 42 42)"
         />
       </svg>

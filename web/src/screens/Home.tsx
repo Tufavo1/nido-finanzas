@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Household } from '../App'
 import type { Expense, HouseholdData } from '../lib/data'
 import AlertsCard from '../components/AlertsCard'
+import Avatar, { AvatarPair } from '../components/Avatar'
 import Icon from '../components/Icon'
+import Logo from '../components/Logo'
 import Ring from '../components/Ring'
+import Venn from '../components/Venn'
 import { compact, monthGrid } from '../lib/calendar'
 import { daysLeftInMonth, money } from '../lib/format'
 import { analyzeSalary, myDebtShare } from '../lib/finance'
@@ -77,6 +80,12 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
         })
       : null
 
+  const pair = members.map((m) => {
+    const p = all.people.find((x) => x.userId === m.user_id)
+    return { name: m.display_name, color: m.color, paid: p?.paid ?? 0 }
+  })
+  const two = pair.length === 2 ? ([pair[0]!, pair[1]!] as [(typeof pair)[number], (typeof pair)[number]]) : null
+
   const budget = data.categories.reduce((s, c) => s + c.monthly_budget, 0)
   const left = budget - all.total
   const denom = Math.max(budget, all.total, 1)
@@ -121,12 +130,13 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
 
   return (
     <main className={data.loading ? 'screen dim' : 'screen'} aria-busy={data.loading}>
-      <div>
-        <span className="eyebrow">{partner ? `Tú y ${partner.display_name}` : 'Tu hogar'}</span>
-        <h1 className="title">Hola, {hh.me.display_name}</h1>
+      <div className="home-head">
+        <div>
+          <span className="eyebrow">{partner ? `Tú y ${partner.display_name}` : 'Tu hogar'}</span>
+          <h1 className="title">Hola, {hh.me.display_name}</h1>
+        </div>
+        {members.length === 2 ? <AvatarPair people={members} /> : <Logo size={30} />}
       </div>
-
-      <AlertsCard alerts={alerts} onGo={onGo} />
 
       <div className="row between">
         <button type="button" className="icon-btn" aria-label="Mes anterior" onClick={() => change(-1)}>
@@ -151,39 +161,57 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
         ))}
       </div>
 
-      <section className="card">
-        <span className="muted">{view === 'all' ? 'Gastado en el mes' : `Pagó ${byId.get(view)?.display_name ?? ''}`}</span>
-        <span className="amount num">{money(sub.total)}</span>
-        {view === 'all' && (
-          <>
-            <div className="bar big" aria-hidden="true">
-              {members.map((m) => (
-                <span
-                  key={m.user_id}
-                  style={{
-                    width: `${((all.people.find((p) => p.userId === m.user_id)?.paid ?? 0) * 100) / denom}%`,
-                    background: memberColor(m),
-                  }}
-                />
-              ))}
-            </div>
-            <span className={budget > 0 && left < 0 ? 'over' : 'muted'}>{status}</span>
-          </>
+      <section className="card hero">
+        <div className="hero-top">
+          <div className="grow">
+            <span className="muted">{view === 'all' ? 'Gastado en el mes' : `Pagó ${byId.get(view)?.display_name ?? ''}`}</span>
+            <span className="amount num">{money(sub.total)}</span>
+            {view === 'all' && <span className={budget > 0 && left < 0 ? 'over' : 'muted'}>{status}</span>}
+          </div>
+          {view === 'all' && budget > 0 && members.length < 2 && <Ring pct={Math.min(100, Math.round((all.total * 100) / budget))} />}
+        </div>
+        {view === 'all' && two && <Venn people={two} />}
+        {view === 'all' && !two && (
+          <div className="bar big" aria-hidden="true">
+            {members.map((m) => (
+              <span
+                key={m.user_id}
+                style={{
+                  width: `${((all.people.find((p) => p.userId === m.user_id)?.paid ?? 0) * 100) / denom}%`,
+                  background: memberColor(m),
+                }}
+              />
+            ))}
+          </div>
         )}
-        <div className="row between">
-          <span className="muted small-text">Compartido {money(sub.shared)}</span>
-          <span className="muted small-text">Personal {money(sub.personal)}</span>
+        <div className="stats">
+          <div>
+            <span className="muted small-text">Compartido</span>
+            <span className="num strong">{money(sub.shared)}</span>
+          </div>
+          <div>
+            <span className="muted small-text">Personal</span>
+            <span className="num strong">{money(sub.personal)}</span>
+          </div>
+          <div>
+            <span className="muted small-text">Promedio por día</span>
+            <span className="num strong">{money(sub.avgPerDay)}</span>
+          </div>
+          {sub.projection !== null && (
+            <div>
+              <span className="muted small-text">Proyección</span>
+              <span className="num strong">{money(sub.projection)}</span>
+            </div>
+          )}
         </div>
         {deltaText && <span className="muted small-text">{deltaText}</span>}
-        <div className="row between">
-          <span className="muted small-text">Promedio por día {money(sub.avgPerDay)}</span>
-          {sub.projection !== null && <span className="muted small-text">Proyección {money(sub.projection)}</span>}
-        </div>
       </section>
+
+      <AlertsCard alerts={alerts} onGo={onGo} />
 
       {data.expenses.length === 0 && (
         <section className="card empty">
-          <div className="logo" aria-hidden="true" />
+          <Logo size={44} animate />
           <strong>Este mes aún no hay gastos</strong>
           <span className="muted">Registra el primero con el botón + de abajo y aquí aparecerá el resumen de los dos.</span>
         </section>
@@ -271,7 +299,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
           <div>
             {all.people.map((p) => (
               <div className="item" key={p.userId}>
-                <span className="dot" style={{ background: memberColor({ color: p.color }) }} />
+                <Avatar name={p.name} color={p.color} />
                 <div className="grow">
                   <div>{p.name}</div>
                   <div className="muted small-text">
@@ -391,7 +419,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
         <div>
           {shown.map((e) => (
             <div className="item" key={e.id}>
-              <span className="dot" style={{ background: memberColor(byId.get(e.paid_by)) }} />
+              <Avatar name={byId.get(e.paid_by)?.display_name} color={byId.get(e.paid_by)?.color} />
               <div className="grow">
                 <div className="ellipsis">{e.note || catName.get(e.category_id) || 'Gasto'}</div>
                 <div className="muted small-text">
