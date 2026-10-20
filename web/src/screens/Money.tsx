@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import AnalysisPanel from '../components/AnalysisPanel'
-import Icon from '../components/Icon'
 import IncomesCard from '../components/IncomesCard'
+import Intro from '../components/Intro'
 import RecurringPanel from '../components/RecurringPanel'
 import { analyzeSalary, monthIncome, myDebtShare, summarizeDebts } from '../lib/finance'
 import type { DebtView, Finding } from '../lib/finance'
@@ -21,10 +21,10 @@ interface Props {
 }
 
 const KINDS = [
-  { key: 'tarjeta', label: 'Tarjeta' },
-  { key: 'credito', label: 'Crédito' },
-  { key: 'prestamo', label: 'Préstamo' },
-  { key: 'otro', label: 'Otra' },
+  { key: 'tarjeta', label: 'Tarjeta', help: 'Tarjeta de crédito o de una tienda.' },
+  { key: 'credito', label: 'Crédito', help: 'Crédito de consumo, hipotecario o de auto.' },
+  { key: 'prestamo', label: 'Préstamo', help: 'Plata prestada por un banco, una persona o un familiar.' },
+  { key: 'otro', label: 'Otra', help: 'Cualquier otra plata que se deba.' },
 ] as const
 
 const MARK = { ok: '✓', warn: '!', bad: '✕' } as const
@@ -66,7 +66,10 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const metrics = computeMetrics(data.expenses, data.prevExpenses, data.categories, hh.members, month)
+  const metrics = useMemo(
+    () => computeMetrics(data.expenses, data.prevExpenses, data.categories, hh.members, month),
+    [data.expenses, data.prevExpenses, data.categories, hh.members, month],
+  )
   const me = metrics.people.find((p) => p.userId === hh.me.user_id)
   const commitments = myDebtShare(data.debts, data.debtPayments, hh.me.user_id, hh.members.length)
   const isCurrent = month.getFullYear() === new Date().getFullYear() && month.getMonth() === new Date().getMonth()
@@ -112,6 +115,17 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
 
   return (
     <>
+      <Intro
+        title="Sueldo: lo que ganas cada mes"
+        text="Aquí anotas cuánta plata te llega al mes. Con ese dato, la app te dice cuánto te sobra después de tus gastos y de pagar tus deudas."
+        showSteps={!salary}
+        steps={[
+          'Escribe cuánta plata te llega a la cuenta cada mes (ya con los descuentos).',
+          'Escribe qué día del mes te pagan.',
+          'Toca «Guardar mi sueldo». Abajo verás cuánto te queda y si vas bien.',
+        ]}
+      />
+
       <section className="card">
         <div className="row between">
           <strong>Tu sueldo mensual</strong>
@@ -122,30 +136,32 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
             <span className="amount num">{money(salary.amount)}</span>
             <span className="muted small-text">Te pagan el día {salary.pay_day} de cada mes.</span>
             <button type="button" className="btn ghost small" onClick={() => setEditing(true)}>
-              Cambiar
+              Cambiar mi sueldo o mi día de pago
             </button>
           </>
         ) : (
           <form className="stack tight" onSubmit={(e) => void save(e)}>
             <span className="muted small-text">
               {hh.members.length > 1
-                ? 'Tu pareja no puede ver este dato: ni el monto ni los resultados de esta pantalla.'
-                : 'Este dato es privado y solo lo ves tú.'}
+                ? 'Es un dato privado: tu pareja no ve ni el monto ni los resultados de esta pantalla.'
+                : 'Es un dato privado: solo lo ves tú.'}
             </span>
             <div className="field">
-              <label htmlFor="salary">Sueldo líquido (lo que te llega al banco)</label>
+              <label htmlFor="salary">¿Cuánto te llega al banco cada mes?</label>
+              <span className="line-help">Es el sueldo «líquido»: lo que recibes después de descuentos.</span>
               <input
-                id="salary"
+                id="salary" autoComplete="off"
                 className="input"
                 inputMode="numeric"
                 placeholder="Ej. 1500000"
                 value={amount}
                 onChange={(e) => setAmount(digitsOnly(e.target.value))}
               />
-              {amount && <span className="hint num">{money(Number(amount))}</span>}
+              {amount && <span className="hint num">Escribiste: {money(Number(amount))}</span>}
             </div>
             <div className="field">
-              <label htmlFor="payday">Día del mes en que te pagan</label>
+              <label htmlFor="payday">¿Qué día del mes te pagan?</label>
+              <span className="line-help">Un número del 1 al 31. Por ejemplo, 5.</span>
               <input
                 id="payday"
                 className="input"
@@ -161,7 +177,7 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
             )}
             <div className="row">
               <button className="btn small" type="submit" disabled={busy}>
-                Guardar
+                Guardar mi sueldo
               </button>
               {salary && (
                 <button type="button" className="btn ghost small" onClick={() => setEditing(false)}>
@@ -177,22 +193,24 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
         <>
           <section className={`card verdict ${a.level}`}>
             <span className="muted small-text">
-              {monthName(month)} {month.getFullYear()}
+              Tu situación en {monthName(month)} {month.getFullYear()}
             </span>
+            <span className="level-word">{a.level === 'ok' ? 'Vas bien' : a.level === 'warn' ? 'Ten cuidado' : 'Atención'}</span>
             <strong className="verdict-title">{a.headline}</strong>
             <div className="stack tight">
               {data.incomes.length > 0 && (
                 <div className="row between">
-                  <span className="muted">Ingresos (sueldo + extras)</span>
+                  <span className="muted">Plata que entró (sueldo + extras)</span>
                   <span className="num">{money(a.income)}</span>
                 </div>
               )}
               <div className="row between">
-                <span className="muted">Tus gastos (personales + tu mitad)</span>
+                <span className="muted">Lo que has gastado</span>
                 <span className="num">
                   {money(a.spent)} · {a.spentPct} %
                 </span>
               </div>
+              <span className="line-help">Tus gastos personales más tu mitad de los compartidos.</span>
               <Meter pct={a.spentPct} level={a.spentPct > 90 ? 'bad' : a.spentPct > 70 ? 'warn' : 'ok'} />
               {a.commitments > 0 && (
                 <>
@@ -202,31 +220,36 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
                       {money(a.commitments)} · {a.debtPct} %
                     </span>
                   </div>
+                  <span className="line-help">Lo que te toca pagar este mes por tus deudas.</span>
                   <Meter pct={a.debtPct} level={a.debtPct > 40 ? 'bad' : a.debtPct > 30 ? 'warn' : 'ok'} />
                 </>
               )}
               <div className="row between">
-                <strong>Te queda</strong>
+                <strong>Hoy te sobra</strong>
                 <strong className={a.free < 0 ? 'over num' : 'num'}>{money(a.free)}</strong>
               </div>
+              {a.free < 0 && <span className="line-help">Número negativo: ya gastaste más de lo que entró.</span>}
               {a.projectedFree !== null && (
                 <div className="row between">
-                  <span className="muted">Estimado al cierre</span>
+                  <span className="muted">Te sobraría a fin de mes</span>
                   <span className={a.projectedFree < 0 ? 'over num' : 'num'}>{money(a.projectedFree)}</span>
                 </div>
               )}
               {isCurrent && a.safeDaily !== null && (
                 <div className="row between">
-                  <span className="muted">Puedes gastar por día</span>
+                  <span className="muted">Puedes gastar cada día</span>
                   <span className="num">{money(a.safeDaily)}</span>
                 </div>
+              )}
+              {isCurrent && a.safeDaily !== null && (
+                <span className="line-help">Si gastas hasta esto por día, llegas a fin de mes sin problemas.</span>
               )}
             </div>
           </section>
 
           {a.findings.length > 0 && (
             <section className="card">
-              <strong>Cómo vas</strong>
+              <strong>Qué significa esto para ti</strong>
               <Findings list={a.findings} />
             </section>
           )}
@@ -366,43 +389,33 @@ function DebtCard({
             {d.due_day ? ` · vence el ${d.due_day}` : ''}
           </div>
         </div>
-        <button type="button" className="icon-btn" aria-label={`Editar deuda ${d.name}`} onClick={() => setEditing(true)}>
-          <Icon name="edit" size={20} />
-        </button>
-        <button
-          type="button"
-          className={confirm ? 'icon-btn confirm' : 'icon-btn'}
-          aria-label={confirm ? 'Confirmar borrado de la deuda' : 'Borrar deuda'}
-          onClick={() => void removeDebt()}
-        >
-          {confirm ? <strong>¿Seguro?</strong> : <Icon name="trash" size={20} />}
-        </button>
       </div>
 
-      <div className="row between">
+      <div className="owe">
+        <span className="muted small-text">{done ? 'Ya no se debe nada' : 'Todavía falta pagar'}</span>
         <span className="amount num small">{money(v.remaining)}</span>
-        <span className="muted small-text num">de {money(d.original_amount)}</span>
+        <span className="muted small-text num">La deuda era de {money(d.original_amount)}</span>
       </div>
       <Meter pct={v.progressPct} level="ok" />
       <div className="row between muted small-text">
-        <span>{v.progressPct} % pagada</span>
+        <span>Llevan pagado el {v.progressPct} %</span>
         <span>
           {done
             ? 'Saldada 🎉'
             : v.months === null
               ? 'Sin fecha de término'
-              : `~${v.months} ${v.months === 1 ? 'mes' : 'meses'} para terminar`}
+              : `Faltan ~${v.months} ${v.months === 1 ? 'mes' : 'meses'}`}
         </span>
       </div>
       <div className="row between muted small-text">
-        <span>Cuota {d.monthly_payment > 0 ? money(d.monthly_payment) : 'sin definir'}</span>
-        <span>{d.monthly_rate > 0 ? `${d.monthly_rate} % mensual` : 'Sin interés'}</span>
+        <span>Cuota mensual: {d.monthly_payment > 0 ? money(d.monthly_payment) : 'sin definir'}</span>
+        <span>{d.monthly_rate > 0 ? `Interés: ${d.monthly_rate} % al mes` : 'Sin interés'}</span>
       </div>
       {!done && d.monthly_payment > 0 && (
         <span className={v.paidThisMonth >= d.monthly_payment ? 'notice' : 'muted small-text'}>
           {v.paidThisMonth >= d.monthly_payment
-            ? 'Cuota de este mes pagada ✓'
-            : `Este mes han pagado ${money(v.paidThisMonth)} de ${money(d.monthly_payment)}`}
+            ? 'La cuota de este mes ya está pagada ✓'
+            : `Este mes han pagado ${money(v.paidThisMonth)} de la cuota de ${money(d.monthly_payment)}`}
         </span>
       )}
       {error && (
@@ -412,7 +425,7 @@ function DebtCard({
       )}
       {myPays.length > 0 && (
         <button type="button" className="link-btn" onClick={() => setShowPays((x) => !x)}>
-          {showPays ? 'Ocultar pagos' : `Ver los ${myPays.length} pagos`}
+          {showPays ? 'Ocultar los pagos' : `Ver los pagos anotados (${myPays.length})`}
         </button>
       )}
       {showPays && (
@@ -443,16 +456,16 @@ function DebtCard({
                     setPDate(p.paid_on)
                   }}
                 >
-                  {hh.everyone.find((m) => m.user_id === p.paid_by)?.display_name ?? ''} · {p.paid_on.slice(8, 10)}/{p.paid_on.slice(5, 7)}
+                  {hh.everyone.find((m) => m.user_id === p.paid_by)?.display_name ?? ''} · {p.paid_on.slice(8, 10)}/{p.paid_on.slice(5, 7)} · toca para corregir
                 </button>
                 <span className="num">{money(p.amount)}</span>
                 <button
                   type="button"
-                  className={payConfirm === p.id ? 'icon-btn confirm' : 'icon-btn'}
+                  className={payConfirm === p.id ? 'txt-btn warn' : 'txt-btn'}
                   aria-label={payConfirm === p.id ? 'Confirmar borrado del pago' : 'Borrar pago'}
                   onClick={() => void deletePayment(p.id)}
                 >
-                  {payConfirm === p.id ? <strong>¿Seguro?</strong> : <Icon name="trash" size={20} />}
+                  {payConfirm === p.id ? '¿Seguro?' : 'Borrar'}
                 </button>
               </div>
             ),
@@ -460,30 +473,44 @@ function DebtCard({
         </div>
       )}
       {paying ? (
-        <form className="row" onSubmit={(e) => void pay(e)}>
-          <input
-            className="input"
-            inputMode="numeric"
-            value={value}
-            onChange={(e) => setValue(digitsOnly(e.target.value))}
-            aria-label="Monto del pago"
-          />
-          <button className="btn small" type="submit" disabled={busy}>
-            Pagar
-          </button>
-          <button type="button" className="btn ghost small" onClick={() => setPaying(false)}>
-            Cancelar
-          </button>
+        <form className="stack tight" onSubmit={(e) => void pay(e)}>
+          <div className="field">
+            <label htmlFor={`pay-${d.id}`}>¿Cuánto pagaste?</label>
+            <input
+              id={`pay-${d.id}`}
+              className="input"
+              inputMode="numeric"
+              value={value}
+              onChange={(e) => setValue(digitsOnly(e.target.value))}
+            />
+            <span className="hint">Esto solo anota el pago en la app; no mueve plata de tu banco.</span>
+          </div>
+          <div className="row">
+            <button className="btn small" type="submit" disabled={busy}>
+              Guardar el pago
+            </button>
+            <button type="button" className="btn ghost small" onClick={() => setPaying(false)}>
+              Cancelar
+            </button>
+          </div>
         </form>
       ) : done ? (
         <button type="button" className="btn ghost small" onClick={() => void archive()}>
-          Archivar
+          Guardar en el archivo (ya está pagada)
         </button>
       ) : (
         <button type="button" className="btn small" onClick={() => setPaying(true)}>
-          Registrar un pago
+          Anotar un pago
         </button>
       )}
+      <div className="fixed-actions">
+        <button type="button" className="txt-btn" onClick={() => setEditing(true)}>
+          Editar
+        </button>
+        <button type="button" className={confirm ? 'txt-btn warn' : 'txt-btn'} onClick={() => void removeDebt()}>
+          {confirm ? 'Toca otra vez para borrar' : 'Borrar'}
+        </button>
+      </div>
     </section>
   )
 }
@@ -546,42 +573,60 @@ function DebtForm({
 
   return (
     <form className="card" onSubmit={(e) => void submit(e)}>
-      <strong>{existing ? 'Editar deuda' : 'Nueva deuda'}</strong>
+      <strong>{existing ? 'Editar deuda' : 'Agregar una deuda'}</strong>
       <div className="field">
-        <label htmlFor="d-name">Nombre</label>
-        <input id="d-name" className="input" maxLength={60} placeholder="Ej. Tarjeta Banco" value={name} onChange={(e) => setName(e.target.value)} />
+        <label htmlFor="d-name">1. ¿Cómo la quieres llamar?</label>
+        <input id="d-name" className="input" maxLength={60} placeholder="Ej. Tarjeta del banco, Préstamo del auto" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
-      <div className="chips" role="group" aria-label="Tipo de deuda">
-        {KINDS.map((k) => (
-          <button key={k.key} type="button" className="chip" aria-pressed={kind === k.key} onClick={() => setKind(k.key)}>
-            {k.label}
+      <div className="field">
+        <span id="d-kind" className="strong">2. ¿Qué tipo de deuda es?</span>
+        <div className="chips" role="group" aria-labelledby="d-kind">
+          {KINDS.map((k) => (
+            <button key={k.key} type="button" className="chip" aria-pressed={kind === k.key} onClick={() => setKind(k.key)}>
+              {k.label}
+            </button>
+          ))}
+        </div>
+        <span className="line-help">{KINDS.find((k) => k.key === kind)?.help}</span>
+      </div>
+      <div className="field">
+        <span id="d-owner" className="strong">3. ¿Quién la debe?</span>
+        <div className="seg" role="group" aria-labelledby="d-owner">
+          <button type="button" aria-pressed={owner === ''} onClick={() => setOwner('')}>
+            Los dos
           </button>
-        ))}
-      </div>
-      <div className="seg" role="group" aria-label="De quién es">
-        <button type="button" aria-pressed={owner === ''} onClick={() => setOwner('')}>
-          De los dos
-        </button>
-        {hh.members.map((m) => (
-          <button key={m.user_id} type="button" aria-pressed={owner === m.user_id} onClick={() => setOwner(m.user_id)}>
-            {m.user_id === hh.me.user_id ? 'Mía' : m.display_name}
-          </button>
-        ))}
-      </div>
-      <div className="field">
-        <label htmlFor="d-total">{existing ? 'Monto total de la deuda' : 'Cuánto deben hoy'}</label>
-        <input id="d-total" className="input" inputMode="numeric" value={total} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
+          {hh.members.map((m) => (
+            <button key={m.user_id} type="button" aria-pressed={owner === m.user_id} onClick={() => setOwner(m.user_id)}>
+              {m.user_id === hh.me.user_id ? 'Yo' : m.display_name}
+            </button>
+          ))}
+        </div>
+        <span className="line-help">
+          {owner === ''
+            ? 'Las cuotas se reparten por igual entre los dos.'
+            : owner === hh.me.user_id
+              ? 'La cuota cuenta solo en tus cálculos.'
+              : 'La cuota cuenta solo en los cálculos de esa persona.'}
+        </span>
       </div>
       <div className="field">
-        <label htmlFor="d-fee">Cuota mensual (opcional)</label>
-        <input id="d-fee" className="input" inputMode="numeric" value={fee} onChange={(e) => setFee(digitsOnly(e.target.value))} />
+        <label htmlFor="d-total">{existing ? '4. Monto total de la deuda' : '4. ¿Cuánta plata se debe hoy?'}</label>
+        <input id="d-total" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800000" value={total} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
+        {total && <span className="hint num">Escribiste: {money(Number(total))}</span>}
       </div>
       <div className="field">
-        <label htmlFor="d-rate">Interés mensual en % (opcional)</label>
-        <input id="d-rate" className="input" inputMode="decimal" placeholder="Ej. 2,5" value={rate} onChange={(e) => setRate(e.target.value.replace(/[^\d.,]/g, '').slice(0, 5))} />
+        <label htmlFor="d-fee">5. ¿Cuánto pagan cada mes? (opcional)</label>
+        <span className="line-help">Es la cuota mensual. Si no la sabes, déjalo vacío.</span>
+        <input id="d-fee" autoComplete="off" className="input" inputMode="numeric" value={fee} onChange={(e) => setFee(digitsOnly(e.target.value))} />
       </div>
       <div className="field">
-        <label htmlFor="d-due">Día de vencimiento (opcional)</label>
+        <label htmlFor="d-rate">6. ¿Cobran interés? (opcional)</label>
+        <span className="line-help">Porcentaje que se suma cada mes. Si no cobra, déjalo vacío.</span>
+        <input id="d-rate" autoComplete="off" className="input" inputMode="decimal" placeholder="Ej. 2,5" value={rate} onChange={(e) => setRate(e.target.value.replace(/[^\d.,]/g, '').slice(0, 5))} />
+      </div>
+      <div className="field">
+        <label htmlFor="d-due">7. ¿Qué día del mes vence? (opcional)</label>
+        <span className="line-help">Así la app te avisa cuando se acerque.</span>
         <input id="d-due" className="input" inputMode="numeric" value={due} onChange={(e) => setDue(e.target.value.replace(/\D/g, '').slice(0, 2))} />
       </div>
       {error && (
@@ -601,32 +646,104 @@ function DebtForm({
   )
 }
 
-function DebtsPanel({ hh, data, onToast }: Props) {
+/** Cuánto se deben entre ustedes por los gastos compartidos del mes (quién puso más plata). */
+function BetweenUs({ hh, data, month }: Pick<Props, 'hh' | 'data' | 'month'>) {
+  const m = useMemo(
+    () => computeMetrics(data.expenses, data.prevExpenses, data.categories, hh.members, month),
+    [data.expenses, data.prevExpenses, data.categories, hh.members, month],
+  )
+  if (hh.members.length < 2) return null
+  const s = m.settle
+  const meId = hh.me.user_id
+  const mine = m.people.find((p) => p.userId === meId)
+  const other = m.people.find((p) => p.userId !== meId)
+
+  let main = 'Están a mano: nadie le debe plata al otro.'
+  let help = 'Cada uno ha puesto lo que le corresponde en los gastos compartidos.'
+  let level: 'ok' | 'warn' = 'ok'
+  if (s && s.amount > 0) {
+    const iOwe = s.from.userId === meId
+    main = iOwe
+      ? `Tú le debes ${money(s.amount)} a ${s.to.name}`
+      : `${s.from.name} te debe ${money(s.amount)} a ti`
+    help = iOwe
+      ? `${s.to.name} pagó más de los gastos compartidos de ${monthName(month)}. Para quedar a mano, devuélvele esa plata.`
+      : `Tú pagaste más de los gastos compartidos de ${monthName(month)}. Para quedar a mano, ${s.from.name} te la devuelve.`
+    level = iOwe ? 'warn' : 'ok'
+  } else if (m.shared === 0) {
+    main = 'Aún no hay gastos compartidos este mes.'
+    help = 'Cuando anoten un gasto «compartido», aquí verán quién le debe plata a quién.'
+  }
+
+  return (
+    <section className={`card verdict ${level}`}>
+      <strong>Entre ustedes dos</strong>
+      <span className="owe-main">{main}</span>
+      <span className="muted small-text">{help}</span>
+      {mine && other && m.shared > 0 && (
+        <span className="line-help">
+          Gastos compartidos de {monthName(month)}: {money(m.shared)}. Tú pusiste {money(mine.paidShared)} y {other.name}{' '}
+          puso {money(other.paidShared)}; a cada uno le toca la mitad ({money(mine.fairShare)}).
+        </span>
+      )}
+      <span className="line-help">
+        Este saldo sale solo de los gastos compartidos del mes que estás viendo. Cambia el mes arriba para ver otros.
+      </span>
+    </section>
+  )
+}
+
+function DebtsPanel({ hh, data, month, onToast }: Props) {
   const [adding, setAdding] = useState(false)
   const s = summarizeDebts(data.debts, data.debtPayments)
+  const empty = data.debts.length === 0
 
   return (
     <>
+      <Intro
+        title="Deudas: lo que se debe a bancos, tiendas o personas"
+        text="Anota cada deuda para ver cuánto falta pagar y en cuánto tiempo terminan. Cada vez que paguen una cuota, tóquenla aquí para ir bajando el saldo."
+        showSteps={empty}
+        steps={[
+          'Toca «Agregar una deuda» y escribe su nombre y cuánta plata se debe.',
+          'Si la sabes, escribe la cuota mensual y el interés.',
+          'Cuando pagues una cuota, entra a la deuda y toca «Anotar un pago».',
+        ]}
+      />
+
+      <BetweenUs hh={hh} data={data} month={month} />
+
       {s.remaining > 0 && (
         <section className="card">
-          <span className="muted">Deuda total pendiente</span>
+          <strong>Resumen de lo que se debe</strong>
+          <span className="muted small-text">Falta pagar en total</span>
           <span className="amount num">{money(s.remaining)}</span>
           <div className="row between">
-            <span className="muted small-text">Cuotas al mes {money(s.monthly)}</span>
-            <span className="muted small-text">Intereses ~{money(s.interest)}</span>
+            <span className="muted small-text">Cuotas al mes: {money(s.monthly)}</span>
+            <span className="muted small-text">Intereses: ~{money(s.interest)}</span>
           </div>
           {s.freeInMonths !== null && s.freeInMonths > 0 && (
             <span className="muted small-text">
-              Con las cuotas actuales quedan libres en ~{s.freeInMonths} {s.freeInMonths === 1 ? 'mes' : 'meses'}.
+              Si siguen pagando las cuotas de ahora, terminan de pagar todo en ~{s.freeInMonths}{' '}
+              {s.freeInMonths === 1 ? 'mes' : 'meses'}.
             </span>
           )}
         </section>
       )}
 
-      <section className="card">
-        <strong>Dónde van bien y dónde mal</strong>
-        <Findings list={s.findings} />
-      </section>
+      {empty ? (
+        <section className="card">
+          <strong>Todavía no hay deudas anotadas</strong>
+          <span className="muted">
+            Si no deben nada, no hagas nada. Si tienen una tarjeta, un crédito o un préstamo, agrégalo para llevar el control.
+          </span>
+        </section>
+      ) : (
+        <section className="card">
+          <strong>Cómo van con sus deudas</strong>
+          <Findings list={s.findings} />
+        </section>
+      )}
 
       {s.views.map((v) => (
         <DebtCard key={v.debt.id} v={v} hh={hh} data={data} onToast={onToast} />
@@ -649,7 +766,7 @@ export default function Money(props: Props) {
   const { data } = props
 
   return (
-    <main className="screen">
+    <main className="screen plata">
       <h1 className="title">Mi plata</h1>
 
       {!data.financeReady ? (
@@ -687,8 +804,7 @@ export default function Money(props: Props) {
             </>
           )}
           {tab === 'fixed' && <RecurringPanel {...props} />}
-          {tab === 'debts' && <DebtsPanel {...props} />}
-        </>
+          {tab === 'debts' && <DebtsPanel {...props} />}        </>
       )}
     </main>
   )

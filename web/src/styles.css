@@ -715,3 +715,46 @@ body::before {
 .bars-val { font-size: 10px; fill: var(--text); font-weight: 700; }
 .bars-lab { font-size: 11px; fill: var(--muted); text-transform: capitalize; }
 .bars-lab.now { fill: var(--text); font-weight: 700; }
+
+/* ---- Plata: textos grandes y explicaciones claras (accesible para todas las edades) ---- */
+.plata .small-text, .plata .hint, .plata .field label { font-size: 15px; line-height: 21px; }
+.plata .field label { color: var(--text); font-weight: 600; }
+.plata .muted { font-size: 15px; line-height: 21px; }
+.plata .input { font-size: 18px; min-height: 52px; }
+.plata .error { font-size: 15px; font-weight: 600; }
+.plata .btn.small { font-size: 16px; height: 48px; padding: 0 18px; }
+.plata .btn { font-size: 17px; }
+.plata .seg button { font-size: 15px; }
+.plata .chip { font-size: 15px; min-height: 44px; }
+.explain { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+.explain > strong:first-child { font-size: 18px; }
+.explain p { margin: 0; font-size: 16px; line-height: 23px; }
+.steps { margin: 0; padding-left: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; counter-reset: step; }
+.steps li { counter-increment: step; display: flex; gap: 12px; align-items: flex-start; font-size: 16px; line-height: 22px; }
+.steps li::before { content: counter(step); flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--ink); font-weight: 700; font-size: 15px; }
+.how summary { cursor: pointer; font-weight: 600; font-size: 16px; min-height: 44px; display: flex; align-items: center; color: var(--accent-ink); }
+.how[open] summary { margin-bottom: 8px; }
+.line-help { display: block; font-size: 14px; line-height: 19px; color: var(--muted); }
+.fixed-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 12px; }
+.txt-btn { background: transparent; border: 1.5px solid var(--line); color: var(--text); border-radius: 999px; min-height: 44px; padding: 0 16px; font-size: 15px; font-weight: 600; }
+.txt-btn.warn { color: var(--warn); border-color: var(--warn); }
+.txt-btn:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.owe { display: flex; flex-direction: column; gap: 6px; }
+.owe-main { font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 28px; }
+.level-word { font-size: 14px; font-weight: 700; padding: 3px 12px; border-radius: 999px; background: var(--accent); color: var(--ink); align-self: flex-start; }
+.verdict.warn .level-word { background: var(--amber); }
+.verdict.bad .level-word { background: var(--warn); color: var(--surface); }
+
+/* ---- Panel de administración ---- */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tile { display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 14px; background: var(--surface-2); min-width: 0; }
+.tile .amount-sm { font-size: 24px; line-height: 30px; }
+.hbars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.hbars li { display: grid; grid-template-columns: 1fr auto; grid-template-areas: 'l v' 't t'; gap: 4px 10px; align-items: baseline; }
+.hbar-label { grid-area: l; font-size: 16px; }
+.hbars .num { grid-area: v; }
+.hbar-track { grid-area: t; display: block; height: 10px; border-radius: 999px; background: var(--track); overflow: hidden; }
+.hbar-track > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.daybars { display: flex; align-items: flex-end; gap: 4px; height: 90px; }
+.daybar { flex: 1; height: 100%; display: flex; align-items: flex-end; }
+.daybar > span { display: block; width: 100%; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 2px; }

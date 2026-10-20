@@ -5,7 +5,6 @@ import type { HouseholdData } from '../lib/data'
 import { money, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import { digitsOnly, monthName } from '../lib/ui'
-import Icon from './Icon'
 
 interface Props {
   hh: Household
@@ -68,10 +67,13 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
   return (
     <section className="card" aria-label="Otros ingresos">
       <div className="row between">
-        <strong>Otros ingresos de {monthName(month)}</strong>
+        <strong>Plata extra de {monthName(month)}</strong>
         <span className="pill">🔒 Solo tú</span>
       </div>
-      <span className="muted small-text">Bonos, ventas, boletas de honorarios… Se suman a tu sueldo para calcular cuánto te queda.</span>
+      <span className="muted small-text">
+        ¿Te llegó plata extra además del sueldo? Por ejemplo un bono, una venta o un trabajo aparte. Anótala aquí y se suma
+        para calcular cuánto te queda.
+      </span>
       {total > 0 && <span className="amount num">{money(total)}</span>}
       {data.incomes.length > 0 && (
         <div>
@@ -86,11 +88,11 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
               <span className="num">{money(x.amount)}</span>
               <button
                 type="button"
-                className={confirmId === x.id ? 'icon-btn confirm' : 'icon-btn'}
+                className={confirmId === x.id ? 'txt-btn warn' : 'txt-btn'}
                 aria-label={confirmId === x.id ? 'Confirmar borrado' : `Borrar ingreso ${x.source}`}
                 onClick={() => void remove(x.id)}
               >
-                {confirmId === x.id ? <strong>¿Seguro?</strong> : <Icon name="trash" size={20} />}
+                {confirmId === x.id ? '¿Seguro?' : 'Borrar'}
               </button>
             </div>
           ))}
@@ -111,7 +113,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
           <div className="row">
             <div className="field grow">
               <label htmlFor="inc-amount">Monto</label>
-              <input id="inc-amount" className="input" inputMode="numeric" value={amount}
+              <input id="inc-amount" autoComplete="off" className="input" inputMode="numeric" value={amount}
                 onChange={(e) => setAmount(digitsOnly(e.target.value))} />
             </div>
             <div className="field">
@@ -130,7 +132,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
         </form>
       ) : (
         <button type="button" className="btn ghost small" onClick={() => setOpen(true)}>
-          Agregar ingreso
+          Agregar plata extra
         </button>
       )}
     </section>

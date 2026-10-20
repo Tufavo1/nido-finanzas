@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Suspense, lazy, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import AboutCard from '../components/AboutCard'
@@ -12,9 +12,12 @@ import ProfileCard from '../components/ProfileCard'
 import SmartAlertsSetting from '../components/SmartAlertsSetting'
 import ThemeToggle from '../components/ThemeToggle'
 import type { HouseholdData } from '../lib/data'
+import { useIsAdmin } from '../lib/admin'
 import { STRENGTH_LABEL, friendlyError, passwordStrength } from '../lib/security'
 import { confirmPassword } from '../lib/reauth'
 import { supabase } from '../lib/supabase'
+
+const Admin = lazy(() => import('./Admin'))
 
 export default function Security({
   hh,
@@ -28,6 +31,8 @@ export default function Security({
   onToast: (text: string) => void
 }) {
   const [copied, setCopied] = useState(false)
+  const isAdmin = useIsAdmin()
+  const [showAdmin, setShowAdmin] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [pw, setPw] = useState('')
@@ -95,9 +100,27 @@ export default function Security({
     await reload()
   }
 
+  if (showAdmin && isAdmin) {
+    return (
+      <Suspense fallback={<main className="screen center-y"><p className="muted">Cargando…</p></main>}>
+        <Admin onBack={() => setShowAdmin(false)} />
+      </Suspense>
+    )
+  }
+
   return (
     <main className="screen">
       <h1 className="title">Ajustes y seguridad</h1>
+
+      {isAdmin && (
+        <section className="card">
+          <strong>Administración</strong>
+          <span className="muted small-text">Mira cuánta gente usa la app y qué funciones se ocupan más.</span>
+          <button type="button" className="btn small" onClick={() => setShowAdmin(true)}>
+            Abrir el panel de administración
+          </button>
+        </section>
+      )}
 
       {error && (
         <p className="error" role="alert">

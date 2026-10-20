@@ -6,13 +6,15 @@ import { money } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import { digitsOnly } from '../lib/ui'
 import Avatar from './Avatar'
-import Icon from './Icon'
+import Intro from './Intro'
 
 interface Props {
   hh: Household
   data: HouseholdData
   onToast: (text: string) => void
 }
+
+const IDEAS = ['Arriendo', 'Luz', 'Agua', 'Gas', 'Internet', 'Celular', 'Streaming'] as const
 
 /** Gastos que se repiten cada mes (arriendo, luz, streaming…). Se anotan solos el día indicado. */
 export default function RecurringPanel({ hh, data, onToast }: Props) {
@@ -55,7 +57,7 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
     const n = Number(amount)
     const d = Number(day)
     if (!note.trim() || n <= 0 || !catId) {
-      setError('Completa el nombre, el monto y la categoría')
+      setError('Completa qué es, cuánto cuesta y el tipo de gasto')
       return
     }
     if (!Number.isInteger(d) || d < 1 || d > 31) {
@@ -82,6 +84,13 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
     }
   }
 
+  function toggle(r: Recurring) {
+    void run(
+      () => supabase.from('recurring_expenses').update({ active: !r.active }).eq('id', r.id),
+      r.active ? 'Gasto fijo en pausa' : 'Gasto fijo reactivado',
+    )
+  }
+
   function remove(r: Recurring) {
     if (confirmId !== r.id) {
       setConfirmId(r.id)
@@ -93,18 +102,23 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
 
   return (
     <>
-      <section className="card">
-        <strong>Gastos fijos</strong>
-        <span className="muted small-text">
-          Se anotan solos cada mes en su día, como cualquier otro gasto. Si borras uno ya anotado, no vuelve a aparecer.
-        </span>
-        {active.length > 0 && (
-          <div className="row between">
-            <span className="muted">Total mensual</span>
-            <span className="amount-sm num">{money(monthly)}</span>
-          </div>
-        )}
-      </section>
+      <Intro
+        title="Gastos fijos: lo que pagas todos los meses"
+        text="Son pagos que se repiten siempre, como el arriendo, la luz, el internet o el celular. Los anotas una sola vez y la app los registra sola cada mes, en el día que elijas."
+        showSteps={data.recurring.length === 0}
+        steps={[
+          'Toca «Agregar un gasto fijo».',
+          'Escribe qué es, cuánto cuesta y qué día del mes se paga.',
+          'Listo: cada mes aparecerá solo entre tus gastos. No tienes que anotarlo de nuevo.',
+        ]}
+      />
+
+      {active.length > 0 && (
+        <section className="card">
+          <span className="muted">Entre todos, cada mes pagan</span>
+          <span className="amount num">{money(monthly)}</span>
+        </section>
+      )}
 
       {error && (
         <p className="error" role="alert">
@@ -114,91 +128,114 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
 
       {data.recurring.length > 0 && (
         <section className="card">
+          <strong>Sus gastos fijos</strong>
           {data.recurring.map((r) => (
-            <div className="item" key={r.id} style={r.active ? undefined : { opacity: 0.55 }}>
-              {!solo && <Avatar name={people.get(r.paid_by)?.display_name} color={people.get(r.paid_by)?.color} size={28} />}
-              <div className="grow">
-                <div className="ellipsis">{r.note}</div>
-                <div className="muted small-text">
-                  Día {r.day_of_month} · {catName.get(r.category_id) ?? 'Sin categoría'}
-                  {!solo && !r.shared ? ' · personal' : ''}
-                  {r.active ? '' : ' · en pausa'}
+            <div key={r.id} style={r.active ? undefined : { opacity: 0.7 }}>
+              <div className="item" style={{ paddingBottom: 6 }}>
+                {!solo && <Avatar name={people.get(r.paid_by)?.display_name} color={people.get(r.paid_by)?.color} size={28} />}
+                <div className="grow">
+                  <div className="strong">{r.note}</div>
+                  <div className="muted small-text">
+                    Se paga el día {r.day_of_month} de cada mes · {catName.get(r.category_id) ?? 'Sin categoría'}
+                  </div>
+                  {!solo && (
+                    <div className="muted small-text">
+                      Lo paga {people.get(r.paid_by)?.display_name ?? 'alguien'} ·{' '}
+                      {r.shared ? 'se divide entre los dos' : 'es solo de esa persona'}
+                    </div>
+                  )}
+                  {!r.active && <div className="small-text strong">En pausa: no se anota mientras tanto</div>}
                 </div>
+                <span className="num">{money(r.amount)}</span>
               </div>
-              <span className="num">{money(r.amount)}</span>
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label={r.active ? `Pausar ${r.note}` : `Reanudar ${r.note}`}
-                disabled={busy}
-                onClick={() =>
-                  void run(
-                    () => supabase.from('recurring_expenses').update({ active: !r.active }).eq('id', r.id),
-                    r.active ? 'Gasto fijo en pausa' : 'Gasto fijo reanudado',
-                  )
-                }
-              >
-                <Icon name={r.active ? 'pause' : 'play'} size={20} />
-              </button>
-              <button
-                type="button"
-                className={confirmId === r.id ? 'icon-btn confirm' : 'icon-btn'}
-                aria-label={confirmId === r.id ? 'Confirmar borrado' : `Borrar ${r.note}`}
-                onClick={() => remove(r)}
-              >
-                {confirmId === r.id ? <strong>¿Seguro?</strong> : <Icon name="trash" size={20} />}
-              </button>
+              <div className="fixed-actions">
+                <button type="button" className="txt-btn" disabled={busy} onClick={() => toggle(r)}>
+                  {r.active ? 'Pausar' : 'Volver a activar'}
+                </button>
+                <button
+                  type="button"
+                  className={confirmId === r.id ? 'txt-btn warn' : 'txt-btn'}
+                  aria-label={confirmId === r.id ? `Confirmar borrado de ${r.note}` : `Borrar ${r.note}`}
+                  onClick={() => remove(r)}
+                >
+                  {confirmId === r.id ? 'Toca otra vez para borrar' : 'Borrar'}
+                </button>
+              </div>
             </div>
           ))}
+          <span className="line-help">
+            «Pausar» detiene el gasto sin perder sus datos. Si borras uno que ya se anotó este mes, no vuelve a aparecer.
+          </span>
         </section>
       )}
 
       {open ? (
         <form className="card" onSubmit={(e) => void add(e)}>
+          <strong>Agregar un gasto fijo</strong>
           <div className="field">
-            <label htmlFor="rec-note">Nombre</label>
-            <input id="rec-note" className="input" maxLength={120} placeholder="Ej. Arriendo, Internet, Netflix"
+            <label htmlFor="rec-note">1. ¿Qué es lo que pagas?</label>
+            <div className="chips" role="group" aria-label="Ideas">
+              {IDEAS.map((i) => (
+                <button key={i} type="button" className="chip" aria-pressed={note === i} onClick={() => setNote(i)}>
+                  {i}
+                </button>
+              ))}
+            </div>
+            <input id="rec-note" className="input" maxLength={120} placeholder="O escríbelo aquí"
               value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
-          <div className="row">
-            <div className="field grow">
-              <label htmlFor="rec-amount">Monto mensual</label>
-              <input id="rec-amount" className="input" inputMode="numeric" value={amount}
-                onChange={(e) => setAmount(digitsOnly(e.target.value))} />
-            </div>
-            <div className="field" style={{ width: 96 }}>
-              <label htmlFor="rec-day">Día del mes</label>
-              <input id="rec-day" className="input" inputMode="numeric" value={day}
-                onChange={(e) => setDay(e.target.value.replace(/\D/g, '').slice(0, 2))} />
-            </div>
+          <div className="field">
+            <label htmlFor="rec-amount">2. ¿Cuánto cuesta cada mes?</label>
+            <input id="rec-amount" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 350000" value={amount}
+              onChange={(e) => setAmount(digitsOnly(e.target.value))} />
+            {amount && <span className="hint num">Escribiste: {money(Number(amount))}</span>}
           </div>
-          <div className="chips" role="group" aria-label="Categoría">
-            {data.categories.map((c) => (
-              <button key={c.id} type="button" className="chip" aria-pressed={catId === c.id} onClick={() => setCatId(c.id)}>
-                {c.name}
-              </button>
-            ))}
+          <div className="field">
+            <label htmlFor="rec-day">3. ¿Qué día del mes se paga?</label>
+            <span className="line-help">Un número del 1 al 31. Por ejemplo, 5.</span>
+            <input id="rec-day" className="input" inputMode="numeric" value={day}
+              onChange={(e) => setDay(e.target.value.replace(/\D/g, '').slice(0, 2))} />
+          </div>
+          <div className="field">
+            <span id="rec-cat" className="strong">4. ¿Qué tipo de gasto es?</span>
+            <div className="chips" role="group" aria-labelledby="rec-cat">
+              {data.categories.map((c) => (
+                <button key={c.id} type="button" className="chip" aria-pressed={catId === c.id} onClick={() => setCatId(c.id)}>
+                  {c.name}
+                </button>
+              ))}
+            </div>
           </div>
           {!solo && (
             <>
-              <div className="seg" role="group" aria-label="Quién lo paga">
-                {hh.members.map((m) => (
-                  <button key={m.user_id} type="button" aria-pressed={paidBy === m.user_id} onClick={() => setPaidBy(m.user_id)}>
-                    {m.display_name}
-                  </button>
-                ))}
+              <div className="field">
+                <span id="rec-who" className="strong">5. ¿Quién lo paga?</span>
+                <div className="seg" role="group" aria-labelledby="rec-who">
+                  {hh.members.map((m) => (
+                    <button key={m.user_id} type="button" aria-pressed={paidBy === m.user_id} onClick={() => setPaidBy(m.user_id)}>
+                      {m.user_id === hh.me.user_id ? 'Yo' : m.display_name}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="row between">
-                <span id="rec-shared">Compartido</span>
-                <button type="button" className="switch" role="switch" aria-checked={shared} aria-labelledby="rec-shared"
-                  onClick={() => setShared((s) => !s)} />
+              <div className="field">
+                <div className="row between">
+                  <span id="rec-shared" className="strong">6. ¿Se divide entre los dos?</span>
+                  <button type="button" className="switch" role="switch" aria-checked={shared} aria-labelledby="rec-shared"
+                    onClick={() => setShared((s) => !s)} />
+                </div>
+                <span className="line-help">
+                  {shared
+                    ? 'Sí: a cada uno le toca la mitad. Si lo paga uno solo, el otro le debe su parte.'
+                    : 'No: es un gasto solo de quien lo paga.'}
+                </span>
               </div>
             </>
           )}
           <span className="hint">
             {Number(day) > 0 && Number(day) < new Date().getDate()
-              ? 'Ese día ya pasó este mes: se anotará desde el próximo. Si ya lo pagaste, regístralo como gasto normal.'
-              : 'Si ese día aún no llega (o es hoy), se anota este mes. Si el mes no tiene ese día, se usa el último.'}
+              ? 'Ese día ya pasó este mes: se anotará desde el próximo mes. Si ya lo pagaste, anótalo como un gasto normal.'
+              : 'Se anotará solo cada mes en ese día. Si el mes no tiene ese día, se usa el último.'}
           </span>
           <div className="row">
             <button className="btn small" type="submit" disabled={busy}>
@@ -211,7 +248,7 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
         </form>
       ) : (
         <button type="button" className="btn" onClick={() => setOpen(true)}>
-          Agregar gasto fijo
+          Agregar un gasto fijo
         </button>
       )}
     </>
