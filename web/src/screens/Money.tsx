@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
+import AnalysisPanel from '../components/AnalysisPanel'
 import Icon from '../components/Icon'
 import IncomesCard from '../components/IncomesCard'
 import RecurringPanel from '../components/RecurringPanel'
@@ -644,7 +645,7 @@ function DebtsPanel({ hh, data, onToast }: Props) {
 
 /* ------------------------------- Pantalla ------------------------------ */
 export default function Money(props: Props) {
-  const [tab, setTab] = useState<'salary' | 'fixed' | 'debts'>('salary')
+  const [tab, setTab] = useState<'analysis' | 'salary' | 'fixed' | 'debts'>('analysis')
   const { data } = props
 
   return (
@@ -665,8 +666,11 @@ export default function Money(props: Props) {
       ) : (
         <>
           <div className="seg" role="group" aria-label="Sección">
+            <button type="button" aria-pressed={tab === 'analysis'} onClick={() => setTab('analysis')}>
+              Análisis
+            </button>
             <button type="button" aria-pressed={tab === 'salary'} onClick={() => setTab('salary')}>
-              Mi sueldo
+              Sueldo
             </button>
             <button type="button" aria-pressed={tab === 'fixed'} onClick={() => setTab('fixed')}>
               Fijos
@@ -675,6 +679,7 @@ export default function Money(props: Props) {
               Deudas
             </button>
           </div>
+          {tab === 'analysis' && <AnalysisPanel {...props} onGoSalary={() => setTab('salary')} />}
           {tab === 'salary' && (
             <>
               <SalaryPanel {...props} />

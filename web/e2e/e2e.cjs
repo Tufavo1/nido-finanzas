@@ -179,6 +179,7 @@ async function addExpense(page, digits, note) {
 
     step('Ingresos extra: privados')
     await tab(ana, 'Plata')
+    await ana.getByRole('button', { name: 'Sueldo', exact: true }).click()
     await ana.getByLabel('Sueldo líquido (lo que te llega al banco)').fill('1000000')
     await ana.getByRole('button', { name: 'Guardar', exact: true }).click()
     await ana.getByRole('button', { name: 'Agregar ingreso' }).click()
@@ -188,8 +189,25 @@ async function addExpense(page, digits, note) {
     await ana.getByText('Ingresos (sueldo + extras)').waitFor({ timeout: 15000 })
     assert(await ana.getByText('$1.200.000').first().isVisible(), 'el bono se suma al sueldo: $1.200.000')
     await tab(beto, 'Plata')
+    await beto.getByRole('button', { name: 'Sueldo', exact: true }).click()
     await beto.getByText('Otros ingresos de').waitFor({ timeout: 15000 })
     assert((await beto.getByText('Bono-secreto').count()) === 0, 'Beto no ve el ingreso de Ana')
+
+    step('Análisis personal: cada uno ve solo lo suyo')
+    await ana.getByRole('button', { name: 'Análisis' }).click()
+    await ana.getByText('Tu panorama').waitFor({ timeout: 20000 })
+    for (const t of ['En qué se va tu plata', 'Tus últimos 6 meses', '¿Cómo se reparte lo que ganas?', 'Qué puedes mejorar']) {
+      await ana.getByText(t, { exact: true }).waitFor({ timeout: 10000 })
+      assert(true, `Ana ve «${t}»`)
+    }
+    assert(await ana.getByText(/Tu salud financiera de/).isVisible(), 'Ana ve su puntaje (ya puso su sueldo)')
+    assert(await ana.getByText(/costo real/).first().isVisible(), 'el resumen interpreta su situación en palabras')
+    assert((await ana.locator('.legend-item', { hasText: 'Supermercado' }).count()) === 1, 'el anillo muestra la categoría de su gasto fijo con su monto')
+    await tab(beto, 'Plata')
+    await beto.getByRole('button', { name: 'Análisis' }).click()
+    await beto.getByText('Tu panorama').waitFor({ timeout: 20000 })
+    assert(await beto.getByRole('button', { name: 'Poner mi sueldo' }).isVisible(), 'Beto (sin sueldo) ve el aviso para ponerlo y ningún puntaje')
+    assert((await beto.getByText(/Tu salud financiera de/).count()) === 0, 'el sueldo de Ana no se filtra al análisis de Beto')
 
     step('Otra pareja (Carla) no ve nada del hogar de Ana y Beto')
     const carla = await newPage(browser, 'carla')

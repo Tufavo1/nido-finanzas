@@ -10,6 +10,8 @@ const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 's
 
 export const monthName = (d: Date = new Date()): string => MONTHS[d.getMonth()] ?? ''
 
+export const monthShort = (d: Date = new Date()): string => MONTHS_SHORT[d.getMonth()] ?? ''
+
 /** '2026-10-17' -> '17 oct' */
 export function shortDate(iso: string): string {
   const [, m, d] = iso.split('-')
