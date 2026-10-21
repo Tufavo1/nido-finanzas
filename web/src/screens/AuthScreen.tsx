@@ -13,12 +13,12 @@ interface Msg {
   error: boolean
 }
 
-export default function AuthScreen() {
-  const [mode, setMode] = useState<'login' | 'register'>('login')
+export default function AuthScreen({ notice }: { notice?: string | null }) {
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<Msg | null>(null)
+  const [msg, setMsg] = useState<Msg | null>(notice ? { text: notice, error: true } : null)
   const [show, setShow] = useState(false)
   const strength = passwordStrength(password)
 
@@ -44,7 +44,23 @@ export default function AuthScreen() {
       setBusy(false)
       return
     }
-    if (mode === 'login') {
+    if (mode === 'forgot') {
+      throttle.fail()
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: window.location.origin,
+        captchaToken: captcha,
+      })
+      // Mismo mensaje exista o no la cuenta, para no revelar quién está registrado
+      if (error && /rate|too many|seconds/i.test(error.message)) {
+        setMsg({ text: 'Ya te enviamos un correo hace poco. Espera un minuto y vuelve a pedirlo.', error: true })
+      } else {
+        if (error) console.error(error)
+        setMsg({
+          text: 'Listo. Si ese correo tiene una cuenta, te enviamos un enlace para crear una contraseña nueva. Revisa también la carpeta de spam.',
+          error: false,
+        })
+      }
+    } else if (mode === 'login') {
       const { error } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password,
@@ -85,7 +101,9 @@ export default function AuthScreen() {
         <p className="muted">
           {mode === 'login'
             ? 'Inicia sesión para ver las finanzas de los dos.'
-            : 'Crea tu cuenta. Tu pareja creará la suya después.'}
+            : mode === 'register'
+              ? 'Crea tu cuenta. Tu pareja creará la suya después.'
+              : 'Escribe el correo de tu cuenta y te enviaremos un enlace para crear una contraseña nueva.'}
         </p>
         <form className="stack" noValidate={false} onSubmit={(e) => void submit(e)}>
           <div className="field">
@@ -100,6 +118,7 @@ export default function AuthScreen() {
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
+          {mode !== 'forgot' && (
           <div className="field">
             <label htmlFor="password">Contraseña</label>
             <input
@@ -129,15 +148,28 @@ export default function AuthScreen() {
               </>
             )}
           </div>
+          )}
           {msg && (
             <p className={msg.error ? 'error' : 'notice'} role="alert">
               {msg.text}
             </p>
           )}
           <button className="btn" type="submit" disabled={busy}>
-            {mode === 'login' ? 'Entrar' : 'Crear cuenta'}
+            {mode === 'login' ? 'Entrar' : mode === 'register' ? 'Crear cuenta' : 'Enviarme el enlace'}
           </button>
         </form>
+        {mode === 'login' && (
+          <button
+            className="link-btn"
+            type="button"
+            onClick={() => {
+              setMode('forgot')
+              setMsg(null)
+            }}
+          >
+            Olvidé mi contraseña
+          </button>
+        )}
         <button
           className="btn ghost"
           type="button"
@@ -146,7 +178,7 @@ export default function AuthScreen() {
             setMsg(null)
           }}
         >
-          {mode === 'login' ? 'Crear una cuenta' : 'Ya tengo cuenta'}
+          {mode === 'login' ? 'Crear una cuenta' : mode === 'register' ? 'Ya tengo cuenta' : 'Volver a iniciar sesión'}
         </button>
         <details className="auth-needs">
           <summary>¿Qué necesita Contigo para funcionar?</summary>

@@ -4,9 +4,11 @@ import { supabase } from './lib/supabase'
 import type { Tables } from './lib/database.types'
 import Logo from './components/Logo'
 import Shell from './Shell'
+import { consumeRecoveryLink } from './lib/recovery'
 
 const AuthScreen = lazy(() => import('./screens/AuthScreen'))
 const Onboarding = lazy(() => import('./screens/Onboarding'))
+const ResetPassword = lazy(() => import('./screens/ResetPassword'))
 
 export interface Household {
   household: Tables<'households'>
@@ -55,9 +57,21 @@ export default function App() {
   const [hh, setHh] = useState<Household | null | undefined>(undefined)
   const [loadError, setLoadError] = useState<string | null>(null)
 
+  // Entró desde el correo de recuperación: debe elegir su contraseña nueva antes de usar la app
+  const [recovering, setRecovering] = useState(false)
+  const [authNotice, setAuthNotice] = useState<string | null>(null)
+
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data } = supabase.auth.onAuthStateChange((_event, s) => setSession(s))
+    const { data } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === 'PASSWORD_RECOVERY') setRecovering(true)
+      setSession(s)
+    })
+    void consumeRecoveryLink().then(async (r) => {
+      if (r === 'ready') setRecovering(true)
+      if (r === 'invalid') setAuthNotice('El enlace del correo venció o ya se usó. Pide uno nuevo con «Olvidé mi contraseña».')
+      const { data: cur } = await supabase.auth.getSession()
+      setSession(cur.session)
+    })
     return () => data.subscription.unsubscribe()
   }, [])
 
@@ -82,7 +96,13 @@ export default function App() {
   if (!session)
     return (
       <Suspense fallback={<Splash />}>
-        <AuthScreen />
+        <AuthScreen notice={authNotice} />
+      </Suspense>
+    )
+  if (recovering)
+    return (
+      <Suspense fallback={<Splash />}>
+        <ResetPassword onDone={() => setRecovering(false)} />
       </Suspense>
     )
   if (loadError) return <Splash text={loadError} onRetry={() => void reload()} />
