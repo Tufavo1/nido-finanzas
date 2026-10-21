@@ -40,3 +40,27 @@ export function useIsAdmin(): boolean {
   }, [])
   return isAdmin
 }
+
+export interface AdminHousehold {
+  id: string
+  /** Primeros caracteres del id: sirve para distinguirlos sin mostrar nombres */
+  code: string
+  created_at: string
+  active_members: number
+  last_activity: string
+  expenses: number
+  /** Cumple la regla del servidor: vacío, o 1 persona sin movimiento hace 7 días o más */
+  deletable: boolean
+}
+
+export async function fetchEmptyHouseholds(): Promise<AdminHousehold[]> {
+  const { data, error } = await supabase.rpc('admin_households' as never)
+  if (error) throw error
+  return (data ?? []) as unknown as AdminHousehold[]
+}
+
+export async function deleteHouseholds(ids: string[]): Promise<{ deleted: number; skipped: number }> {
+  const { data, error } = await supabase.rpc('admin_delete_households' as never, { p_ids: ids } as never)
+  if (error) throw error
+  return data as unknown as { deleted: number; skipped: number }
+}
