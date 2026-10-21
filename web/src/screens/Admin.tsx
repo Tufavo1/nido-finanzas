@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FREE_LIMITS, fetchAdminStats } from '../lib/admin'
-import type { AdminStats } from '../lib/admin'
+import { FREE_LIMITS, deleteHouseholds, fetchAdminStats, fetchEmptyHouseholds } from '../lib/admin'
+import type { AdminHousehold, AdminStats } from '../lib/admin'
 
 const nf = new Intl.NumberFormat('es-CL')
 const COOLDOWN_S = 30
@@ -77,6 +77,154 @@ function DayChart({ days, field, title }: { days: AdminStats['daily']; field: 's
         <span>hoy</span>
       </div>
     </div>
+  )
+}
+
+const dmy = (iso: string) => new Date(iso).toLocaleDateString('es-CL')
+const daysAgo = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000))
+
+/** Hogares con 0 o 1 persona: se listan solo cuando el administrador lo pide */
+function Cleanup({ onChanged }: { onChanged: () => void }) {
+  const [list, setList] = useState<AdminHousehold[] | null>(null)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [confirm, setConfirm] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState<string | null>(null)
+
+  async function load() {
+    setBusy(true)
+    setError(null)
+    setConfirm(false)
+    try {
+      setList(await fetchEmptyHouseholds())
+      setPicked(new Set())
+    } catch (e) {
+      console.error(e)
+      setError('No se pudo cargar la lista. Revisa que la migración «panel_admin» esté aplicada.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove() {
+    setBusy(true)
+    setError(null)
+    try {
+      const r = await deleteHouseholds([...picked])
+      setDone(
+        `Se borraron ${r.deleted} ${r.deleted === 1 ? 'hogar' : 'hogares'}${r.skipped > 0 ? ` y ${r.skipped} se omitieron por estar en uso` : ''}.`,
+      )
+      onChanged()
+      setList(await fetchEmptyHouseholds())
+      setPicked(new Set())
+      setConfirm(false)
+    } catch (e) {
+      console.error(e)
+      setError('No se pudo borrar. Intenta de nuevo.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const deletable = (list ?? []).filter((h) => h.deletable)
+  const toggle = (id: string) => {
+    setConfirm(false)
+    setDone(null)
+    setPicked((p) => {
+      const n = new Set(p)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
+
+  return (
+    <section className="card">
+      <strong>Limpiar hogares sin uso</strong>
+      <span className="muted small-text">
+        Hogares vacíos, o con una sola persona que lleva 7 días o más sin anotar nada. Al borrarlos se van también sus gastos,
+        metas y deudas. Las cuentas de correo no se borran. Los hogares de pareja nunca aparecen aquí.
+      </span>
+      {list === null ? (
+        <button type="button" className="btn small" disabled={busy} onClick={() => void load()}>
+          {busy ? 'Buscando…' : 'Buscar hogares sin uso'}
+        </button>
+      ) : (
+        <>
+          {list.length === 0 && <p className="notice">No hay hogares para limpiar. Todo está en uso.</p>}
+          {list.length > 0 && (
+            <>
+              <div className="fixed-actions">
+                <button
+                  type="button"
+                  className="txt-btn"
+                  onClick={() => {
+                    setConfirm(false)
+                    setPicked(new Set(deletable.map((h) => h.id)))
+                  }}
+                >
+                  Elegir los {deletable.length} que se pueden borrar
+                </button>
+                <button type="button" className="txt-btn" onClick={() => setPicked(new Set())}>
+                  Quitar la elección
+                </button>
+              </div>
+              <ul className="clean-list">
+                {list.map((h) => (
+                  <li key={h.id}>
+                    <label className={h.deletable ? 'clean-row' : 'clean-row off'}>
+                      <input type="checkbox" disabled={!h.deletable || busy} checked={picked.has(h.id)} onChange={() => toggle(h.id)} />
+                      <span className="grow">
+                        <span className="strong">Hogar {h.code}</span>
+                        <span className="line-help">
+                          {h.active_members === 0 ? 'Sin personas' : '1 persona'} · {nf.format(h.expenses)} gastos · creado el{' '}
+                          {dmy(h.created_at)} · último movimiento hace {daysAgo(h.last_activity)} días
+                        </span>
+                        {!h.deletable && <span className="line-help">Se usó hace poco: protegido por ahora.</span>}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              {picked.size > 0 &&
+                (confirm ? (
+                  <div className="stack tight">
+                    <p className="error" role="alert">
+                      Vas a borrar {picked.size} {picked.size === 1 ? 'hogar' : 'hogares'} con todos sus datos. No se puede deshacer.
+                    </p>
+                    <div className="row">
+                      <button type="button" className="btn danger small" disabled={busy} onClick={() => void remove()}>
+                        {busy ? 'Borrando…' : 'Sí, borrar definitivamente'}
+                      </button>
+                      <button type="button" className="btn ghost small" onClick={() => setConfirm(false)}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" className="btn danger small" onClick={() => setConfirm(true)}>
+                    Borrar {picked.size} {picked.size === 1 ? 'hogar elegido' : 'hogares elegidos'}
+                  </button>
+                ))}
+            </>
+          )}
+          <button type="button" className="link-btn" disabled={busy} onClick={() => void load()}>
+            Volver a buscar
+          </button>
+        </>
+      )}
+      {done && (
+        <p className="notice" role="status">
+          {done}
+        </p>
+      )}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
   )
 }
 
@@ -210,6 +358,8 @@ export default function Admin({ onBack }: { onBack: () => void }) {
               gratuito: con un servicio propio de correo (SMTP) ese tope sube.
             </span>
           </section>
+
+          <Cleanup onChanged={() => void load()} />
         </>
       )}
     </main>
