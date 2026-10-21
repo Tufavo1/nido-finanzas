@@ -21,7 +21,10 @@ export default defineConfig(({ command, mode }) => {
     if (!env.VITE_SUPABASE_URL?.startsWith('https://')) {
       throw new Error(`VITE_SUPABASE_URL debe ser https:// en producción (es "${env.VITE_SUPABASE_URL}"). Usa .env.production.local.`)
     }
-    if (env.VITE_TURNSTILE_SITE_KEY?.startsWith('1x0000')) {
+    if (!env.VITE_TURNSTILE_SITE_KEY) {
+      throw new Error('Falta VITE_TURNSTILE_SITE_KEY: sin ella nadie puede registrarse ni iniciar sesión (Supabase exige el captcha). Ponla en .env.production.local.')
+    }
+    if (env.VITE_TURNSTILE_SITE_KEY.startsWith('1x0000')) {
       throw new Error('VITE_TURNSTILE_SITE_KEY es la clave de PRUEBA de Cloudflare. Usa la real en .env.production.local.')
     }
   }
