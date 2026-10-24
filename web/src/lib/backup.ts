@@ -26,10 +26,27 @@ export type Backup = {
 
 const PAGE = 1000
 
-async function readAll(table: BackupTable): Promise<Record<string, unknown>[]> {
+/** Clave primaria de cada tabla: sin un orden estable, paginar puede repetir u omitir filas */
+const ORDER: Record<BackupTable, string[]> = {
+  members: ['household_id', 'user_id'],
+  categories: ['id'],
+  expenses: ['id'],
+  recurring_expenses: ['id'],
+  goals: ['id'],
+  contributions: ['id'],
+  debts: ['id'],
+  debt_payments: ['id'],
+  salaries: ['user_id'],
+  incomes: ['id'],
+  profiles: ['user_id'],
+}
+
+export async function readAll(table: BackupTable): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = []
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase.from(table).select('*').range(from, from + PAGE - 1)
+    let query = supabase.from(table).select('*')
+    for (const col of ORDER[table]) query = query.order(col, { ascending: true })
+    const { data, error } = await query.range(from, from + PAGE - 1)
     if (error) throw error
     rows.push(...(data as Record<string, unknown>[]))
     if (data.length < PAGE) return rows
