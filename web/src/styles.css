@@ -1033,3 +1033,5 @@ body::before {
 .help-title > :first-child { font-size: 15px; line-height: 20px; font-weight: 700; }
 .help-title > :not(:first-child) { font-size: 13px; }
 .tile .amount-sm { font-size: 20px; line-height: 26px; }
+.field .label-text { font-size: 13px; color: var(--muted); }
+.plata .field .label-text { font-size: 15px; line-height: 21px; color: var(--text); font-weight: 600; }

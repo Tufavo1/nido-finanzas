@@ -84,6 +84,8 @@ export interface Analysis {
   rule: Rule | null
   insights: Finding[]
   summary: string
+  /** Lo que te sobraría cada mes si todo sigue igual, sumado a 6 y a 12 meses (sin intereses) */
+  savings: { monthly: number; in6: number; in12: number } | null
 }
 
 // ---------- Umbrales (todos en un solo lugar) ----------
@@ -367,5 +369,8 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
     }
   }
 
-  return { hasData: cost > 0 || months.some((m) => m.amount > 0), cost, projected, income, slices, months, avgPrev, score, rule, insights, summary }
+  const monthly = outlookFree !== null && outlookFree > 0 ? Math.round(outlookFree) : 0
+  const savings = monthly > 0 ? { monthly, in6: monthly * 6, in12: monthly * 12 } : null
+
+  return { hasData: cost > 0 || months.some((m) => m.amount > 0), cost, projected, income, slices, months, avgPrev, score, rule, insights, summary, savings }
 }
