@@ -1014,3 +1014,22 @@ body::before {
 .help-sub { font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .steps li > span { flex: 1; min-width: 0; padding-top: 3px; }
 .steps li strong { font-weight: 800; }
+
+/* ---------- Escala de texto ----------
+   Para distinguir qué es título, descripción y nota (de mayor a menor):
+   pantalla 26 · tarjeta 17 en negrita · texto 15 · descripción 14 apagada · nota 13 apagada · cifras 38 / 30 / 24 */
+.title { font-size: 26px; line-height: 30px; letter-spacing: -0.02em; }
+.card > strong:first-child, .card > .row.between > strong:first-child { font-weight: 700; }
+.card > .muted:not(.small-text), .card .stack > .muted:not(.small-text), .card .stack.tight > .muted:not(.small-text) { font-size: 14px; line-height: 20px; }
+.summary { font-size: 15px; line-height: 1.5; }
+.amount { font-size: 30px; line-height: 34px; }
+.amount.small { font-size: 24px; line-height: 28px; }
+.amount.big { font-size: 38px; line-height: 42px; }
+.hero .amount { font-size: 38px; line-height: 42px; letter-spacing: -0.03em; }
+.score-label { font-size: 26px; line-height: 30px; }
+.gauge-num { font-size: 30px; line-height: 32px; }
+/* Dentro de una tarjeta, los avisos y las ayudas son un nivel más abajo que el título de la tarjeta */
+.find .strong { font-size: 15px; line-height: 20px; font-weight: 700; }
+.help-title > :first-child { font-size: 15px; line-height: 20px; font-weight: 700; }
+.help-title > :not(:first-child) { font-size: 13px; }
+.tile .amount-sm { font-size: 20px; line-height: 26px; }
