@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FREE_LIMITS, deleteHouseholds, fetchAdminStats, fetchAdminStorage, fetchEmptyHouseholds, removeMember } from '../lib/admin'
+import { FREE_LIMITS, deleteHouseholds, fetchAdminStats, fetchAdminStorage, fetchEmptyHouseholds, removeMember, useAdminStatus } from '../lib/admin'
 import type { AdminHousehold, AdminStats, AdminStorage } from '../lib/admin'
 import { TABLE_LABEL, fillForecast } from '../lib/storage'
+import { supabase } from '../lib/supabase'
 
 const nf = new Intl.NumberFormat('es-CL')
 const COOLDOWN_S = 30
@@ -131,11 +132,11 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
 
   const deletable = (list ?? []).filter((h) => h.deletable)
 
-  async function kick(householdId: string, userId: string) {
+  async function kick(householdId: string, ref: string) {
     setBusy(true)
     setError(null)
     try {
-      const r = await removeMember(householdId, userId)
+      const r = await removeMember(householdId, ref)
       setDone(r.household_deleted ? 'Era la única persona: se borró el hogar.' : r.removed ? 'Persona sacada del hogar.' : 'Esa persona ya no estaba en el hogar.')
       onChanged()
       setList(await fetchEmptyHouseholds())
@@ -203,12 +204,12 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
                         </span>
                       </span>
                     </label>
-                    {h.members.map((m) => (
-                      <div key={m.user_id} className="row between small-text">
-                        <span>{m.name} <span className="muted">· desde {dmy(m.joined_at)}</span></span>
-                        {kicking === m.user_id ? (
+                    {h.members.map((m, i) => (
+                      <div key={m.ref} className="row between small-text">
+                        <span>Persona {i + 1} <span className="muted">· desde {dmy(m.joined_at)}</span></span>
+                        {kicking === m.ref ? (
                           <span className="row">
-                            <button type="button" className="btn danger small" disabled={busy} onClick={() => void kick(h.id, m.user_id)}>
+                            <button type="button" className="btn danger small" disabled={busy} onClick={() => void kick(h.id, m.ref)}>
                               Sí, sacar
                             </button>
                             <button type="button" className="btn ghost small" onClick={() => setKicking(null)}>
@@ -216,7 +217,7 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
                             </button>
                           </span>
                         ) : (
-                          <button type="button" className="txt-btn" disabled={busy} onClick={() => setKicking(m.user_id)}>
+                          <button type="button" className="txt-btn" disabled={busy} onClick={() => setKicking(m.ref)}>
                             Sacar
                           </button>
                         )}
@@ -266,7 +267,7 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
   )
 }
 
-export default function Admin({ onBack }: { onBack: () => void }) {
+function AdminPanel({ onBack }: { onBack: () => void }) {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [storage, setStorage] = useState<AdminStorage | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -423,6 +424,108 @@ export default function Admin({ onBack }: { onBack: () => void }) {
           <Cleanup onChanged={() => void load()} />
         </>
       )}
+    </main>
+  )
+}
+
+/** El panel exige un segundo factor (TOTP): si la sesión aún no lo verificó, se pide el código antes de mostrarlo */
+function MfaStep({ onBack, onVerified }: { onBack: () => void; onVerified: () => void }) {
+  const [factorId, setFactorId] = useState<string | null>(null)
+  const [enroll, setEnroll] = useState<{ id: string; qr: string; secret: string } | null>(null)
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    void supabase.auth.mfa.listFactors().then(({ data }) => {
+      setFactorId(data?.totp[0]?.id ?? null)
+      setReady(true)
+    })
+  }, [])
+
+  async function startEnroll() {
+    setBusy(true)
+    setError(null)
+    const { data, error: err } = await supabase.auth.mfa.enroll({ factorType: 'totp' })
+    setBusy(false)
+    if (err || !data) {
+      setError('No se pudo activar la verificación en dos pasos. Revisa que el TOTP esté habilitado en el proyecto.')
+      return
+    }
+    setEnroll({ id: data.id, qr: data.totp.qr_code, secret: data.totp.secret })
+  }
+
+  async function verify(e: React.FormEvent) {
+    e.preventDefault()
+    const id = enroll?.id ?? factorId
+    if (!id) return
+    setBusy(true)
+    setError(null)
+    const { error: err } = await supabase.auth.mfa.challengeAndVerify({ factorId: id, code: code.trim() })
+    setBusy(false)
+    if (err) {
+      setError('El código no es correcto. Prueba con el que muestra ahora tu app de autenticación.')
+      return
+    }
+    onVerified()
+  }
+
+  return (
+    <main className="screen">
+      <button type="button" className="link-btn" onClick={onBack}>
+        ← Volver a Ajustes
+      </button>
+      <h1 className="title">Verificación en dos pasos</h1>
+      <section className="card">
+        <span className="muted small-text">El panel de administración pide un código de tu app de autenticación además de la contraseña.</span>
+        {ready && !factorId && !enroll && (
+          <button type="button" className="btn small" disabled={busy} onClick={() => void startEnroll()}>
+            Activar la verificación
+          </button>
+        )}
+        {enroll && (
+          <>
+            <img src={enroll.qr} alt="Código QR para tu app de autenticación" width={180} height={180} />
+            <span className="line-help">Escanéalo con tu app de autenticación. Si no puedes, escribe esta clave: {enroll.secret}</span>
+          </>
+        )}
+        {(factorId || enroll) && (
+          <form className="stack" onSubmit={(e) => void verify(e)}>
+            <div className="field">
+              <label htmlFor="mfa-code">Código de 6 dígitos</label>
+              <input
+                id="mfa-code"
+                className="input"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+              />
+            </div>
+            <button type="submit" className="btn small" disabled={busy || code.length !== 6}>
+              Verificar
+            </button>
+          </form>
+        )}
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
+      </section>
+    </main>
+  )
+}
+
+export default function Admin({ onBack }: { onBack: () => void }) {
+  const { status, refresh } = useAdminStatus()
+  if (status === 'ok') return <AdminPanel onBack={onBack} />
+  if (status === 'needs_mfa') return <MfaStep onBack={onBack} onVerified={refresh} />
+  return (
+    <main className="screen center-y">
+      <p className="muted">Cargando…</p>
     </main>
   )
 }

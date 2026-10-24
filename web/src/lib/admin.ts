@@ -1,12 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
 
-/**
- * Solo sirve para decidir si se muestra el acceso al panel. La seguridad real está en la base:
- * la función admin_stats() rechaza a cualquier otra cuenta.
- */
-export const ADMIN_EMAIL = 'joseromeroesteban353@gmail.com'
-
 /** Límites del plan gratuito de Supabase, para mostrar cuánto queda */
 export const FREE_LIMITS = { dbBytes: 500 * 1024 * 1024, monthlyUsers: 50_000 }
 
@@ -26,19 +20,34 @@ export async function fetchAdminStats(): Promise<AdminStats> {
   return data as unknown as AdminStats
 }
 
-/** true si la sesión actual es la de la cuenta administradora */
-export function useIsAdmin(): boolean {
-  const [isAdmin, setIsAdmin] = useState(false)
+/** 'none': no es administrador · 'needs_mfa': lo es, pero falta verificar el segundo factor · 'ok' */
+export type AdminStatus = 'none' | 'needs_mfa' | 'ok'
+
+/** Solo decide qué se muestra: la seguridad real está en la base, que rechaza toda función admin_* sin aal2 */
+export async function fetchAdminStatus(): Promise<AdminStatus> {
+  const { data, error } = await supabase.rpc('admin_status' as never)
+  if (error) throw error
+  return data === 'ok' || data === 'needs_mfa' ? data : 'none'
+}
+
+export function useAdminStatus(): { status: AdminStatus; refresh: () => void } {
+  const [status, setStatus] = useState<AdminStatus>('none')
+  const [tick, setTick] = useState(0)
   useEffect(() => {
     let cancelled = false
-    void supabase.auth.getSession().then(({ data }) => {
-      if (!cancelled) setIsAdmin(data.session?.user.email?.toLowerCase() === ADMIN_EMAIL)
-    })
+    void fetchAdminStatus()
+      .then((s) => !cancelled && setStatus(s))
+      .catch(() => !cancelled && setStatus('none'))
     return () => {
       cancelled = true
     }
-  }, [])
-  return isAdmin
+  }, [tick])
+  return { status, refresh: () => setTick((t) => t + 1) }
+}
+
+/** true si la cuenta es administradora (aunque falte el segundo factor): sirve para mostrar el acceso al panel */
+export function useIsAdmin(): boolean {
+  return useAdminStatus().status !== 'none'
 }
 
 export interface AdminHousehold {
@@ -51,7 +60,8 @@ export interface AdminHousehold {
   expenses: number
   /** El hogar del propio administrador nunca aparece en la lista */
   deletable: boolean
-  members: { user_id: string; name: string; joined_at: string }[]
+  /** Sin nombres ni ids de cuenta: cada persona se identifica con una referencia opaca */
+  members: { ref: string; joined_at: string }[]
 }
 
 export async function fetchEmptyHouseholds(): Promise<AdminHousehold[]> {
@@ -66,8 +76,8 @@ export async function deleteHouseholds(ids: string[]): Promise<{ deleted: number
   return data as unknown as { deleted: number; skipped: number }
 }
 
-export async function removeMember(householdId: string, userId: string): Promise<{ removed: boolean; household_deleted: boolean }> {
-  const { data, error } = await supabase.rpc('admin_remove_member' as never, { p_household: householdId, p_user: userId } as never)
+export async function removeMember(householdId: string, ref: string): Promise<{ removed: boolean; household_deleted: boolean }> {
+  const { data, error } = await supabase.rpc('admin_remove_member' as never, { p_household: householdId, p_ref: ref } as never)
   if (error) throw error
   return data as unknown as { removed: boolean; household_deleted: boolean }
 }
