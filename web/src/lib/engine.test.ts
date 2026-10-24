@@ -27,6 +27,7 @@ const base = {
   recurring: [],
   profiles: [],
   financeReady: true,
+  financeStale: false,
   profileReady: true,
 }
 const month = new Date(2026, 9, 1)

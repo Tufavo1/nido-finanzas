@@ -37,6 +37,8 @@ export interface HouseholdData {
   profileReady: boolean
   /** false si las tablas de sueldo/deudas aún no existen en la base (migración pendiente) */
   financeReady: boolean
+  /** true si la última recarga de sueldo/deudas falló y se muestran los datos anteriores */
+  financeStale: boolean
   /** Ya se cargó al menos una vez */
   ready: boolean
   /** Se está cargando el mes seleccionado */
@@ -89,6 +91,7 @@ export function useData(
   const [recurring, setRecurring] = useState<Recurring[]>([])
   const [profileReady, setProfileReady] = useState(true)
   const [financeReady, setFinanceReady] = useState(true)
+  const [financeStale, setFinanceStale] = useState(false)
   const [loadedKey, setLoadedKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [staticReady, setStaticReady] = useState(false)
@@ -156,10 +159,15 @@ export function useData(
     setContributions(cons.data ?? [])
     // Sueldo y deudas no deben tumbar el resto de la app si faltan en la base
     const finErr = sal.error ?? dts.error ?? pays.error
-    setFinanceReady(!finErr)
-    setSalary(finErr ? null : (sal.data ?? null))
-    setDebts(finErr ? [] : (dts.data ?? []))
-    setDebtPayments(finErr ? [] : (pays.data ?? []))
+    // Solo una tabla inexistente (migración pendiente) apaga la sección; un fallo pasajero conserva lo ya cargado
+    const finMissing = !!finErr && (finErr.code === 'PGRST205' || finErr.code === '42P01')
+    setFinanceReady(!finMissing)
+    setFinanceStale(!!finErr && !finMissing)
+    if (!finErr || finMissing) {
+      setSalary(finErr ? null : (sal.data ?? null))
+      setDebts(finErr ? [] : (dts.data ?? []))
+      setDebtPayments(finErr ? [] : (pays.data ?? []))
+    }
     setProfileReady(!profs.error)
     setProfiles(profs.error ? [] : (profs.data ?? []))
     setRecurring(recs.error ? [] : (recs.data ?? []))
@@ -282,6 +290,7 @@ export function useData(
     recurring,
     profileReady,
     financeReady,
+    financeStale,
     ready: loadedKey !== null && staticReady,
     loading: loadedKey !== key,
     error,

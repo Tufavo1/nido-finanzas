@@ -808,6 +808,14 @@ export default function Money(props: Props) {
         </section>
       ) : (
         <>
+          {data.financeStale && (
+            <p className="notice" role="status">
+              No se pudo actualizar sueldo y deudas; ves los últimos datos cargados.{' '}
+              <button type="button" className="btn small" onClick={() => void data.refresh()}>
+                Reintentar
+              </button>
+            </p>
+          )}
           <div className="seg" role="group" aria-label="Sección">
             <button type="button" aria-pressed={tab === 'analysis'} onClick={() => setTab('analysis')}>
               Análisis
