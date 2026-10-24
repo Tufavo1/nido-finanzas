@@ -70,7 +70,9 @@ button { cursor: pointer; }
   flex-direction: column;
   gap: 16px;
 }
-.center-y { justify-content: center; }
+/* Centrado que no corta lo de arriba cuando el contenido es más alto que la pantalla (con justify-content: center el logo queda inalcanzable) */
+.center-y > :first-child { margin-top: auto; }
+.center-y > :last-child { margin-bottom: auto; }
 .splash {
   height: 100dvh;
   display: flex;
@@ -408,6 +410,11 @@ main:focus, main h1:focus { outline: none; }
   z-index: 9;
 }
 .install-text { display: block; margin-top: 2px; }
+.auth-needs { font-size: 14px; }
+.auth-needs summary { cursor: pointer; color: var(--accent-ink); font-weight: 600; min-height: 44px; display: flex; align-items: center; justify-content: center; text-align: center; }
+.auth-foot { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 8px; padding-bottom: 72px; text-align: center; font-size: 13px; line-height: 19px; color: var(--muted); }
+.auth-foot a { color: var(--accent-ink); font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+.auth-needs ul { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }
 .need { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line); }
 .need:first-child { border-top: 0; padding-top: 0; }
 .need-mark {
@@ -417,9 +424,7 @@ main:focus, main h1:focus { outline: none; }
 .need-mark.ok { background: var(--accent); color: var(--accent-ink); }
 .need-mark.warn { background: var(--warn); color: #fff; }
 .need-action { margin-top: 8px; }
-.auth-needs { font-size: 14px; }
-.auth-needs summary { cursor: pointer; color: var(--accent-ink); font-weight: 600; min-height: 44px; display: flex; align-items: center; }
-.auth-needs ul { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }
+.install-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 22px; }
 
 /* =====================================================================
    Contigo · identidad "el encuentro"
@@ -635,6 +640,9 @@ body::before {
 }
 .tab.add:active .plus { transform: scale(0.92) rotate(90deg); }
 .install-banner { bottom: calc(env(safe-area-inset-bottom) + 100px); border-radius: 22px; }
+.install-banner.on-auth { bottom: calc(env(safe-area-inset-bottom) + 16px); }
+.sheet-back { position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-end; justify-content: center; background: rgb(0 0 0 / 0.45); }
+.sheet { width: min(480px, 100%); max-height: 88dvh; overflow-y: auto; border-radius: 24px 24px 0 0; padding-bottom: calc(env(safe-area-inset-bottom) + 20px); }
 
 /* Acerca de */
 .card.about {
@@ -664,7 +672,7 @@ body::before {
 .empty .brand-logo { margin-bottom: 4px; }
 .splash .brand-logo { filter: drop-shadow(0 10px 18px color-mix(in srgb, var(--ink) 18%, transparent)); }
 .screen > * { flex-shrink: 0; }
-.field > .link-btn { align-self: flex-start; min-height: 44px; color: var(--accent-ink); font-weight: 600; }
+.field > .link-btn { align-self: center; min-height: 44px; color: var(--accent-ink); font-weight: 600; }
 .verdict, .verdict.warn, .verdict.bad { border-left: 1px solid color-mix(in srgb, var(--line) 75%, transparent); }
 .verdict::before { content: ''; width: 38px; height: 6px; border-radius: 3px; background: var(--accent); }
 .verdict.warn::before { background: var(--amber); }
@@ -1035,3 +1043,43 @@ body::before {
 .tile .amount-sm { font-size: 20px; line-height: 26px; }
 .field .label-text { font-size: 13px; color: var(--muted); }
 .plata .field .label-text { font-size: 15px; line-height: 21px; color: var(--text); font-weight: 600; }
+
+/* Rueda de carga dentro de los botones */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin-label { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.spin { width: 1em; height: 1em; flex: none; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin 0.7s linear infinite; }
+.btn:disabled:has(.spin-label) { opacity: 0.85; }
+/* Con «reducir movimiento» la rueda sigue girando, pero más despacio: es la única señal de que algo está pasando */
+@media (prefers-reduced-motion: reduce) { .spin { animation: spin 1.6s linear infinite !important; } }
+
+/* Guía de bienvenida */
+.tour-back { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: rgb(0 0 0 / 0.5); animation: fade-in 0.25s both; }
+.tour { width: min(420px, 100%); gap: 18px; text-align: center; animation: rise 0.35s var(--ease) both; }
+.tour-stage { height: 120px; display: grid; place-items: center; animation: rise 0.4s var(--ease) both; }
+.tour-title { margin: 0; font-family: var(--font-display); font-size: 22px; line-height: 28px; letter-spacing: -0.02em; }
+.tour-text { margin: 0; min-height: 88px; color: var(--muted); font-size: 15px; line-height: 22px; }
+.tour-text strong { color: var(--text); }
+.tour-dots { display: flex; justify-content: center; gap: 6px; }
+.tour-dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--line); transition: width 0.25s var(--ease), background 0.25s; }
+.tour-dots span.on { width: 22px; border-radius: 999px; background: var(--accent-ink); }
+.tour .row .btn { flex: none; }
+.tour .row .btn.grow { flex: 1; }
+.tour-art { display: block; }
+.tour-add { display: flex; align-items: center; gap: 18px; }
+@keyframes tour-type { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes tour-tap { 0%, 55% { transform: scale(1); } 65% { transform: scale(0.88) rotate(90deg); } 80%, 100% { transform: scale(1); } }
+.tour-amount { font-family: var(--font-display); font-weight: 700; font-size: 30px; animation: tour-type 1.4s steps(8) 0.3s both; }
+.tour-plus { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--ink); animation: tour-tap 2.4s ease-in-out 0.4s infinite; }
+.tour-bars { width: 200px; display: grid; gap: 12px; }
+.tour-bars span { height: 14px; border-radius: 999px; background: var(--accent); transform-origin: left; width: var(--w); animation: grow 1s var(--ease) both; }
+.tour-bars span:nth-child(2) { animation-delay: 0.15s; background: var(--blue); }
+.tour-bars span:nth-child(3) { animation-delay: 0.3s; background: var(--amber); }
+.tour-coins { position: relative; width: 120px; height: 100px; display: grid; place-items: end center; color: var(--accent-ink); }
+@keyframes tour-drop { 0% { transform: translateY(-46px); opacity: 0; } 30% { opacity: 1; } 70%, 100% { transform: translateY(0); opacity: 0; } }
+.tour-coins i { position: absolute; top: 0; width: 16px; height: 16px; border-radius: 50%; background: var(--amber); animation: tour-drop 1.8s ease-in infinite; }
+.tour-coins i:nth-of-type(1) { left: 30px; }
+.tour-coins i:nth-of-type(2) { left: 52px; animation-delay: 0.6s; }
+.tour-coins i:nth-of-type(3) { left: 74px; animation-delay: 1.2s; }
+.tour-ring circle { fill: none; stroke-width: 9; stroke-linecap: round; }
+.tour-ring circle:first-child { stroke: var(--line); }
+.tour-ring circle:last-child { --c: 201; stroke: var(--accent-ink); stroke-dasharray: 201; stroke-dashoffset: 60; transform: rotate(-90deg); transform-origin: center; animation: ring-in 1.4s var(--ease) 0.2s both; }

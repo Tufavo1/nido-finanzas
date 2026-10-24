@@ -1,4 +1,4 @@
-/** Qué necesita Contigo para funcionar, dicho claro. Lo usan la pantalla de entrada y Ajustes. */
+/** Qué necesita Contigo para funcionar, en palabras de todos los días. Lo usan la pantalla de entrada y Ajustes. */
 export interface Need {
   id: 'storage' | 'bots' | 'internet' | 'install' | 'push'
   title: string
@@ -9,32 +9,32 @@ export interface Need {
 export const NEEDS: Need[] = [
   {
     id: 'storage',
-    title: 'Almacenamiento del navegador',
+    title: 'Recordar tu sesión',
     required: true,
-    why: 'Guarda tu sesión y tus preferencias (tema, avisos ya vistos) para que no tengas que entrar cada vez. Contigo no usa cookies de publicidad ni de seguimiento.',
+    why: 'Tu celular guarda un pequeño recordatorio para que no tengas que escribir tu clave cada vez que abres Contigo. No usamos publicidad ni te seguimos.',
   },
   {
     id: 'bots',
-    title: 'Verificación anti-bots',
+    title: 'Comprobar que eres una persona',
     required: true,
-    why: 'Al entrar o crear cuenta, Cloudflare Turnstile comprueba que no eres un robot. Si algún bloqueador de anuncios o de rastreo lo impide, desactívalo solo para este sitio.',
+    why: 'Al entrar o crear tu cuenta hacemos un chequeo rápido para saber que no eres un robot. Si no te deja pasar, apaga tu bloqueador de anuncios solo para este sitio.',
   },
   {
     id: 'internet',
-    title: 'Conexión a internet',
+    title: 'Tener internet',
     required: true,
-    why: 'Tus datos viven en el servidor, así que para ver y guardar gastos hace falta conexión. Sin ella, la app abre pero no puede mostrarlos.',
+    why: 'Tus gastos se guardan en línea, así que necesitas internet para verlos y anotarlos. Sin internet, la app abre pero no puede mostrártelos.',
   },
   {
     id: 'install',
-    title: 'Instalar la app',
+    title: 'Instalarla en tu celular',
     required: false,
-    why: 'Opcional. Se abre más rápido, a pantalla completa y con su propio ícono. Además, en iPhone es lo que permite recibir avisos.',
+    why: 'Opcional. Queda con su propio ícono como cualquier app, abre más rápido y a pantalla completa. En iPhone, instalarla es necesario para recibir avisos.',
   },
   {
     id: 'push',
-    title: 'Notificaciones',
+    title: 'Recibir avisos',
     required: false,
-    why: 'Opcional. Te avisan cuando tu pareja registra un gasto o un aporte. Puedes activarlas o desactivarlas cuando quieras.',
+    why: 'Opcional. Te avisamos cuando tu pareja anota un gasto o un aporte. Los puedes apagar cuando quieras.',
   },
 ]

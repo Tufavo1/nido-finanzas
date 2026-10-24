@@ -5,6 +5,7 @@ import Icon from '../components/Icon'
 import { money, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import { notifyPartner } from '../lib/push'
+import Spin from '../components/Spin'
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', 'back'] as const
 
@@ -132,7 +133,7 @@ export default function Register({
         </p>
       )}
       <button className="btn" type="button" disabled={busy || amount <= 0 || !catId || !date || date > today} onClick={() => void save()}>
-        Guardar gasto
+        {busy ? <Spin label="Guardando gasto…" /> : 'Guardar gasto'}
       </button>
     </main>
   )

@@ -8,6 +8,7 @@ import { daysUntil, digitsOnly, inDays, longDate, nextOccurrence } from '../lib/
 import Avatar from './Avatar'
 import Intro from './Intro'
 import type { Notify } from './Toast'
+import Spin from './Spin'
 
 interface Props {
   hh: Household
@@ -276,7 +277,7 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
           </span>
           <div className="row">
             <button className="btn small" type="submit" disabled={busy}>
-              Guardar gasto fijo
+              {busy ? <Spin label="Guardando gasto fijo…" /> : 'Guardar gasto fijo'}
             </button>
             <button type="button" className="btn ghost small" onClick={() => setOpen(false)}>
               Cancelar

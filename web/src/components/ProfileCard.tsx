@@ -6,6 +6,7 @@ import { EMPLOYMENT, adviceFor } from '../lib/profile'
 import type { Employment } from '../lib/profile'
 import { supabase } from '../lib/supabase'
 import type { Notify } from './Toast'
+import Spin from './Spin'
 
 interface Props {
   hh: Household
@@ -144,7 +145,7 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
           )}
           <div className="row">
             <button className="btn small" type="submit" disabled={busy}>
-              Guardar
+              {busy ? <Spin label="Guardando…" /> : 'Guardar'}
             </button>
             {mine && (
               <button type="button" className="btn ghost small" onClick={() => setEditing(false)}>

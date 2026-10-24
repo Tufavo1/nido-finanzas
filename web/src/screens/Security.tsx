@@ -2,6 +2,7 @@ import { Suspense, lazy, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import AboutCard from '../components/AboutCard'
+import InstallGuide from '../components/InstallGuide'
 import BackupCard from '../components/BackupCard'
 import LockSettings from '../components/LockSettings'
 import SecurityInfo from '../components/SecurityInfo'
@@ -9,13 +10,13 @@ import SettingsItem from '../components/SettingsItem'
 import AccessCard from '../components/AccessCard'
 import Avatar from '../components/Avatar'
 import Icon from '../components/Icon'
+import { TOUR_EVENT } from '../lib/tour'
 import { getLockMinutes } from '../lib/applock'
 import { VERSION } from '../lib/about'
 import LeaveAccount from '../components/LeaveAccount'
 import WidgetTokens from '../components/WidgetTokens'
 import PushToggle from '../components/PushToggle'
 import ProfileCard from '../components/ProfileCard'
-import SmartAlertsSetting from '../components/SmartAlertsSetting'
 import ThemeToggle from '../components/ThemeToggle'
 import type { HouseholdData } from '../lib/data'
 import { useIsAdmin } from '../lib/admin'
@@ -210,6 +211,15 @@ export default function Security({
           </section>
         </SettingsItem>
 
+        <SettingsItem {...item} id="tour" icon="info" title="Guía de bienvenida" summary="Para qué sirve cada parte de la app" open={open === 'tour'}>
+          <section className="card">
+            <span className="muted">Un recorrido corto por lo que puedes hacer en Contigo.</span>
+            <button type="button" className="btn ghost small" onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}>
+              Ver la guía
+            </button>
+          </section>
+        </SettingsItem>
+
         <SettingsItem {...item} id="theme" icon="gear" title="Apariencia" summary="Claro, oscuro o automático" open={open === 'theme'}>
           <ThemeToggle />
         </SettingsItem>
@@ -279,23 +289,33 @@ export default function Security({
           <LockSettings onToast={onToast} />
         </SettingsItem>
 
-        <SettingsItem {...item} id="security" icon="shield" title="Seguridad de Contigo" summary="Qué la protege de verdad, comprobado en vivo" open={open === 'security'}>
-          <SecurityInfo />
-        </SettingsItem>
+        {isAdmin && (
+          <SettingsItem {...item} id="security" icon="shield" title="Seguridad de Contigo" summary="Qué la protege de verdad, comprobado en vivo" open={open === 'security'}>
+            <SecurityInfo />
+          </SettingsItem>
+        )}
       </div>
 
       <h2 className="set-group">Aplicación</h2>
       <div className="set-list">
-        <SettingsItem {...item} id="access" icon="wallet" title="Instalación y conexión" summary="Qué necesita la app y cómo está" open={open === 'access'}>
-          <AccessCard />
+        <SettingsItem {...item} id="install" icon="download" title="Cómo instalar Contigo" summary="En iPhone o Android" open={open === 'install'}>
+          <section className="card">
+            <InstallGuide />
+          </section>
         </SettingsItem>
-        <SettingsItem {...item} id="notify" icon="bell" title="Notificaciones" summary="Avisos del sistema y de tu pareja" open={open === 'notify'}>
-          <PushToggle />
-          <SmartAlertsSetting />
+        {isAdmin && (
+          <SettingsItem {...item} id="access" icon="wallet" title="Instalación y conexión" summary="Internet, app instalada y avisos" open={open === 'access'}>
+            <AccessCard />
+          </SettingsItem>
+        )}
+        <SettingsItem {...item} id="notify" icon="bell" title="Notificaciones" summary="Avisos de tu pareja y de la app" open={open === 'notify'}>
+          <PushToggle isAdmin={isAdmin} />
         </SettingsItem>
-        <SettingsItem {...item} id="widgets" icon="target" title="Widgets y accesos externos" summary="Enlaces para ver tu resumen fuera de la app" open={open === 'widgets'}>
-          <WidgetTokens />
-        </SettingsItem>
+        {isAdmin && (
+          <SettingsItem {...item} id="widgets" icon="target" title="Widgets y accesos externos" summary="Enlaces para ver tu resumen fuera de la app" open={open === 'widgets'}>
+            <WidgetTokens />
+          </SettingsItem>
+        )}
       </div>
 
       <h2 className="set-group">Tus datos</h2>
