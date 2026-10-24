@@ -25,10 +25,22 @@ export function isStandalone(): boolean {
   return window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true
 }
 
-function isIos(): boolean {
+export function isIos(): boolean {
   const ua = navigator.userAgent
   // iPadOS 13+ se presenta como Mac con pantalla táctil
   return /iPhone|iPad|iPod/.test(ua) || (ua.includes('Macintosh') && navigator.maxTouchPoints > 1)
+}
+
+/** Teléfono o tablet: en computador no se ofrece la guía de instalación */
+export function isMobileDevice(): boolean {
+  return isIos() || /Android/i.test(navigator.userAgent)
+}
+
+export type Platform = 'ios' | 'android'
+
+/** Dónde está abierta la app, para mostrar primero la guía que corresponde */
+export function detectPlatform(): Platform {
+  return isIos() ? 'ios' : 'android' // en computador se muestra Android hasta que haya guía propia
 }
 
 export function startInstallWatcher(): void {
