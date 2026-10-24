@@ -69,6 +69,23 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   const clearToast = useCallback(() => setToastData(null), [])
   const setToast = useCallback((text: string, kind: ToastKind = 'success') => setToastData({ text, kind, id: Date.now() }), [])
   const data = useData(hh.household.id, hh.me.user_id, ym.y, ym.m, reload)
+  // Si aparece un gasto de alguien que la lista de miembros aún no conoce (p. ej. la pareja entró con la app ya abierta),
+  // se recarga el hogar una vez por cada persona desconocida, para que su inicial salga siempre.
+  const asked = useRef(new Set<string>())
+  useEffect(() => {
+    if (!data.ready) return
+    const known = new Set(hh.everyone.map((m) => m.user_id))
+    const unknown = [...data.expenses, ...data.prevExpenses].map((e) => e.paid_by).filter((id) => !known.has(id) && !asked.current.has(id))
+    if (unknown.length === 0) return
+    for (const id of unknown) asked.current.add(id)
+    void reload()
+  }, [data.ready, data.expenses, data.prevExpenses, hh.everyone, reload])
+  // Al entrar (o cambiar de pestaña) la pantalla empieza arriba, no donde haya quedado el scroll de antes
+  useEffect(() => {
+    if (!data.ready) return
+    document.querySelector('main.screen')?.scrollTo(0, 0)
+    window.scrollTo(0, 0)
+  }, [data.ready, tab])
 
   const now = new Date()
   const isCurrent = ym.y === now.getFullYear() && ym.m === now.getMonth()

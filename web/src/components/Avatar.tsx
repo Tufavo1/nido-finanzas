@@ -1,4 +1,5 @@
 import { memberColor } from '../lib/ui'
+import Icon from './Icon'
 
 interface Props {
   name?: string
@@ -6,16 +7,16 @@ interface Props {
   size?: number
 }
 
-/** Inicial de la persona, en su color. Reemplaza a los puntitos de colores. */
+/** Inicial de la persona, en su color. Si no se conoce el nombre, muestra una silueta en vez de un «?». */
 export default function Avatar({ name, color, size = 32 }: Props) {
-  const initial = (name ?? '?').trim().charAt(0).toUpperCase() || '?'
+  const initial = (Array.from((name ?? '').trim())[0] ?? '').toUpperCase() // por carácter completo: un emoji no se parte en dos
   return (
     <span
       className="avatar"
       style={{ width: size, height: size, fontSize: Math.round(size * 0.44), background: memberColor({ color: color ?? 'blue' }) }}
       aria-hidden="true"
     >
-      {initial}
+      {initial || <Icon name="user" size={Math.round(size * 0.55)} />}
     </span>
   )
 }
