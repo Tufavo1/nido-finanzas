@@ -1,32 +1,7 @@
-# React + TypeScript + Vite
+# Contigo · front
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Esta carpeta es la app web (React + TypeScript + Vite) y el Worker de Cloudflare que la sirve.
+La explicación completa del proyecto, el desarrollo local y el despliegue está en el [README de la raíz](../README.md).
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+- `src/`: la app. · `worker/`: proxy de Supabase ([detalle](worker/README.md)). · `e2e/`: prueba de punta a punta.
+- `npm run dev` · `npm test` · `npm run build` · `npm run deploy`
