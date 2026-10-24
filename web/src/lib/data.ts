@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import type { Tables } from './database.types'
 import { toISO } from './format'
+import { fetchAllPages } from './paging'
 
 export type Category = Tables<'categories'>
 export type Expense = Tables<'expenses'>
@@ -141,10 +142,14 @@ export function useData(
     const [cats, gls, cons, sal, dts, pays, profs, recs] = await Promise.all([
       supabase.from('categories').select('*').eq('household_id', householdId).eq('archived', false).order('position'),
       supabase.from('goals').select('*').eq('household_id', householdId).eq('archived', false).order('created_at'),
-      supabase.from('contributions').select('*').eq('household_id', householdId).order('created_at', { ascending: false }),
+      fetchAllPages((from, to) =>
+        supabase.from('contributions').select('*').eq('household_id', householdId).order('created_at', { ascending: false }).order('id').range(from, to),
+      ),
       supabase.from('salaries').select('*').maybeSingle(),
       supabase.from('debts').select('*').eq('household_id', householdId).eq('archived', false).order('created_at'),
-      supabase.from('debt_payments').select('*').eq('household_id', householdId).order('paid_on', { ascending: false }),
+      fetchAllPages((from, to) =>
+        supabase.from('debt_payments').select('*').eq('household_id', householdId).order('paid_on', { ascending: false }).order('id').range(from, to),
+      ),
       supabase.from('profiles').select('*').eq('household_id', householdId),
       supabase.from('recurring_expenses').select('*').eq('household_id', householdId).order('day_of_month'),
     ])
