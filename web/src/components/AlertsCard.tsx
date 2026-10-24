@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Rich } from '../lib/rich'
 import type { Alert, AlertTab } from '../lib/engine'
 
 const MARK = { bad: '✕', warn: '!', info: 'i', ok: '✓' } as const
@@ -12,8 +13,8 @@ function Row({ a, onGo }: { a: Alert; onGo: (tab: AlertTab) => void }) {
         {MARK[a.level]}
       </span>
       <div className="grow">
-        <div className="strong">{a.title}</div>
-        <div className="muted small-text">{a.detail}</div>
+        <div className="strong"><Rich text={a.title} /></div>
+        <div className="muted small-text"><Rich text={a.detail} /></div>
         {a.tab && a.tab !== 'home' && (
           <button type="button" className="link-btn go" onClick={() => onGo(a.tab!)}>
             Ir a revisarlo →

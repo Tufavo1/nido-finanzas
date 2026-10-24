@@ -74,7 +74,17 @@ async function createHousehold(page, name) {
   await page.getByText(`Hola, ${name}`).waitFor({ timeout: 30000 })
 }
 
-const tab = (page, name) => page.getByRole('navigation', { name: 'Principal' }).getByRole('button', { name }).click()
+// Ajustes ya no es una pestaña: se abre con el engranaje de Inicio
+// section: título del apartado que se despliega dentro de Ajustes
+const tab = async (page, name, section) => {
+  if (name === 'Ajustes') {
+    await page.getByRole('navigation', { name: 'Principal' }).getByRole('button', { name: 'Inicio' }).click()
+    await page.getByRole('button', { name: 'Ajustes y seguridad' }).click()
+    if (section) await page.locator('.set-head button', { hasText: section }).click()
+    return
+  }
+  return page.getByRole('navigation', { name: 'Principal' }).getByRole('button', { name }).click()
+}
 
 async function addExpense(page, digits, note) {
   await tab(page, 'Registrar')
@@ -112,7 +122,7 @@ async function addExpense(page, digits, note) {
     await fakeInstall(ana, 'accepted')
     await ana.waitForTimeout(500)
     assert((await ana.getByText('¿Quieres instalar Contigo?').count()) === 0, 'tras decir que no, no vuelve a molestar')
-    await tab(ana, 'Ajustes')
+    await tab(ana, 'Ajustes', 'Instalación y conexión')
     await ana.getByText('Permisos y datos').waitFor()
     for (const t of ['Almacenamiento del navegador', 'Verificación anti-bots', 'Conexión a internet', 'Instalar la app', 'Notificaciones']) {
       assert(await ana.getByText(t, { exact: true }).first().isVisible(), `Permisos y datos explica: ${t}`)
@@ -122,6 +132,7 @@ async function addExpense(page, digits, note) {
     await ana.getByText('¡Contigo quedó instalada!').first().waitFor({ timeout: 5000 })
     assert(true, 'el botón de Ajustes instala la app aunque hayas dicho que no')
     step('Acerca de: versión, copyright y agradecimiento')
+    await ana.locator('.set-head button', { hasText: 'Acerca de Contigo' }).click()
     await ana.getByRole('region', { name: 'Acerca de esta app' }).scrollIntoViewIfNeeded()
     const about = ana.getByRole('region', { name: 'Acerca de esta app' })
     assert(await about.getByText(/^\d+\.\d+\.\d+$/).isVisible(), 'muestra la versión')
@@ -140,7 +151,7 @@ async function addExpense(page, digits, note) {
     assert(await login0.getByText(/no usa cookies de publicidad ni de seguimiento/).isVisible(), 'la pantalla de entrada explica qué se necesita')
 
     step('Beto se une con el código de invitación')
-    await tab(ana, 'Ajustes')
+    await tab(ana, 'Ajustes', 'Mi hogar e invitación')
     const code = (await ana.locator('.code').first().textContent()).trim()
     assert(/^[A-HJ-NP-Z2-9]{12}$/.test(code), 'código de 12 caracteres')
     assert(await ana.getByText(/vence el/).isVisible(), 'la invitación muestra su vencimiento')
@@ -160,7 +171,7 @@ async function addExpense(page, digits, note) {
     assert(true, 'Ana ve en tiempo real que el hogar quedó completo')
 
     step('Gastos fijos: se anotan solos y los ve la pareja')
-    await tab(ana, 'Plata')
+    await tab(ana, 'Finanzas')
     await ana.getByRole('button', { name: 'Fijos' }).click()
     await ana.getByRole('button', { name: 'Agregar gasto fijo' }).click()
     await ana.getByLabel('Nombre').fill('Arriendo')
@@ -178,7 +189,7 @@ async function addExpense(page, digits, note) {
     assert(sql(`select count(*) from public.expenses e join public.members m on m.household_id = e.household_id join auth.users u on u.id = m.user_id where e.note = 'Arriendo' and u.email = '${mail('ana')}'`) === '1', 'abrir la app de nuevo no lo duplica')
 
     step('Ingresos extra: privados')
-    await tab(ana, 'Plata')
+    await tab(ana, 'Finanzas')
     await ana.getByRole('button', { name: 'Sueldo', exact: true }).click()
     await ana.getByLabel('Sueldo líquido (lo que te llega al banco)').fill('1000000')
     await ana.getByRole('button', { name: 'Guardar', exact: true }).click()
@@ -188,7 +199,7 @@ async function addExpense(page, digits, note) {
     await ana.getByRole('button', { name: 'Guardar ingreso' }).click()
     await ana.getByText('Ingresos (sueldo + extras)').waitFor({ timeout: 15000 })
     assert(await ana.getByText('$1.200.000').first().isVisible(), 'el bono se suma al sueldo: $1.200.000')
-    await tab(beto, 'Plata')
+    await tab(beto, 'Finanzas')
     await beto.getByRole('button', { name: 'Sueldo', exact: true }).click()
     await beto.getByText('Otros ingresos de').waitFor({ timeout: 15000 })
     assert((await beto.getByText('Bono-secreto').count()) === 0, 'Beto no ve el ingreso de Ana')
@@ -203,7 +214,7 @@ async function addExpense(page, digits, note) {
     assert(await ana.getByText(/Tu salud financiera de/).isVisible(), 'Ana ve su puntaje (ya puso su sueldo)')
     assert(await ana.getByText(/costo real/).first().isVisible(), 'el resumen interpreta su situación en palabras')
     assert((await ana.locator('.legend-item', { hasText: 'Supermercado' }).count()) === 1, 'el anillo muestra la categoría de su gasto fijo con su monto')
-    await tab(beto, 'Plata')
+    await tab(beto, 'Finanzas')
     await beto.getByRole('button', { name: 'Análisis' }).click()
     await beto.getByText('Tu panorama').waitFor({ timeout: 20000 })
     assert(await beto.getByRole('button', { name: 'Poner mi sueldo' }).isVisible(), 'Beto (sin sueldo) ve el aviso para ponerlo y ningún puntaje')
@@ -244,7 +255,7 @@ async function addExpense(page, digits, note) {
 
     step('Beto anota un gasto y sale del hogar')
     await addExpense(beto, ['7', '7', '7'], 'pan-de-beto')
-    await tab(beto, 'Ajustes')
+    await tab(beto, 'Ajustes', 'Salir del hogar o borrar la cuenta')
     await beto.getByRole('button', { name: 'Salir de este hogar' }).click()
     await beto.getByLabel('Escribe tu contraseña para confirmar').fill('mala-clave-123')
     await beto.getByRole('button', { name: 'Salir del hogar' }).click()
@@ -254,7 +265,7 @@ async function addExpense(page, digits, note) {
     await beto.getByRole('button', { name: 'Salir del hogar' }).click()
     await beto.getByText('Armemos tu hogar').waitFor({ timeout: 30000 })
     assert(true, 'Beto queda sin hogar')
-    await tab(ana, 'Ajustes')
+    await tab(ana, 'Ajustes', 'Mi hogar e invitación')
     await ana.getByRole('button', { name: 'Generar código de invitación' }).waitFor({ timeout: 15000 })
     assert(true, 'Ana ve en tiempo real que quedó sola y puede invitar a otra persona')
     await tab(ana, 'Gastos')
@@ -282,7 +293,7 @@ async function addExpense(page, digits, note) {
     assert(true, 'el historial de Ana sigue intacto')
 
     step('Ana (sola) borra su cuenta: se va el hogar completo')
-    await tab(ana, 'Ajustes')
+    await tab(ana, 'Ajustes', 'Salir del hogar o borrar la cuenta')
     await ana.getByRole('button', { name: 'Borrar mi cuenta' }).click()
     await ana.getByLabel('Escribe tu contraseña para confirmar').fill(PW)
     await ana.getByRole('button', { name: 'Borrar mi cuenta para siempre' }).click()

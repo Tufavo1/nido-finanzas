@@ -268,7 +268,7 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
       insights.push({
         level: 'warn',
         title: `Te faltan ~${money(gap)} al mes para ahorrar el 10 %`,
-        detail: top ? `Lo más fácil es empezar por «${top.name}», donde se va el ${top.pct} % de tu gasto.` : 'Revisa tus gastos más grandes.',
+        detail: top ? `Lo más fácil es empezar por **${top.name}**, donde se va el ${top.pct} % de tu gasto.` : 'Revisa tus gastos más grandes.',
       })
     }
   }
@@ -284,20 +284,20 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
     if (pct >= JUMP_PCT && diff >= JUMP_MIN_CLP) {
       insights.push({
         level: 'warn',
-        title: isCurrent ? `«${c.name}» ya superó tu mes típico` : `«${c.name}» subió ${pct} %`,
+        title: isCurrent ? `**${c.name}** ya superó tu mes típico` : `**${c.name}** subió ${pct} %`,
         detail: `${isCurrent ? 'Llevas' : 'Gastaste'} ${money(c.amount)} y tu promedio es ${money(Math.round(base))} (${money(Math.round(diff))} más).`,
       })
     } else if (!isCurrent && pct <= -JUMP_PCT && -diff >= JUMP_MIN_CLP) {
       insights.push({
         level: 'ok',
-        title: `«${c.name}» bajó ${-pct} %`,
+        title: `**${c.name}** bajó ${-pct} %`,
         detail: `Gastaste ${money(c.amount)} frente a tu promedio de ${money(Math.round(base))}. Buen control.`,
       })
     }
   }
 
   if (top && top.pct >= DOMINANT_SHARE && !HOUSING.test(top.name) && slices.length > 1) {
-    insights.push({ level: 'warn', title: `«${top.name}» es el ${top.pct} % de tu gasto`, detail: 'Una sola categoría concentra casi la mitad. Vale la pena revisarla.' })
+    insights.push({ level: 'warn', title: `**${top.name}** es el ${top.pct} % de tu gasto`, detail: 'Una sola categoría concentra casi la mitad. Vale la pena revisarla.' })
   }
 
   const smallTotal = Math.round(sum(small))

@@ -52,7 +52,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
         id: `bud-over:${c.id}:${mk}`,
         level: 'bad',
         area: 'gastos',
-        title: `«${c.name}» se pasó del presupuesto`,
+        title: `**${c.name}** se pasó del presupuesto`,
         detail: `Llevan ${money(c.spent)} de ${money(c.budget)} (${money(c.spent - c.budget)} de más).`,
         tab: 'expenses',
       })
@@ -61,7 +61,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
         id: `bud-80:${c.id}:${mk}`,
         level: 'warn',
         area: 'gastos',
-        title: `«${c.name}» va en ${Math.round(ratio * 100)} % del presupuesto`,
+        title: `**${c.name}** va en ${Math.round(ratio * 100)} % del presupuesto`,
         detail: `Quedan ${money(c.budget - c.spent)}${isCurrent ? ` para ${daysInMonth - today} días` : ''}.`,
         tab: 'expenses',
       })
@@ -72,7 +72,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
           id: `bud-proj:${c.id}:${mk}`,
           level: 'warn',
           area: 'gastos',
-          title: `«${c.name}» terminaría pasada de presupuesto`,
+          title: `**${c.name}** terminaría pasada de presupuesto`,
           detail: `A este ritmo cerraría en ~${money(projected)} y el presupuesto es ${money(c.budget)}.`,
           tab: 'expenses',
         })
@@ -160,7 +160,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
         id: `jump:${top.c.id}:${mk}`,
         level: 'warn',
         area: 'gastos',
-        title: `«${top.c.name}» subió harto frente al mes pasado`,
+        title: `**${top.c.name}** subió harto frente al mes pasado`,
         detail: `${money(top.c.spent)} vs ${money(top.prev)} a esta misma fecha.`,
         tab: 'home',
       })
@@ -268,7 +268,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
         id: `goal-done:${g.id}`,
         level: 'ok',
         area: 'metas',
-        title: `¡Lograron «${g.name}»!`,
+        title: `¡Lograron **${g.name}**!`,
         detail: 'Ya juntaron todo. Pueden archivarla o crear una nueva.',
         tab: 'goals',
       })
@@ -284,7 +284,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
           id: `goal-late:${g.id}`,
           level: 'bad',
           area: 'metas',
-          title: `«${g.name}» ya pasó su fecha`,
+          title: `**${g.name}** ya pasó su fecha`,
           detail: `Faltan ${money(remaining)}. Cambien la fecha o suban los aportes.`,
           tab: 'goals',
         })
@@ -295,7 +295,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
             id: `goal-pace:${g.id}:${mk}`,
             level: 'warn',
             area: 'metas',
-            title: `«${g.name}» va atrasada`,
+            title: `**${g.name}** va atrasada`,
             detail: `Para llegar a tiempo necesitan ~${money(need)} al mes y el último mes aportaron ${money(recent)}.`,
             tab: 'goals',
           })
@@ -306,7 +306,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
         id: `goal-idle:${g.id}:${mk}`,
         level: 'info',
         area: 'metas',
-        title: `«${g.name}» lleva un mes sin aportes`,
+        title: `**${g.name}** lleva un mes sin aportes`,
         detail: 'Un aporte chico seguido rinde más que uno grande de vez en cuando.',
         tab: 'goals',
       })

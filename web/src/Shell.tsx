@@ -2,11 +2,15 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react
 import type { Household } from './App'
 import Icon from './components/Icon'
 import InstallBanner from './components/InstallBanner'
+import LockScreen from './components/LockScreen'
+import OfflineBar from './components/OfflineBar'
 import Toast from './components/Toast'
+import type { ToastData, ToastKind } from './components/Toast'
 import { useData } from './lib/data'
 import { buildAlerts } from './lib/engine'
 import type { AlertTab } from './lib/engine'
 import { notifyNewAlerts } from './lib/smartNotify'
+import { useAppLock } from './lib/useAppLock'
 const Expenses = lazy(() => import('./screens/Expenses'))
 const Goals = lazy(() => import('./screens/Goals'))
 import Home from './screens/Home'
@@ -18,21 +22,39 @@ const TABS = [
   { key: 'home', label: 'Inicio', icon: 'home' },
   { key: 'expenses', label: 'Gastos', icon: 'list' },
   { key: 'add', label: 'Registrar', icon: 'plus' },
-  { key: 'money', label: 'Plata', icon: 'wallet' },
+  { key: 'money', label: 'Finanzas', icon: 'wallet' },
   { key: 'goals', label: 'Metas', icon: 'target' },
-  { key: 'security', label: 'Ajustes', icon: 'shield' },
 ] as const
 
-type Tab = (typeof TABS)[number]['key']
+// Ajustes no tiene pestaña propia: se abre con el engranaje de Inicio, así Registrar queda en el centro
+type Tab = (typeof TABS)[number]['key'] | 'security'
+
+// Cuando el navegador está libre, deja listas las pantallas pesadas para que abran al instante
+function warmScreens() {
+  void import('./screens/Expenses')
+  void import('./screens/Money')
+  void import('./screens/Goals')
+  void import('./screens/Register')
+}
 
 export default function Shell({ hh, reload }: { hh: Household; reload: () => Promise<void> }) {
-  const [tab, setTab] = useState<Tab>('home')
+  // Los accesos directos de la app instalada abren con ?tab=add, ?tab=expenses, etc.
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = new URLSearchParams(location.search).get('tab')
+    return TABS.some((x) => x.key === t) ? (t as Tab) : 'home'
+  })
+  const { locked, unlock } = useAppLock()
+  useEffect(() => {
+    const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 2000))
+    idle(warmScreens)
+  }, [])
   const [ym, setYm] = useState(() => {
     const n = new Date()
     return { y: n.getFullYear(), m: n.getMonth() }
   })
-  const [toast, setToast] = useState<string | null>(null)
-  const clearToast = useCallback(() => setToast(null), [])
+  const [toast, setToastData] = useState<ToastData | null>(null)
+  const clearToast = useCallback(() => setToastData(null), [])
+  const setToast = useCallback((text: string, kind: ToastKind = 'success') => setToastData({ text, kind, id: Date.now() }), [])
   const data = useData(hh.household.id, hh.me.user_id, ym.y, ym.m, reload)
 
   const now = new Date()
@@ -84,21 +106,24 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
       </main>
     )
   } else if (tab === 'home') {
-    body = <Home hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} alerts={alerts} onGo={(t: AlertTab) => setTab(t === 'security' ? 'security' : t)} />
+    body = <Home hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} alerts={alerts} onGo={(t: AlertTab) => setTab(t)} onSettings={() => setTab('security')} />
   } else if (tab === 'expenses') {
-    body = <Expenses hh={hh} data={data} onToast={setToast} />
+    body = <Expenses hh={hh} data={data} month={month} onToast={setToast} />
   } else if (tab === 'add') {
     body = <Register hh={hh} data={data} onSaved={backToNow} />
   } else if (tab === 'money') {
     body = <Money hh={hh} data={data} month={month} onToast={setToast} />
   } else if (tab === 'goals') {
-    body = <Goals hh={hh} data={data} />
+    body = <Goals hh={hh} data={data} onToast={setToast} />
   } else {
     body = <Security hh={hh} reload={reload} data={data} onToast={setToast} />
   }
 
+  if (locked) return <LockScreen onUnlock={unlock} />
+
   return (
     <div className="app">
+      <OfflineBar />
       <Suspense
         fallback={
           <main className="screen center-y">
@@ -134,7 +159,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
         ))}
       </nav>
       <InstallBanner onToast={setToast} />
-      {toast && <Toast text={toast} onDone={clearToast} />}
+      {toast && <Toast toast={toast} onDone={clearToast} />}
     </div>
   )
 }

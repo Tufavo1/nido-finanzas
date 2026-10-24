@@ -2,9 +2,15 @@ import { Suspense, lazy, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import AboutCard from '../components/AboutCard'
+import BackupCard from '../components/BackupCard'
+import LockSettings from '../components/LockSettings'
+import SecurityInfo from '../components/SecurityInfo'
+import SettingsItem from '../components/SettingsItem'
 import AccessCard from '../components/AccessCard'
 import Avatar from '../components/Avatar'
 import Icon from '../components/Icon'
+import { getLockMinutes } from '../lib/applock'
+import { VERSION } from '../lib/about'
 import LeaveAccount from '../components/LeaveAccount'
 import WidgetTokens from '../components/WidgetTokens'
 import PushToggle from '../components/PushToggle'
@@ -16,6 +22,7 @@ import { useIsAdmin } from '../lib/admin'
 import { STRENGTH_LABEL, friendlyError, passwordStrength } from '../lib/security'
 import { confirmPassword } from '../lib/reauth'
 import { supabase } from '../lib/supabase'
+import type { Notify } from '../components/Toast'
 
 const Admin = lazy(() => import('./Admin'))
 
@@ -28,9 +35,11 @@ export default function Security({
   hh: Household
   reload: () => Promise<void>
   data: HouseholdData
-  onToast: (text: string) => void
+  onToast: Notify
 }) {
   const [copied, setCopied] = useState(false)
+  const [open, setOpen] = useState<string | null>(null)
+  const toggle = (id: string) => setOpen((cur) => (cur === id ? null : id))
   const isAdmin = useIsAdmin()
   const [showAdmin, setShowAdmin] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -108,9 +117,27 @@ export default function Security({
     )
   }
 
+  const msgs = (
+    <>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      {notice && (
+        <p className="notice" role="status">
+          {notice}
+        </p>
+      )}
+    </>
+  )
+  const item = { open: false, onToggle: toggle }
+  const lockMin = getLockMinutes()
+  const partner = hh.members.find((m) => m.user_id !== hh.me.user_id)
+
   return (
     <main className="screen">
-      <h1 className="title">Ajustes y seguridad</h1>
+      <h1 className="title">Ajustes</h1>
 
       {isAdmin && (
         <section className="card">
@@ -122,127 +149,171 @@ export default function Security({
         </section>
       )}
 
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p className="notice" role="status">
-          {notice}
-        </p>
-      )}
+      <h2 className="set-group">Cuenta</h2>
+      <div className="set-list">
+        <SettingsItem {...item} id="profile" icon="user" title="Mi perfil" summary={hh.me.display_name} open={open === 'profile'}>
+          <ProfileCard hh={hh} data={data} reload={reload} onToast={onToast} />
+        </SettingsItem>
 
-      <ProfileCard hh={hh} data={data} reload={reload} onToast={onToast} />
-
-      <section className="card">
-        <strong>{hh.household.name}</strong>
-        {hh.members.map((m) => (
-          <div className="row" key={m.user_id}>
-            <Avatar name={m.display_name} color={m.color} />
-            <span className="grow">
-              {m.display_name}
-              {m.user_id === hh.me.user_id ? ' (tú)' : ''}
-            </span>
-          </div>
-        ))}
-      </section>
-
-      <section className="card">
-        <strong>Invitación</strong>
-        {incomplete && code ? (
-          <>
-            <span className="muted">
-              Compártelo solo con tu pareja. Sirve una vez y vence el {new Date(expires ?? '').toLocaleDateString('es-CL')}.
-            </span>
-            <div className="row between">
-              <span className="code">{code}</span>
-              <button type="button" className="icon-btn" aria-label="Copiar código" onClick={() => void copy(code)}>
-                <Icon name="copy" size={20} />
-              </button>
-            </div>
-            {copied && <span className="notice">Copiado</span>}
-            <button type="button" className="btn ghost small" onClick={() => void rotate()}>
-              Generar código nuevo
-            </button>
-          </>
-        ) : incomplete ? (
-          <>
-            <span className="muted">
-              {hh.household.invite_code ? 'El código venció. ' : ''}Si quieres sumar a tu pareja, genera un código y
-              compártelo con ella o él. Un hogar es de 1 o 2 personas.
-            </span>
-            <button type="button" className="btn ghost small" onClick={() => void rotate()}>
-              Generar código de invitación
-            </button>
-          </>
-        ) : (
-          <span className="muted">El hogar está completo (2 de 2). Nadie más puede unirse.</span>
-        )}
-      </section>
-
-      <ThemeToggle />
-
-      <section className="card">
-        <strong>Cuenta y contraseña</strong>
-        <form className="stack tight" onSubmit={(e) => void changePassword(e)}>
-          <div className="field">
-            <label htmlFor="curpw">Contraseña actual</label>
-            <input
-              id="curpw"
-              className="input"
-              type="password"
-              autoComplete="current-password"
-              value={currentPw}
-              onChange={(e) => setCurrentPw(e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="newpw">Nueva contraseña</label>
-            <input
-              id="newpw"
-              className="input"
-              type="password"
-              autoComplete="new-password"
-              minLength={10}
-              maxLength={72}
-              value={pw}
-              onChange={(e) => setPw(e.target.value)}
-            />
-          </div>
-          {pw && (
-            <>
-              <div className={strength <= 1 ? 'strength weak' : 'strength'} aria-hidden="true">
-                {[1, 2, 3, 4].map((i) => (
-                  <span key={i} className={strength >= i ? 'on' : ''} />
-                ))}
+        <SettingsItem
+          {...item}
+          id="home"
+          icon="home"
+          title="Mi hogar e invitación"
+          summary={partner ? `${hh.household.name} · con ${partner.display_name}` : `${hh.household.name} · 1 de 2 personas`}
+          open={open === 'home'}
+        >
+          {open === 'home' && msgs}
+          <section className="card">
+            <strong>{hh.household.name}</strong>
+            {hh.members.map((m) => (
+              <div className="row" key={m.user_id}>
+                <Avatar name={m.display_name} color={m.color} />
+                <span className="grow">
+                  {m.display_name}
+                  {m.user_id === hh.me.user_id ? ' (tú)' : ''}
+                </span>
               </div>
-              <span className="hint" aria-live="polite">
-                {STRENGTH_LABEL[strength]}
-              </span>
-            </>
-          )}
-          <button className="btn ghost small" type="submit" disabled={busy || !pw || !currentPw}>
-            Cambiar contraseña
-          </button>
-        </form>
-        <button type="button" className="btn ghost small" onClick={() => void signOutOthers()}>
-          Cerrar sesión en otros dispositivos
-        </button>
-        <span className="hint">Úsalo si perdiste el teléfono o entraste desde un equipo ajeno.</span>
-      </section>
+            ))}
+          </section>
+          <section className="card">
+            <strong>Invitación</strong>
+            {incomplete && code ? (
+              <>
+                <span className="muted">
+                  Compártelo solo con tu pareja. Sirve una vez y vence el {new Date(expires ?? '').toLocaleDateString('es-CL')}.
+                </span>
+                <div className="row between">
+                  <span className="code">{code}</span>
+                  <button type="button" className="icon-btn" aria-label="Copiar código" onClick={() => void copy(code)}>
+                    <Icon name="copy" size={20} />
+                  </button>
+                </div>
+                {copied && <span className="notice">Copiado</span>}
+                <button type="button" className="btn ghost small" onClick={() => void rotate()}>
+                  Generar código nuevo
+                </button>
+              </>
+            ) : incomplete ? (
+              <>
+                <span className="muted">
+                  {hh.household.invite_code ? 'El código venció. ' : ''}Si quieres sumar a tu pareja, genera un código y
+                  compártelo con ella o él. Un hogar es de 1 o 2 personas.
+                </span>
+                <button type="button" className="btn ghost small" onClick={() => void rotate()}>
+                  Generar código de invitación
+                </button>
+              </>
+            ) : (
+              <span className="muted">El hogar está completo (2 de 2). Nadie más puede unirse.</span>
+            )}
+          </section>
+        </SettingsItem>
 
-      <AccessCard />
+        <SettingsItem {...item} id="theme" icon="gear" title="Apariencia" summary="Claro, oscuro o automático" open={open === 'theme'}>
+          <ThemeToggle />
+        </SettingsItem>
+      </div>
 
-      <PushToggle />
+      <h2 className="set-group">Seguridad</h2>
+      <div className="set-list">
+        <SettingsItem {...item} id="password" icon="lock" title="Contraseña y sesiones" summary="Cambiar contraseña, cerrar otras sesiones" open={open === 'password'}>
+          {open === 'password' && msgs}
+          <section className="card">
+            <form className="stack tight" onSubmit={(e) => void changePassword(e)}>
+              <div className="field">
+                <label htmlFor="curpw">Contraseña actual</label>
+                <input
+                  id="curpw"
+                  className="input"
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPw}
+                  onChange={(e) => setCurrentPw(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="newpw">Nueva contraseña</label>
+                <input
+                  id="newpw"
+                  className="input"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={10}
+                  maxLength={72}
+                  value={pw}
+                  onChange={(e) => setPw(e.target.value)}
+                />
+              </div>
+              {pw && (
+                <>
+                  <div className={strength <= 1 ? 'strength weak' : 'strength'} aria-hidden="true">
+                    {[1, 2, 3, 4].map((i) => (
+                      <span key={i} className={strength >= i ? 'on' : ''} />
+                    ))}
+                  </div>
+                  <span className="hint" aria-live="polite">
+                    {STRENGTH_LABEL[strength]}
+                  </span>
+                </>
+              )}
+              <button className="btn ghost small" type="submit" disabled={busy || !pw || !currentPw}>
+                Cambiar contraseña
+              </button>
+            </form>
+            <button type="button" className="btn ghost small" onClick={() => void signOutOthers()}>
+              Cerrar sesión en otros dispositivos
+            </button>
+            <span className="hint">Úsalo si perdiste el teléfono o entraste desde un equipo ajeno.</span>
+          </section>
+        </SettingsItem>
 
-      <SmartAlertsSetting />
+        <SettingsItem
+          {...item}
+          id="lock"
+          icon="lock"
+          title="Bloqueo de la app"
+          summary={lockMin > 0 ? `Se bloquea tras ${lockMin} ${lockMin === 1 ? 'minuto' : 'minutos'}` : 'Desactivado'}
+          open={open === 'lock'}
+        >
+          <LockSettings onToast={onToast} />
+        </SettingsItem>
 
-      <WidgetTokens />
+        <SettingsItem {...item} id="security" icon="shield" title="Seguridad de Contigo" summary="Qué la protege de verdad, comprobado en vivo" open={open === 'security'}>
+          <SecurityInfo />
+        </SettingsItem>
+      </div>
 
-      <LeaveAccount hh={hh} reload={reload} />
+      <h2 className="set-group">Aplicación</h2>
+      <div className="set-list">
+        <SettingsItem {...item} id="access" icon="wallet" title="Instalación y conexión" summary="Qué necesita la app y cómo está" open={open === 'access'}>
+          <AccessCard />
+        </SettingsItem>
+        <SettingsItem {...item} id="notify" icon="bell" title="Notificaciones" summary="Avisos del sistema y de tu pareja" open={open === 'notify'}>
+          <PushToggle />
+          <SmartAlertsSetting />
+        </SettingsItem>
+        <SettingsItem {...item} id="widgets" icon="target" title="Widgets y accesos externos" summary="Enlaces para ver tu resumen fuera de la app" open={open === 'widgets'}>
+          <WidgetTokens />
+        </SettingsItem>
+      </div>
 
-      <AboutCard />
+      <h2 className="set-group">Tus datos</h2>
+      <div className="set-list">
+        <SettingsItem {...item} id="backup" icon="download" title="Respaldo y exportación" summary="Descarga una copia de tus datos" open={open === 'backup'}>
+          <BackupCard onToast={onToast} />
+        </SettingsItem>
+        <SettingsItem {...item} id="danger" icon="trash" tone="danger" title="Salir del hogar o borrar la cuenta" summary="Acciones que no se pueden deshacer" open={open === 'danger'}>
+          <LeaveAccount hh={hh} reload={reload} />
+        </SettingsItem>
+      </div>
+
+      <h2 className="set-group">Información</h2>
+      <div className="set-list">
+        <SettingsItem {...item} id="about" icon="info" title="Acerca de Contigo" summary={`Versión ${VERSION}`} open={open === 'about'}>
+          <AboutCard />
+        </SettingsItem>
+      </div>
 
       <button className="btn danger" type="button" onClick={() => void supabase.auth.signOut()}>
         Cerrar sesión

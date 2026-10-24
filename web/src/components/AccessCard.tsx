@@ -68,9 +68,9 @@ export default function AccessCard() {
           }
         }
         if (install === 'ios') {
-          return { tone: 'off', label: 'Sin instalar', detail: 'En iPhone o iPad: toca Compartir en Safari y elige «Añadir a pantalla de inicio».' }
+          return { tone: 'off', label: 'Sin instalar', detail: 'En iPhone o iPad: toca Compartir en Safari y elige Añadir a pantalla de inicio.' }
         }
-        return { tone: 'off', label: 'No disponible aquí', detail: 'Este navegador no permite instalarla. Prueba con Chrome, Edge o Safari, o ábrela desde el menú del navegador («Instalar» o «Añadir a pantalla de inicio»).' }
+        return { tone: 'off', label: 'No disponible aquí', detail: 'Este navegador no permite instalarla. Prueba con Chrome, Edge o Safari, o ábrela desde el menú del navegador (Instalar o Añadir a pantalla de inicio).' }
       case 'push':
         if (push === null) return { tone: 'off', label: 'Comprobando…' }
         if (push === 'on') return { tone: 'ok', label: 'Activadas' }

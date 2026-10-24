@@ -4,7 +4,7 @@ import { supabase } from './supabase'
 export type RecoveryResult = 'none' | 'ready' | 'invalid'
 
 /**
- * Si la página se abrió desde el correo de «olvidé mi contraseña», convierte el enlace en una sesión
+ * Si la página se abrió desde el correo de olvidé mi contraseña, convierte el enlace en una sesión
  * de recuperación. Entiende los tres formatos que usa Supabase (token_hash, code y #access_token) y
  * después borra los datos de la dirección para que el enlace no quede en el historial.
  */

@@ -49,8 +49,9 @@ export interface AdminHousehold {
   active_members: number
   last_activity: string
   expenses: number
-  /** Cumple la regla del servidor: vacío, o 1 persona sin movimiento hace 7 días o más */
+  /** El hogar del propio administrador nunca aparece en la lista */
   deletable: boolean
+  members: { user_id: string; name: string; joined_at: string }[]
 }
 
 export async function fetchEmptyHouseholds(): Promise<AdminHousehold[]> {
@@ -63,4 +64,23 @@ export async function deleteHouseholds(ids: string[]): Promise<{ deleted: number
   const { data, error } = await supabase.rpc('admin_delete_households' as never, { p_ids: ids } as never)
   if (error) throw error
   return data as unknown as { deleted: number; skipped: number }
+}
+
+export async function removeMember(householdId: string, userId: string): Promise<{ removed: boolean; household_deleted: boolean }> {
+  const { data, error } = await supabase.rpc('admin_remove_member' as never, { p_household: householdId, p_user: userId } as never)
+  if (error) throw error
+  return data as unknown as { removed: boolean; household_deleted: boolean }
+}
+
+export interface AdminStorage {
+  db_bytes: number
+  public_bytes: number
+  tables: { name: string; bytes: number }[]
+  bytes_per_day: number
+}
+
+export async function fetchAdminStorage(): Promise<AdminStorage> {
+  const { data, error } = await supabase.rpc('admin_storage' as never)
+  if (error) throw error
+  return data as unknown as AdminStorage
 }

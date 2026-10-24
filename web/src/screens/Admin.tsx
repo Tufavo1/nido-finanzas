@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FREE_LIMITS, deleteHouseholds, fetchAdminStats, fetchEmptyHouseholds } from '../lib/admin'
-import type { AdminHousehold, AdminStats } from '../lib/admin'
+import { FREE_LIMITS, deleteHouseholds, fetchAdminStats, fetchAdminStorage, fetchEmptyHouseholds, removeMember } from '../lib/admin'
+import type { AdminHousehold, AdminStats, AdminStorage } from '../lib/admin'
+import { TABLE_LABEL, fillForecast } from '../lib/storage'
 
 const nf = new Intl.NumberFormat('es-CL')
 const COOLDOWN_S = 30
@@ -83,11 +84,12 @@ function DayChart({ days, field, title }: { days: AdminStats['daily']; field: 's
 const dmy = (iso: string) => new Date(iso).toLocaleDateString('es-CL')
 const daysAgo = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000))
 
-/** Hogares con 0 o 1 persona: se listan solo cuando el administrador lo pide */
+/** Todos los hogares (menos el tuyo): se listan solo cuando el administrador lo pide */
 function Cleanup({ onChanged }: { onChanged: () => void }) {
   const [list, setList] = useState<AdminHousehold[] | null>(null)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [confirm, setConfirm] = useState(false)
+  const [kicking, setKicking] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
@@ -101,7 +103,7 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
       setPicked(new Set())
     } catch (e) {
       console.error(e)
-      setError('No se pudo cargar la lista. Revisa que la migración «panel_admin» esté aplicada.')
+      setError('No se pudo cargar la lista. Revisa que la migración panel_admin esté aplicada.')
     } finally {
       setBusy(false)
     }
@@ -128,6 +130,24 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
   }
 
   const deletable = (list ?? []).filter((h) => h.deletable)
+
+  async function kick(householdId: string, userId: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      const r = await removeMember(householdId, userId)
+      setDone(r.household_deleted ? 'Era la única persona: se borró el hogar.' : r.removed ? 'Persona sacada del hogar.' : 'Esa persona ya no estaba en el hogar.')
+      onChanged()
+      setList(await fetchEmptyHouseholds())
+      setPicked(new Set())
+      setKicking(null)
+    } catch (e) {
+      console.error(e)
+      setError('No se pudo sacar a la persona. Intenta de nuevo.')
+    } finally {
+      setBusy(false)
+    }
+  }
   const toggle = (id: string) => {
     setConfirm(false)
     setDone(null)
@@ -141,18 +161,18 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
 
   return (
     <section className="card">
-      <strong>Limpiar hogares sin uso</strong>
+      <strong>Gestionar hogares</strong>
       <span className="muted small-text">
-        Hogares vacíos, o con una sola persona que lleva 7 días o más sin anotar nada. Al borrarlos se van también sus gastos,
-        metas y deudas. Las cuentas de correo no se borran. Los hogares de pareja nunca aparecen aquí.
+        Aquí están todos los hogares, menos el tuyo. Puedes sacar a una persona de su hogar o borrar hogares completos con sus gastos,
+        metas y deudas. Las cuentas de correo no se borran.
       </span>
       {list === null ? (
         <button type="button" className="btn small" disabled={busy} onClick={() => void load()}>
-          {busy ? 'Buscando…' : 'Buscar hogares sin uso'}
+          {busy ? 'Buscando…' : 'Ver hogares'}
         </button>
       ) : (
         <>
-          {list.length === 0 && <p className="notice">No hay hogares para limpiar. Todo está en uso.</p>}
+          {list.length === 0 && <p className="notice">No hay otros hogares.</p>}
           {list.length > 0 && (
             <>
               <div className="fixed-actions">
@@ -164,7 +184,7 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
                     setPicked(new Set(deletable.map((h) => h.id)))
                   }}
                 >
-                  Elegir los {deletable.length} que se pueden borrar
+                  Elegir todos ({deletable.length})
                 </button>
                 <button type="button" className="txt-btn" onClick={() => setPicked(new Set())}>
                   Quitar la elección
@@ -173,17 +193,35 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
               <ul className="clean-list">
                 {list.map((h) => (
                   <li key={h.id}>
-                    <label className={h.deletable ? 'clean-row' : 'clean-row off'}>
-                      <input type="checkbox" disabled={!h.deletable || busy} checked={picked.has(h.id)} onChange={() => toggle(h.id)} />
+                    <label className="clean-row">
+                      <input type="checkbox" disabled={busy} checked={picked.has(h.id)} onChange={() => toggle(h.id)} />
                       <span className="grow">
                         <span className="strong">Hogar {h.code}</span>
                         <span className="line-help">
-                          {h.active_members === 0 ? 'Sin personas' : '1 persona'} · {nf.format(h.expenses)} gastos · creado el{' '}
-                          {dmy(h.created_at)} · último movimiento hace {daysAgo(h.last_activity)} días
+                          {h.active_members === 0 ? 'Sin personas' : h.active_members === 1 ? '1 persona' : `${h.active_members} personas`} ·{' '}
+                          {nf.format(h.expenses)} gastos · creado el {dmy(h.created_at)} · último movimiento hace {daysAgo(h.last_activity)} días
                         </span>
-                        {!h.deletable && <span className="line-help">Se usó hace poco: protegido por ahora.</span>}
                       </span>
                     </label>
+                    {h.members.map((m) => (
+                      <div key={m.user_id} className="row between small-text">
+                        <span>{m.name} <span className="muted">· desde {dmy(m.joined_at)}</span></span>
+                        {kicking === m.user_id ? (
+                          <span className="row">
+                            <button type="button" className="btn danger small" disabled={busy} onClick={() => void kick(h.id, m.user_id)}>
+                              Sí, sacar
+                            </button>
+                            <button type="button" className="btn ghost small" onClick={() => setKicking(null)}>
+                              No
+                            </button>
+                          </span>
+                        ) : (
+                          <button type="button" className="txt-btn" disabled={busy} onClick={() => setKicking(m.user_id)}>
+                            Sacar
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </li>
                 ))}
               </ul>
@@ -230,6 +268,7 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
 
 export default function Admin({ onBack }: { onBack: () => void }) {
   const [stats, setStats] = useState<AdminStats | null>(null)
+  const [storage, setStorage] = useState<AdminStorage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [wait, setWait] = useState(0)
@@ -239,10 +278,12 @@ export default function Admin({ onBack }: { onBack: () => void }) {
     setBusy(true)
     setError(null)
     try {
-      setStats(await fetchAdminStats())
+      const [st, sg] = await Promise.all([fetchAdminStats(), fetchAdminStorage().catch(() => null)])
+      setStats(st)
+      setStorage(sg)
     } catch (e) {
       console.error(e)
-      setError('No se pudo cargar el panel. Revisa que la migración «panel_admin» esté aplicada.')
+      setError('No se pudo cargar el panel. Revisa que la migración panel_admin esté aplicada.')
     } finally {
       setBusy(false)
       // Pausa entre consultas para no cargar la base del plan gratuito
@@ -358,6 +399,26 @@ export default function Admin({ onBack }: { onBack: () => void }) {
               gratuito: con un servicio propio de correo (SMTP) ese tope sube.
             </span>
           </section>
+
+          {storage && (
+            <section className="card">
+              <strong>Dónde está el espacio</strong>
+              <span className="muted small-text">
+                Las tablas de la app ocupan {mb(storage.public_bytes)}; el resto de los {mb(storage.db_bytes)} son tablas internas de Supabase.
+              </span>
+              <Bars
+                rows={storage.tables
+                  .filter((t) => t.bytes > 0)
+                  .slice(0, 6)
+                  .map((t) => ({ label: TABLE_LABEL[t.name] ?? t.name, value: Math.round(t.bytes / 1024) }))}
+                unit="KB"
+              />
+              <span className="line-help">{fillForecast(storage.db_bytes, FREE_LIMITS.dbBytes, storage.bytes_per_day).text}</span>
+              <span className="line-help">
+                La app ya cuida el espacio sola: borra cada día los intentos de invitación vencidos y nunca guarda copias de tus datos en el navegador.
+              </span>
+            </section>
+          )}
 
           <Cleanup onChanged={() => void load()} />
         </>

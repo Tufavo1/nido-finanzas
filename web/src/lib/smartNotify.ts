@@ -1,4 +1,5 @@
 import type { Alert } from './engine'
+import { plain } from './plain'
 
 const SEEN = 'contigo-seen-alerts'
 const PREF = 'contigo-smart-notify'
@@ -43,9 +44,9 @@ export async function notifyNewAlerts(alerts: Alert[]): Promise<number> {
   try {
     const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.ready : null
     for (const a of fresh) {
-      const opts = { body: a.detail, icon: '/pwa-192x192.png', badge: '/pwa-64x64.png', tag: a.id }
-      if (reg) await reg.showNotification(a.title, opts)
-      else new Notification(a.title, opts)
+      const opts = { body: plain(a.detail), icon: '/pwa-192x192.png', badge: '/pwa-64x64.png', tag: a.id }
+      if (reg) await reg.showNotification(plain(a.title), opts)
+      else new Notification(plain(a.title), opts)
     }
     localStorage.setItem(SEEN, JSON.stringify([...seen, ...fresh.map((a) => a.id)].slice(-300)))
   } catch {
