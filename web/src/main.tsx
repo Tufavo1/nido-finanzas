@@ -1,16 +1,16 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { registerSW } from 'virtual:pwa-register'
 import './styles.css'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import { startInstallWatcher } from './lib/install'
+import { startUpdateWatcher } from './lib/update'
 import { applyTheme, watchSystemTheme } from './lib/theme'
 
 startInstallWatcher()
 applyTheme()
 watchSystemTheme()
-registerSW({ immediate: true })
+startUpdateWatcher()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
