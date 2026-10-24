@@ -65,7 +65,7 @@ describe('costo real y en qué se va', () => {
 })
 
 describe('puntaje', () => {
-  it('con sueldo alto y sin deudas: ahorro y deudas completos, colchón en cero', () => {
+  it('con sueldo alto y sin deudas: ahorro y deudas completos, ahorro para imprevistos en cero', () => {
     const a = buildAnalysis(base({ salary: SALARY, history: [exp(80_000, '2026-10-03')] }))
     expect(a.score?.parts.find((p) => p.key === 'ahorro')?.points).toBe(40)
     expect(a.score?.parts.find((p) => p.key === 'deudas')?.points).toBe(25)
@@ -124,15 +124,15 @@ describe('qué mejorar', () => {
     const a = buildAnalysis(base({ history: chicos }))
     expect(a.insights.find((i) => i.title.includes('gastos chicos'))?.detail).toContain('9 compras')
   })
-  it('avisa si el colchón es corto y cómo llegar a 3 meses', () => {
+  it('avisa si el ahorro para imprevistos es corto y cómo llegar a 3 meses', () => {
     const a = buildAnalysis(base({ history: [...prior(100_000), exp(100_000, '2026-10-05')], contributions: [{ user_id: 'a', amount: 40_000 }] }))
-    const f = a.insights.find((i) => i.title.startsWith('Tu colchón cubre'))
+    const f = a.insights.find((i) => i.title.startsWith('Tu ahorro para imprevistos cubre'))
     expect(f?.level).toBe('bad') // 0,4 meses
     expect(f?.detail).toContain('3 meses')
   })
-  it('lo que aportó tu pareja no cuenta como tu colchón', () => {
+  it('lo que aportó tu pareja no cuenta como tu ahorro para imprevistos', () => {
     const a = buildAnalysis(base({ history: [...prior(100_000), exp(100_000, '2026-10-05')], contributions: [{ user_id: 'b', amount: 900_000 }] }))
-    expect(a.insights.find((i) => i.title.startsWith('Tu colchón cubre'))?.level).toBe('bad')
+    expect(a.insights.find((i) => i.title.startsWith('Tu ahorro para imprevistos cubre'))?.level).toBe('bad')
   })
   it('avisa cuando el gasto lleva 3 meses subiendo', () => {
     const h = [exp(100_000, '2026-07-10'), exp(120_000, '2026-08-10'), exp(140_000, '2026-09-10')]

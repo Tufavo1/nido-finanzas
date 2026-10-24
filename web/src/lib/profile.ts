@@ -116,7 +116,7 @@ const GROUPS: Group[] = [
     words: ['diseñ', 'disen', 'fotograf', 'artista', 'musico', 'editor', 'ilustrador', 'video', 'escritor', 'arquitect', 'creativ'],
     variable: true,
     tips: [
-      'Los proyectos llegan por rachas: guarda un colchón para los meses sin encargos.',
+      'Los proyectos llegan por rachas: guarda un ahorro para los meses sin encargos.',
       'Anota tus clientes y fechas de cobro; la plata atrasada también cuenta como riesgo.',
     ],
   },
@@ -147,7 +147,7 @@ export function professionGroup(profession: string): Group | null {
 
 export interface ProfileAdvice {
   groupLabel: string | null
-  /** Meses de gasto que conviene tener guardados como fondo de emergencia */
+  /** Meses de gasto que conviene tener guardados para imprevistos */
   emergencyMonths: number
   /** Porcentaje del sueldo que conviene ahorrar */
   savingsTargetPct: number
@@ -185,7 +185,7 @@ export function adviceFor(p: Pick<Profile, 'profession' | 'employment' | 'depend
   }
   if (dependents > 0) {
     tips.push(
-      `Con ${dependents} ${dependents === 1 ? 'persona a cargo' : 'personas a cargo'} suma un mes extra de colchón y revisa un seguro de vida o de salud.`,
+      `Con ${dependents} ${dependents === 1 ? 'persona a cargo' : 'personas a cargo'} suma un mes extra de ahorro para imprevistos y revisa un seguro de vida o de salud.`,
     )
   }
   if (tips.length === 0) {

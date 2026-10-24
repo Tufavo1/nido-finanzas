@@ -180,8 +180,8 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
               <p>
                 Suma hasta 100 puntos con cuatro cosas: <strong>ahorro</strong> (40, llegando al 20 % de lo que ganas),{' '}
                 <strong>deudas</strong> (25, con cuotas bajo el 15 % de tu ingreso), <strong>presupuesto</strong> (15, categorías del hogar
-                dentro de lo definido) y <strong>colchón</strong> (20, lo aportado a metas frente a 6 meses de gastos). Si falta
-                alguno, el puntaje se calcula con lo que hay. Es una guía para ordenarte, no una asesoría financiera.
+                dentro de lo definido) y <strong>ahorro para imprevistos</strong> (20, lo aportado a metas frente a 6 meses de gastos). Si falta
+                alguno, el puntaje se calcula con lo que hay. Es una orientación con tus datos; no reemplaza a un asesor financiero.
               </p>
             </details>
           </div>

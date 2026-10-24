@@ -234,7 +234,7 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
     if (monthsCovered !== null) {
       parts.push({
         key: 'colchon',
-        label: 'Colchón',
+        label: 'Ahorro para imprevistos',
         max: 20,
         points: Math.round(clamp(monthsCovered / 6, 0, 1) * 20),
         level: monthsCovered >= 3 ? 'ok' : monthsCovered >= 1 ? 'warn' : 'bad',
@@ -324,11 +324,11 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
       const target = Math.round(baseCost * 3)
       insights.push({
         level: monthsCovered < 1 ? 'bad' : 'warn',
-        title: `Tu colchón cubre ${monthsCovered.toFixed(1).replace('.', ',')} meses`,
+        title: `Tu ahorro para imprevistos cubre ${monthsCovered.toFixed(1).replace('.', ',')} meses`,
         detail: `Primera meta: 3 meses de gastos (~${money(target)}). Aportando ~${money(Math.max(1000, Math.round((target - myContrib) / 12)))} al mes la alcanzas en un año.`,
       })
     } else if (monthsCovered >= 6) {
-      insights.push({ level: 'ok', title: 'Tienes un colchón sólido', detail: `Lo ahorrado cubre más de ${Math.floor(monthsCovered)} meses de tus gastos.` })
+      insights.push({ level: 'ok', title: 'Tu ahorro para imprevistos está sólido', detail: `Lo ahorrado cubre más de ${Math.floor(monthsCovered)} meses de tus gastos.` })
     }
   }
 

@@ -201,7 +201,7 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
 
       <Intro
         title="Metas: ahorrar juntos para algo concreto"
-        text="Una meta es algo que quieren pagar con ahorro: un viaje, un fondo de emergencia, un electrodoméstico. Cada aporte que anotan acerca la barra al objetivo."
+        text="Una meta es algo que quieren pagar con ahorro: un viaje, el ahorro para imprevistos, un electrodoméstico. Cada aporte que anotan acerca la barra al objetivo."
         steps={[
           'Toca **Nueva meta**.',
           'Escribe qué quieren lograr y **cuánto cuesta**.',

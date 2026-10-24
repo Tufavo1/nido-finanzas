@@ -322,7 +322,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
         level: 'info',
         area: 'perfil',
         title: 'Completa tu perfil',
-        detail: 'Con tu profesión y tipo de trabajo ajusto el fondo de emergencia y los consejos para ti.',
+        detail: 'Con tu profesión y tipo de trabajo ajusto tu ahorro para imprevistos y los consejos para ti.',
         tab: 'security',
       })
     }
@@ -337,7 +337,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
           id: 'fund-missing',
           level: 'warn',
           area: 'perfil',
-          title: 'Les falta un fondo de emergencia',
+          title: 'Les falta ahorro para imprevistos',
           detail: `Por tu perfil conviene tener ${advice.emergencyMonths} meses de gastos: unos ${money(target)}. Créenlo como meta.`,
           tab: 'goals',
         })
@@ -349,7 +349,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
             id: `fund-low:${Math.floor((saved * 4) / target)}`,
             level: 'info',
             area: 'perfil',
-            title: 'Fondo de emergencia a medio camino',
+            title: 'Ahorro para imprevistos a medio camino',
             detail: `Llevan ${money(saved)} de ${money(target)} (${advice.emergencyMonths} meses de gasto).`,
             tab: 'goals',
           })
