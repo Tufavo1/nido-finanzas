@@ -5,3 +5,10 @@ node_modules
 supabase/.temp
 supabase/.branches
 !.env.production.example
+*.bak
+*.dump
+*.sqlite
+*.sqlite3
+nido-respaldos/
+.wrangler/
+.dev.vars
