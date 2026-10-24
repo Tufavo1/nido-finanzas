@@ -172,7 +172,13 @@ begin
   select count(*) into n from public.households where id = h2;
   assert n = 0, 'el hogar a solas de B se borró completo';
   select count(*) into n from public.members where household_id = h1 and user_id = b;
-  assert n = 1, 'en el hogar de A queda el nombre de B en el historial';
+  assert n = 1, 'en el hogar de A queda la fila de B para el historial';
+  select count(*) into n from public.members where household_id = h1 and user_id = b and display_name = 'Persona que salió';
+  assert n = 1, 'esa fila ya no lleva el nombre de B';
+  select count(*) into n from public.members where user_id = b and display_name <> 'Persona que salió';
+  assert n = 0, 'el nombre de B no queda en ningún hogar';
+  select count(*) into n from public.expenses where household_id = h1 and paid_by = b;
+  assert n = 1, 'el gasto que pagó B sigue en la contabilidad del hogar';
   select count(*) into n from public.households where id = h1;
   assert n = 1, 'el hogar de A sigue intacto';
   select count(*) into n from public.households where id = h3;
