@@ -6,6 +6,10 @@ describe('upstreamPath', () => {
     expect(upstreamPath('/supabase/rest/v1/expenses')).toBe('/rest/v1/expenses')
     expect(upstreamPath('/supabase/rest/v1/rpc/apply_recurring')).toBe('/rest/v1/rpc/apply_recurring')
     expect(upstreamPath('/supabase/auth/v1/token')).toBe('/auth/v1/token')
+    const factor = 'e1d7cebd-2e13-413d-a105-6d941175bc8d'
+    expect(upstreamPath(`/supabase/auth/v1/factors/${factor}`)).toBe(`/auth/v1/factors/${factor}`)
+    expect(upstreamPath(`/supabase/auth/v1/factors/${factor}/challenge`)).toBe(`/auth/v1/factors/${factor}/challenge`)
+    expect(upstreamPath(`/supabase/auth/v1/factors/${factor}/verify`)).toBe(`/auth/v1/factors/${factor}/verify`)
     expect(upstreamPath('/supabase/realtime/v1/websocket')).toBe('/realtime/v1/websocket')
     expect(upstreamPath('/supabase/functions/v1/notify')).toBe('/functions/v1/notify')
   })

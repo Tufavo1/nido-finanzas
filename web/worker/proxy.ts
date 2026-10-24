@@ -14,6 +14,7 @@ const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'])
 /** Solo lo que la app usa de verdad. Todo lo demás (storage, graphql, admin, esquema…) no existe para el exterior. */
 const ALLOWED: RegExp[] = [
   /^\/auth\/v1\/(?!admin(\/|$))[a-z_/-]+$/i,
+  /^\/auth\/v1\/factors\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/(challenge|verify))?$/i, // MFA: borrar, desafiar y verificar un factor
   /^\/rest\/v1\/[A-Za-z_][A-Za-z0-9_]*$/, // tablas
   /^\/rest\/v1\/rpc\/[A-Za-z_][A-Za-z0-9_]*$/, // funciones
   /^\/realtime\/v1\/websocket$/,
