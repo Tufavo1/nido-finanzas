@@ -11,7 +11,10 @@ import { useData } from './lib/data'
 import { TOUR_EVENT, markTourSeen, tourSeen } from './lib/tour'
 import { focusMain } from './lib/a11y'
 import { buildAlerts } from './lib/engine'
-import type { AlertTab } from './lib/engine'
+import type { AlertTab, MoneySection } from './lib/engine'
+import { readSnoozed, snoozeAlert, withoutSnoozed } from './lib/alertState'
+import type { ExpRow } from './lib/expenseAnalysis'
+import { fetchExpenseRows } from './lib/history'
 import { notifyNewAlerts } from './lib/smartNotify'
 import { useAppLock } from './lib/useAppLock'
 const Expenses = lazy(() => import('./screens/Expenses'))
@@ -104,12 +107,40 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   const isCurrent = ym.y === now.getFullYear() && ym.m === now.getMonth()
   const month = new Date(ym.y, ym.m, 1)
 
+  // Gastos de los últimos meses (con nota): alimentan los avisos de gastos repetidos, inusuales y suscripciones
+  const [rows, setRows] = useState<ExpRow[]>([])
+  useEffect(() => {
+    if (!data.ready) return
+    let off = false
+    fetchExpenseRows(hh.household.id, new Date(ym.y, ym.m, 1))
+      .then((r) => {
+        if (!off) setRows(r)
+      })
+      .catch(() => {
+        /* sin historial se omiten solo esos avisos */
+      })
+    return () => {
+      off = true
+    }
+  }, [data.ready, hh.household.id, ym.y, ym.m, data.expenses])
+
+  // Avisos que la persona pospuso o descartó: se guardan en este dispositivo
+  const [snoozed, setSnoozed] = useState(() => readSnoozed())
+  const snooze = useCallback((id: string, days: number) => setSnoozed(snoozeAlert(id, days)), [])
+  // Finanzas se abre en la pestaña que pide el aviso (la clave reinicia la pantalla)
+  const [moneyNav, setMoneyNav] = useState<{ section: MoneySection; n: number }>({ section: 'analysis', n: 0 })
+  const goTo = useCallback((t: AlertTab, section?: MoneySection) => {
+    if (t === 'money') setMoneyNav((v) => ({ section: section ?? 'analysis', n: v.n + 1 }))
+    setTab(t)
+  }, [])
+
   // Motor de avisos: se recalcula en cada cambio de datos
-  const alerts = useMemo(
-    () => (data.ready ? buildAlerts(hh, data, month) : []),
+  const allAlerts = useMemo(
+    () => (data.ready ? buildAlerts(hh, data, month, undefined, { rows }) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hh, data.ready, data.expenses, data.prevExpenses, data.categories, data.goals, data.contributions, data.debts, data.debtPayments, data.salary, data.profiles, ym.y, ym.m],
+    [hh, data.ready, data.expenses, data.prevExpenses, data.categories, data.goals, data.contributions, data.debts, data.debtPayments, data.salary, data.incomes, data.recurring, data.profiles, rows, ym.y, ym.m],
   )
+  const alerts = useMemo(() => withoutSnoozed(allAlerts, snoozed), [allAlerts, snoozed])
   const urgent = alerts.filter((a) => a.level === 'bad' || a.level === 'warn').length
   useEffect(() => {
     if (data.ready && !data.loading && isCurrent) void notifyNewAlerts(alerts)
@@ -149,13 +180,13 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
       </main>
     )
   } else if (tab === 'home') {
-    body = <Home hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} alerts={alerts} onGo={(t: AlertTab) => setTab(t)} onSettings={() => setTab('security')} />
+    body = <Home hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} alerts={alerts} onGo={goTo} onSnooze={snooze} onSettings={() => setTab('security')} />
   } else if (tab === 'expenses') {
     body = <Expenses hh={hh} data={data} month={month} onToast={setToast} />
   } else if (tab === 'add') {
     body = <Register hh={hh} data={data} onSaved={backToNow} />
   } else if (tab === 'money') {
-    body = <Money hh={hh} data={data} month={month} onToast={setToast} />
+    body = <Money key={moneyNav.n} hh={hh} data={data} month={month} onToast={setToast} section={moneyNav.section} />
   } else if (tab === 'goals') {
     body = <Goals hh={hh} data={data} onToast={setToast} />
   } else {

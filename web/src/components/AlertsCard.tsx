@@ -1,12 +1,16 @@
 import { useState } from 'react'
 import { Rich } from '../lib/rich'
-import type { Alert, AlertTab } from '../lib/engine'
+import { compareAlerts } from '../lib/engine'
+import type { Alert, AlertTab, MoneySection } from '../lib/engine'
 
 const MARK = { bad: '✕', warn: '!', info: 'i', ok: '✓' } as const
 const WORD = { bad: 'Urgente', warn: 'Ojo', info: 'Dato', ok: 'Bien' } as const
-const RANK = { bad: 0, warn: 1, info: 2, ok: 3 } as const
 
-function Row({ a, onGo }: { a: Alert; onGo: (tab: AlertTab) => void }) {
+type Go = (tab: AlertTab, section?: MoneySection) => void
+type Snooze = (id: string, days: number) => void
+
+function Row({ a, onGo, onSnooze }: { a: Alert; onGo: Go; onSnooze: Snooze }) {
+  const urgent = a.level === 'bad'
   return (
     <div className={`find ${a.level}`}>
       <span className="find-mark" aria-label={WORD[a.level]}>
@@ -15,18 +19,35 @@ function Row({ a, onGo }: { a: Alert; onGo: (tab: AlertTab) => void }) {
       <div className="grow">
         <div className="strong"><Rich text={a.title} /></div>
         <div className="muted small-text"><Rich text={a.detail} /></div>
-        {a.tab && a.tab !== 'home' && (
-          <button type="button" className="link-btn go" onClick={() => onGo(a.tab!)}>
-            Ir a revisarlo →
-          </button>
-        )}
+        <div className="alert-actions">
+          {a.tab && a.tab !== 'home' && (
+            <button type="button" className="link-btn go" onClick={() => onGo(a.tab!, a.section)}>
+              {a.action ?? 'Ir a revisarlo'} →
+            </button>
+          )}
+          {/* Lo urgente solo se puede recordar mañana; el resto, posponer o dar por sabido */}
+          {urgent ? (
+            <button type="button" className="link-btn soft" onClick={() => onSnooze(a.id, 1)}>
+              Recordarme mañana
+            </button>
+          ) : (
+            <>
+              <button type="button" className="link-btn soft" onClick={() => onSnooze(a.id, 7)}>
+                Posponer 7 días
+              </button>
+              <button type="button" className="link-btn soft" onClick={() => onSnooze(a.id, 30)}>
+                Ya lo sé
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
 /** Lo más urgente a la vista; el resto, a un toque. Así la plata sigue siendo lo primero que se ve. */
-export default function AlertsCard({ alerts, onGo }: { alerts: Alert[]; onGo: (tab: AlertTab) => void }) {
+export default function AlertsCard({ alerts, onGo, onSnooze }: { alerts: Alert[]; onGo: Go; onSnooze: Snooze }) {
   const [open, setOpen] = useState(false)
   if (alerts.length === 0) {
     return (
@@ -38,7 +59,7 @@ export default function AlertsCard({ alerts, onGo }: { alerts: Alert[]; onGo: (t
       </section>
     )
   }
-  const sorted = [...alerts].sort((x, y) => RANK[x.level] - RANK[y.level])
+  const sorted = [...alerts].sort(compareAlerts)
   const [top, ...rest] = sorted
   const urgent = alerts.filter((a) => a.level === 'bad').length
   return (
@@ -55,8 +76,8 @@ export default function AlertsCard({ alerts, onGo }: { alerts: Alert[]; onGo: (t
         </span>
       </div>
       <div className="stack tight">
-        <Row a={top!} onGo={onGo} />
-        {open && rest.map((a) => <Row key={a.id} a={a} onGo={onGo} />)}
+        <Row a={top!} onGo={onGo} onSnooze={onSnooze} />
+        {open && rest.map((a) => <Row key={a.id} a={a} onGo={onGo} onSnooze={onSnooze} />)}
       </div>
     </section>
   )

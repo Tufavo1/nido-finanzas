@@ -7,11 +7,12 @@ import Icon from '../components/Icon'
 import Logo from '../components/Logo'
 import Ring from '../components/Ring'
 import Venn from '../components/Venn'
+import { MonthCurveCard, SixMonthsCard, WeekdayCard } from '../components/HomeCharts'
 import { compact, monthGrid } from '../lib/calendar'
 import { daysLeftInMonth, money } from '../lib/format'
 import { analyzeSalary, myDebtShare } from '../lib/finance'
 import { computeMetrics } from '../lib/metrics'
-import type { Alert, AlertTab } from '../lib/engine'
+import type { Alert, AlertTab, MoneySection } from '../lib/engine'
 import { memberColor, monthName, shortDate } from '../lib/ui'
 
 interface Props {
@@ -21,7 +22,8 @@ interface Props {
   isCurrent: boolean
   onMonth: (delta: number) => void
   alerts: Alert[]
-  onGo: (tab: AlertTab) => void
+  onGo: (tab: AlertTab, section?: MoneySection) => void
+  onSnooze: (id: string, days: number) => void
   onSettings: () => void
 }
 
@@ -36,7 +38,7 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
   )
 }
 
-export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo, onSettings }: Props) {
+export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo, onSnooze, onSettings }: Props) {
   const [requestedView, setView] = useState<string>('all')
   const [day, setDay] = useState<number | null>(null)
 
@@ -144,7 +146,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
         </div>
       </div>
 
-      <AlertsCard alerts={alerts} onGo={onGo} />
+      <AlertsCard alerts={alerts} onGo={onGo} onSnooze={onSnooze} />
 
       <div className="row between">
         <button type="button" className="icon-btn" aria-label="Mes anterior" onClick={() => change(-1)}>
@@ -215,6 +217,16 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
         {deltaText && <span className="muted small-text">{deltaText}</span>}
       </section>
 
+      {viewExpenses.length > 0 && (
+        <MonthCurveCard
+          expenses={viewExpenses}
+          prevExpenses={view === 'all' ? data.prevExpenses : data.prevExpenses.filter((e) => e.paid_by === view)}
+          budget={view === 'all' ? budget : 0}
+          month={month}
+          isCurrent={isCurrent}
+        />
+      )}
+
       {data.expenses.length === 0 && (
         <section className="card empty">
           <Logo size={44} animate />
@@ -222,6 +234,10 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
           <span className="muted">Registra el primero con el botón + de abajo y aquí aparecerá el resumen de los dos.</span>
         </section>
       )}
+
+      <SixMonthsCard hh={hh} data={data} month={month} who={view} />
+
+      <WeekdayCard expenses={viewExpenses} />
 
       {sub.total > 0 && (
         <section className="card">

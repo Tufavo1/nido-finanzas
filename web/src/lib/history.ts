@@ -1,6 +1,7 @@
 import { toISO } from './format'
 import { supabase } from './supabase'
 import type { HistExpense } from './analysis'
+import type { ExpRow } from './expenseAnalysis'
 
 /** Gastos del hogar de los últimos meses (incluido el elegido). La base corta cada consulta en 1.000 filas: se pide por páginas. */
 export async function fetchHistory(householdId: string, month: Date, months = 6): Promise<HistExpense[]> {
@@ -10,7 +11,28 @@ export async function fetchHistory(householdId: string, month: Date, months = 6)
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
       .from('expenses')
-      .select('amount, shared, paid_by, category_id, spent_on')
+      .select('amount, shared, paid_by, category_id, spent_on, recurring_id')
+      .eq('household_id', householdId)
+      .gte('spent_on', start)
+      .lt('spent_on', end)
+      .order('spent_on')
+      .order('id')
+      .range(from, from + 999)
+    if (error) throw error
+    out.push(...(data ?? []))
+    if (!data || data.length < 1000) return out
+  }
+}
+
+/** Igual que fetchHistory pero con id y nota: para detectar repetidos, gastos fuera de lo normal y suscripciones. */
+export async function fetchExpenseRows(householdId: string, month: Date, months = 6): Promise<ExpRow[]> {
+  const start = toISO(new Date(month.getFullYear(), month.getMonth() - (months - 1), 1))
+  const end = toISO(new Date(month.getFullYear(), month.getMonth() + 1, 1))
+  const out: ExpRow[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('id, amount, shared, paid_by, category_id, spent_on, note, recurring_id')
       .eq('household_id', householdId)
       .gte('spent_on', start)
       .lt('spent_on', end)
