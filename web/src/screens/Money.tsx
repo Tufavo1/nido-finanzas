@@ -6,6 +6,8 @@ import AnalysisPanel from '../components/AnalysisPanel'
 import IncomesCard from '../components/IncomesCard'
 import Intro from '../components/Intro'
 import RecurringPanel from '../components/RecurringPanel'
+import SalaryCalculator from '../components/SalaryCalculator'
+import DebtSimulator from '../components/DebtSimulator'
 import { analyzeSalary, monthIncome, monthsToPayoff, myDebtShare, summarizeDebts } from '../lib/finance'
 import type { DebtView, Finding } from '../lib/finance'
 import { money, todayISO } from '../lib/format'
@@ -202,6 +204,13 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
           </form>
         )}
       </section>
+
+      <SalaryCalculator
+        onUse={(n) => {
+          setAmount(String(n))
+          setEditing(true)
+        }}
+      />
 
       {a && salary && (
         <>
@@ -425,6 +434,7 @@ function DebtCard({
         <span>Cuota mensual: {d.monthly_payment > 0 ? money(d.monthly_payment) : 'sin definir'}</span>
         <span>{d.monthly_rate > 0 ? `Interés: ${d.monthly_rate} % al mes` : 'Sin interés'}</span>
       </div>
+      {!done && <DebtSimulator remaining={v.remaining} payment={d.monthly_payment} ratePct={d.monthly_rate} />}
       {!done && d.monthly_payment > 0 && (
         <span className={v.paidThisMonth >= d.monthly_payment ? 'notice' : 'muted small-text'}>
           {v.paidThisMonth >= d.monthly_payment

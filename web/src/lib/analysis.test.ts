@@ -175,3 +175,21 @@ describe('resumen y casos borde', () => {
     expect(a.months.filter((m) => m.current)).toHaveLength(1)
   })
 })
+
+describe('cuánto tendrías ahorrado', () => {
+  const history = [
+    exp(100_000, '2026-10-02', { shared: true, paid_by: 'b' }),
+    exp(30_000, '2026-10-05', { category_id: 'c2' }),
+  ]
+  it('suma lo que te sobra a 6 y 12 meses', () => {
+    // gasto 80.000 en 20 días: cierre 124.000, te sobran 876.000
+    const a = buildAnalysis(base({ history, salary: SALARY }))
+    expect(a.savings).toEqual({ monthly: 876_000, in6: 5_256_000, in12: 10_512_000 })
+  })
+  it('sin sueldo no se proyecta nada', () => {
+    expect(buildAnalysis(base({ history })).savings).toBeNull()
+  })
+  it('si gastas más de lo que ganas tampoco', () => {
+    expect(buildAnalysis(base({ history, salary: { amount: 100_000 } })).savings).toBeNull()
+  })
+})

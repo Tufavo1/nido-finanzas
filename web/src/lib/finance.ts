@@ -19,6 +19,43 @@ export function monthsToPayoff(balance: number, payment: number, monthlyRatePct:
   return Math.ceil(-Math.log(1 - (r * balance) / payment) / Math.log(1 + r))
 }
 
+/** Mes a mes: en cuántos meses se termina y cuánto se paga de interés en total. null = la cuota no alcanza ni para el interés */
+export function payoffPlan(balance: number, payment: number, monthlyRatePct: number): { months: number; interest: number } | null {
+  if (balance <= 0) return { months: 0, interest: 0 }
+  const r = monthlyRatePct / 100
+  if (payment <= 0 || payment <= balance * r) return null
+  let left = balance
+  let interest = 0
+  let months = 0
+  while (left > 0 && months < 1200) {
+    const i = left * r
+    interest += i
+    left = left + i - payment
+    months += 1
+  }
+  return { months, interest: Math.round(interest) }
+}
+
+export interface ExtraPaymentEffect {
+  /** Con la cuota de hoy */
+  base: { months: number; interest: number }
+  /** Con la cuota de hoy más lo extra */
+  withExtra: { months: number; interest: number }
+  monthsSaved: number
+  interestSaved: number
+}
+
+/** Qué pasa si cada mes se paga algo más que la cuota */
+export function extraPaymentEffect(balance: number, payment: number, monthlyRatePct: number, extra: number): ExtraPaymentEffect | null {
+  if (extra <= 0) return null
+  const base = payoffPlan(balance, payment, monthlyRatePct)
+  const withExtra = payoffPlan(balance, payment + extra, monthlyRatePct)
+  if (!withExtra) return null
+  // Si hoy la cuota no avanza, lo extra lo "arregla": no hay base con la que comparar
+  if (!base) return { base: { months: 0, interest: 0 }, withExtra, monthsSaved: 0, interestSaved: 0 }
+  return { base, withExtra, monthsSaved: base.months - withExtra.months, interestSaved: base.interest - withExtra.interest }
+}
+
 export interface DebtView {
   debt: Debt
   paid: number

@@ -195,6 +195,24 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
         )}
       </section>
 
+      {a.savings && (
+        <section className="card" aria-label="Cuánto tendrías ahorrado">
+          <strong>Si sigues así, ahorrarías</strong>
+          <span className="muted">Si cada mes te sobra lo mismo que este mes (~{money(a.savings.monthly)}):</span>
+          <div className="tiles">
+            <div className="tile">
+              <span className="muted small-text">En 6 meses</span>
+              <span className="amount-sm num">{money(a.savings.in6)}</span>
+            </div>
+            <div className="tile">
+              <span className="muted small-text">En 12 meses</span>
+              <span className="amount-sm num">{money(a.savings.in12)}</span>
+            </div>
+          </div>
+          <span className="muted small-text">Es una suma simple de lo que te sobra, sin intereses ni inflación. Si gastas distinto, cambia.</span>
+        </section>
+      )}
+
       {a.slices.length > 0 && (
         <section className="card" aria-label="En qué se va tu plata">
           <strong>En qué se va tu plata</strong>
