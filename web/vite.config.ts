@@ -52,6 +52,20 @@ export default defineConfig(({ command, mode }) => {
   return {
     server: { proxy },
     preview: { proxy },
+    build: {
+      rolldownOptions: {
+        output: {
+          // React y Supabase pesan más que la app y casi no cambian: en archivos propios se guardan en caché
+          // y cada versión nueva solo descarga el código de la app
+          codeSplitting: {
+            groups: [
+              { name: 'vendor-react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+              { name: 'vendor-supabase', test: /node_modules[\\/]@supabase[\\/]/ },
+            ],
+          },
+        },
+      },
+    },
     define: {
       __APP_VERSION__: JSON.stringify(version),
       __BUILD_DATE__: JSON.stringify(new Date().toISOString()),
