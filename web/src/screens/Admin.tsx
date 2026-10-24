@@ -447,6 +447,11 @@ function MfaStep({ onBack, onVerified }: { onBack: () => void; onVerified: () =>
   async function startEnroll() {
     setBusy(true)
     setError(null)
+    // Un intento anterior pudo dejar factores sin verificar; chocan con el nombre del nuevo (422)
+    const { data: list } = await supabase.auth.mfa.listFactors()
+    for (const f of list?.all ?? []) {
+      if (f.factor_type === 'totp' && f.status === 'unverified') await supabase.auth.mfa.unenroll({ factorId: f.id })
+    }
     const { data, error: err } = await supabase.auth.mfa.enroll({ factorType: 'totp' })
     setBusy(false)
     if (err || !data) {
