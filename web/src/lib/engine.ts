@@ -3,10 +3,13 @@ import type { HouseholdData } from './data'
 import { analyzeSalary, monthIncome, myDebtShare, summarizeDebts } from './finance'
 import { money, toISO } from './format'
 import { computeMetrics } from './metrics'
+import { smartAlerts } from './smartAlerts'
+import type { ExpRow } from './expenseAnalysis'
 import { adviceFor } from './profile'
 
 export type AlertLevel = 'bad' | 'warn' | 'info' | 'ok'
 export type AlertTab = 'home' | 'expenses' | 'money' | 'goals' | 'security'
+export type MoneySection = 'analysis' | 'salary' | 'fixed' | 'debts'
 
 export interface Alert {
   /** Estable entre recálculos: sirve para no repetir una notificación */
@@ -16,6 +19,45 @@ export interface Alert {
   title: string
   detail: string
   tab?: AlertTab
+  /** Dentro de Finanzas, qué pestaña abrir */
+  section?: MoneySection
+  /** Texto del botón: qué hacer, no «ir a revisarlo» */
+  action?: string
+  /** Plata en juego, para ordenar y mostrar */
+  amount?: number
+  /** 0 a 100: qué tan urgente e importante es; ordena dentro de cada nivel */
+  priority?: number
+}
+
+const BASE_PRIORITY: Record<AlertLevel, number> = { bad: 80, warn: 50, info: 20, ok: 5 }
+
+/** Botón por defecto según el tipo de aviso (los avisos nuevos traen el suyo) */
+function defaultAction(a: Alert): string {
+  const id = a.id
+  if (id.startsWith('bud-') || id.startsWith('pace-') || id === 'no-budget') return id === 'no-budget' ? 'Poner presupuestos' : 'Ver presupuestos'
+  if (id.startsWith('goal-done')) return 'Ver la meta'
+  if (id.startsWith('goal-') || id.startsWith('fund-')) return id === 'fund-missing' ? 'Crear la meta' : 'Ver la meta'
+  if (id.startsWith('debt')) return 'Ver las deudas'
+  if (id.startsWith('salary') || id.startsWith('payday')) return 'Ver mi sueldo'
+  if (id === 'profile-missing') return 'Completar el perfil'
+  if (id.startsWith('settle')) return 'Ver cuentas'
+  if (id.startsWith('idle')) return 'Registrar un gasto'
+  return 'Ir a revisarlo'
+}
+
+/** Pestaña de Finanzas que corresponde a cada tipo de aviso */
+function defaultSection(a: Alert): MoneySection | undefined {
+  if (a.tab !== 'money') return undefined
+  const id = a.id
+  if (id.startsWith('debt')) return 'debts'
+  if (id.startsWith('salary') || id.startsWith('payday')) return 'salary'
+  if (id.startsWith('fixed-soon') || id.startsWith('sub:')) return 'fixed'
+  return 'analysis'
+}
+
+/** Más urgente primero: nivel, luego prioridad y, a igual prioridad, la plata en juego */
+export function compareAlerts(a: Alert, b: Alert): number {
+  return RANK[a.level] - RANK[b.level] || (b.priority ?? 0) - (a.priority ?? 0) || (b.amount ?? 0) - (a.amount ?? 0)
 }
 
 const RANK: Record<AlertLevel, number> = { bad: 0, warn: 1, info: 2, ok: 3 }
@@ -33,7 +75,7 @@ const median = (xs: number[]) => {
  * Motor de reglas: recalcula todos los avisos a partir de los datos actuales.
  * Es determinista y corre en el teléfono; no usa IA ni servicios externos.
  */
-export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now: Date = new Date()): Alert[] {
+export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now: Date = new Date(), ctx: { rows?: ExpRow[] } = {}): Alert[] {
   const out: Alert[] = []
   const add = (a: Alert) => out.push(a)
   const mk = `${month.getFullYear()}-${month.getMonth() + 1}`
@@ -358,5 +400,14 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
     }
   }
 
-  return out.sort((a, b) => RANK[a.level] - RANK[b.level])
+  /* ---------- Avisos que cruzan varias fuentes ---------- */
+  const mineNow = m.people.find((p) => p.userId === hh.me.user_id)
+  const extra = smartAlerts({ hh, data, month, now, rows: ctx.rows, myCost: mineNow?.trueCost ?? 0 })
+  // Si ya sabemos cuánto faltaría a fin de mes (con lo que aún vence), esos dos avisos genéricos sobran
+  const precise = extra.some((x) => x.id.startsWith('cash-short:'))
+  const merged = [...out, ...extra].filter((x) => !(precise && x.id.startsWith('salary:') && /Estás sobre|Vas a pasarte/.test(x.title)))
+
+  return merged
+    .map((x) => ({ ...x, priority: x.priority ?? BASE_PRIORITY[x.level], action: x.action ?? defaultAction(x), section: x.section ?? defaultSection(x) }))
+    .sort(compareAlerts)
 }

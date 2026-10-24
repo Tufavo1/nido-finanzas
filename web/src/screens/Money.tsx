@@ -16,13 +16,17 @@ import { supabase } from '../lib/supabase'
 import { Rich } from '../lib/rich'
 import { daysUntil, digitsOnly, inDays, longDate, memberColor, monthName, nextOccurrence } from '../lib/ui'
 import type { Notify } from '../components/Toast'
+import type { MoneySection } from '../lib/engine'
 import Spin from '../components/Spin'
+import DebtInsights from '../components/DebtInsights'
 
 interface Props {
   hh: Household
   data: HouseholdData
   month: Date
   onToast: Notify
+  /** Pestaña con la que abre (al llegar desde un aviso) */
+  section?: MoneySection
 }
 
 const KINDS = [
@@ -768,6 +772,8 @@ function DebtsPanel({ hh, data, month, onToast }: Props) {
         </section>
       )}
 
+      <DebtInsights debts={data.debts} payments={data.debtPayments} />
+
       {empty ? (
         <section className="card">
           <strong>Todavía no hay deudas anotadas</strong>
@@ -799,7 +805,7 @@ function DebtsPanel({ hh, data, month, onToast }: Props) {
 
 /* ------------------------------- Pantalla ------------------------------ */
 export default function Money(props: Props) {
-  const [tab, setTab] = useState<'analysis' | 'salary' | 'fixed' | 'debts'>('analysis')
+  const [tab, setTab] = useState<MoneySection>(props.section ?? 'analysis')
   const { data } = props
 
   return (

@@ -12,6 +12,8 @@ export interface HistExpense {
   paid_by: string
   category_id: string
   spent_on: string
+  /** Viene de un gasto fijo (se anota solo cada mes) */
+  recurring_id?: string | null
 }
 
 export interface AnalysisInput {

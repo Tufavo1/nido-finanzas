@@ -12,6 +12,7 @@ import { Rich } from '../lib/rich'
 import { dayHeading, digitsOnly, monthName } from '../lib/ui'
 import type { Notify } from '../components/Toast'
 import Spin from '../components/Spin'
+import ExpenseInsights from '../components/ExpenseInsights'
 
 export default function Expenses({
   hh,
@@ -259,6 +260,8 @@ export default function Expenses({
           </>
         )}
       </section>
+
+      <ExpenseInsights hh={hh} data={data} month={month} who={who} />
 
       <Intro
         title="Presupuesto por categoría: un tope de gasto para cada cosa"
