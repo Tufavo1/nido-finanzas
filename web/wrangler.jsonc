@@ -2,6 +2,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "nido-finanzas",
   "main": "worker/index.ts",
+  // Cloudflare crea solo el registro DNS y el certificado de este subdominio al desplegar
+  "routes": [{ "pattern": "contigo.dinovance.cl", "custom_domain": true }],
   "compatibility_date": "2026-10-17",
   "assets": {
     "directory": "./dist",

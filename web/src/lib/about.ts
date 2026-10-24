@@ -3,6 +3,8 @@ export const APP_NAME = 'Contigo'
 export const TAGLINE = 'Tus finanzas, contigo.'
 export const COPYRIGHT_HOLDER = 'Dinovance'
 export const FIRST_YEAR = 2026
+export const INSTAGRAM_URL = 'https://www.instagram.com/dinovance.cl'
+export const INSTAGRAM_HANDLE = '@dinovance.cl'
 
 export const VERSION = __APP_VERSION__
 export const COMMIT = __COMMIT__

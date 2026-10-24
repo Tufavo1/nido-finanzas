@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://contigo.dinovance.cl/sitemap.xml
