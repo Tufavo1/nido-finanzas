@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:db": "docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/rls.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/hogares.sql",
+    "test:db": "docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/rls.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/hogares.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/admin.sql",
     "test:e2e": "node e2e/e2e.cjs",
     "deploy": "npm run build && npx wrangler deploy"
   },
