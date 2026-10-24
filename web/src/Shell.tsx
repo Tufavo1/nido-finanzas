@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Household } from './App'
 import Icon from './components/Icon'
 import InstallBanner from './components/InstallBanner'
@@ -8,6 +8,7 @@ import OfflineBar from './components/OfflineBar'
 import Toast from './components/Toast'
 import type { ToastData, ToastKind } from './components/Toast'
 import { useData } from './lib/data'
+import { focusMain } from './lib/a11y'
 import { buildAlerts } from './lib/engine'
 import type { AlertTab } from './lib/engine'
 import { notifyNewAlerts } from './lib/smartNotify'
@@ -45,6 +46,17 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
     return TABS.some((x) => x.key === t) ? (t as Tab) : 'home'
   })
   const { locked, unlock } = useAppLock()
+  // Al cambiar de pestaña: título del documento y foco en la pantalla nueva (no al abrir la app)
+  const firstTab = useRef(true)
+  useEffect(() => {
+    const label = tab === 'security' ? 'Ajustes' : TABS.find((x) => x.key === tab)?.label
+    document.title = label ? `${label} · Contigo` : 'Contigo'
+    if (firstTab.current) {
+      firstTab.current = false
+      return
+    }
+    focusMain()
+  }, [tab])
   useEffect(() => {
     const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 2000))
     idle(warmScreens)
@@ -124,6 +136,16 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
 
   return (
     <div className="app">
+      <a
+        className="skip"
+        href="#contenido"
+        onClick={(e) => {
+          e.preventDefault()
+          focusMain()
+        }}
+      >
+        Saltar al contenido
+      </a>
       <OfflineBar />
       <Suspense
         fallback={

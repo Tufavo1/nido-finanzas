@@ -8,6 +8,7 @@
   --surface: #fff6f7;
   --surface-2: #e2ece9;
   --line: #f0c4d3;
+  --field-line: #a8708a; /* borde de campos: 3:1 contra la superficie (WCAG 1.4.11) */
   --track: #dfe7fd;
   --nav: #fad2e1;
   --text: #3a3350;
@@ -27,6 +28,7 @@
   --surface: #282238;
   --surface-2: #342d49;
   --line: #433b5e;
+  --field-line: #8277a8;
   --track: #3b3455;
   --nav: #231e32;
   --text: #fdeaed;
@@ -120,7 +122,7 @@ button { cursor: pointer; }
   width: 100%;
   height: 48px;
   border-radius: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--field-line);
   background: var(--surface);
   padding: 0 14px;
   font-size: 16px;
@@ -142,7 +144,7 @@ button { cursor: pointer; }
 .btn.danger { background: transparent; color: var(--warn); border: 1px solid var(--warn); }
 .input:focus-visible,
 .btn:focus-visible,
-.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg button:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 
 .error { margin: 0; color: var(--warn); font-size: 14px; }
 .notice { margin: 0; color: var(--accent-ink); font-size: 14px; }
@@ -203,7 +205,7 @@ button { cursor: pointer; }
   margin-top: -20px;
   border: 4px solid var(--bg);
 }
-.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 12px; }
+.tab:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; border-radius: 12px; }
 
 .row { display: flex; align-items: center; gap: 12px; }
 .row.between { justify-content: space-between; }
@@ -334,10 +336,10 @@ button { cursor: pointer; }
   padding: 0;
   font-size: 13px;
 }
-.cal-day small { font-size: 10px; opacity: 0.9; }
+.cal-day small { font-size: 11px; opacity: 0.9; }
 .cal-day.today { border-color: var(--muted); }
 .cal-day[aria-pressed='true'] { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: -2px; }
-.cal-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cal-day:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 
 /* ---------- Accesibilidad y pulido ---------- */
 .btn, .chip, .seg button, .key, .tab { min-height: 44px; }
@@ -357,6 +359,8 @@ button { cursor: pointer; }
 .strength.weak span.on { background: var(--warn); }
 .input[type='date'] { appearance: none; }
 .skip { position: absolute; left: -999px; }
+/* El foco que se mueve por código (al cambiar de pestaña) no necesita recuadro sobre el título */
+main:focus, main h1:focus { outline: none; }
 .skip:focus { left: 8px; top: 8px; background: var(--surface); padding: 8px 12px; border-radius: 8px; z-index: 20; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
@@ -607,7 +611,7 @@ body::before {
   backdrop-filter: blur(16px) saturate(1.2);
   box-shadow: 0 18px 38px -18px color-mix(in srgb, var(--ink) 60%, transparent);
 }
-.tab { font-size: 11px; font-weight: 600; transition: color 0.2s; }
+.tab { font-size: 12px; font-weight: 600; transition: color 0.2s; }
 .tab[aria-current='page']::after {
   content: '';
   position: absolute;
@@ -851,7 +855,7 @@ body::before {
 .day-head { padding: 10px 0 4px; border-bottom: 1px solid var(--line); }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .tag {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   padding: 2px 9px;
   border-radius: var(--r-pill);
