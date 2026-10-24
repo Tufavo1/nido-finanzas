@@ -126,7 +126,7 @@ export function summarizeDebts(debts: Debt[], payments: DebtPayment[], now: Date
   if (focus && active.length > 1) {
     findings.push({
       level: 'warn',
-      title: `Ataquen primero «${focus.debt.name}»`,
+      title: `Ataquen primero **${focus.debt.name}**`,
       detail: `Es la que más interés cobra (${focus.debt.monthly_rate} % mensual). Cualquier extra que tengan rinde más ahí.`,
     })
   }

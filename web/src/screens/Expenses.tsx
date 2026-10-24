@@ -1,20 +1,27 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import Avatar from '../components/Avatar'
 import Icon from '../components/Icon'
+import Intro from '../components/Intro'
 import { money, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
-import { digitsOnly, shortDate } from '../lib/ui'
+import { computeMetrics } from '../lib/metrics'
+import { groupByDay, whereItWent } from '../lib/moves'
+import { Rich } from '../lib/rich'
+import { dayHeading, digitsOnly, monthName } from '../lib/ui'
+import type { Notify } from '../components/Toast'
 
 export default function Expenses({
   hh,
   data,
+  month,
   onToast,
 }: {
   hh: Household
   data: HouseholdData
-  onToast: (text: string) => void
+  month: Date
+  onToast: Notify
 }) {
   const [who, setWho] = useState<string>('all')
   const [editing, setEditing] = useState<string | null>(null)
@@ -32,15 +39,43 @@ export default function Expenses({
   const [newCat, setNewCat] = useState(false)
   const [newName, setNewName] = useState('')
   const [newBudget, setNewBudget] = useState('')
+  const [openCat, setOpenCat] = useState<string | null>(null)
+  const [catFilter, setCatFilter] = useState<string>('all')
+  const [showAll, setShowAll] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const members = new Map(hh.everyone.map((m) => [m.user_id, m] as const))
   const catName = new Map(data.categories.map((c) => [c.id, c.name] as const))
   const list = data.expenses.filter((e) => who === 'all' || e.paid_by === who)
+  const person = who === 'all' ? null : members.get(who)
 
   const spent = new Map<string, number>()
   for (const e of list) spent.set(e.category_id, (spent.get(e.category_id) ?? 0) + e.amount)
+  const totalSpent = list.reduce((s, e) => s + e.amount, 0)
+
+  // Métricas de la vista elegida (hogar o una persona)
+  const metrics = useMemo(() => {
+    const prev = who === 'all' ? data.prevExpenses : data.prevExpenses.filter((e) => e.paid_by === who)
+    return computeMetrics(list, prev, data.categories, hh.members, month)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.expenses, data.prevExpenses, data.categories, hh.members, month, who])
+  const householdTotal = data.expenses.reduce((s, e) => s + e.amount, 0)
+  const topCat = metrics.byCategory[0]
+  const personStats = person ? metrics.people.find((p) => p.userId === person.user_id) : null
+  const delta = metrics.deltaPct
+
+  const visible = catFilter === 'all' ? list : list.filter((e) => e.category_id === catFilter)
+  const groups = groupByDay(visible)
+  const PAGE = 25
+  let budgetLeft = showAll ? Infinity : PAGE
+  const shownGroups = groups
+    .map((g) => {
+      const items = g.items.slice(0, Math.max(0, budgetLeft))
+      budgetLeft -= items.length
+      return { ...g, items }
+    })
+    .filter((g) => g.items.length > 0)
 
   async function saveBudget(id: string) {
     setBusy(true)
@@ -55,7 +90,7 @@ export default function Expenses({
       return
     }
     setEditing(null)
-    onToast('Categoría actualizada')
+    onToast('Categoría actualizada\nEl nuevo **presupuesto** ya está en uso.')
     await data.refresh()
   }
 
@@ -73,7 +108,7 @@ export default function Expenses({
       return
     }
     setEditing(null)
-    onToast('Categoría quitada (los gastos se conservan)')
+    onToast('Categoría quitada\nSus **gastos** se conservan en el historial.', 'info')
     await data.refresh()
   }
 
@@ -99,7 +134,7 @@ export default function Expenses({
     setNewCat(false)
     setNewName('')
     setNewBudget('')
-    onToast('Categoría creada')
+    onToast('Categoría creada\nYa puedes **registrar** gastos en ella.')
     await data.refresh()
   }
 
@@ -135,7 +170,7 @@ export default function Expenses({
       return
     }
     setEditExp(null)
-    onToast('Gasto actualizado')
+    onToast('Gasto actualizado\nLos **totales** del mes se recalcularon.')
     await data.refresh()
   }
 
@@ -151,7 +186,7 @@ export default function Expenses({
       setError('No se pudo borrar el gasto')
       return
     }
-    onToast('Gasto borrado')
+    onToast('Gasto eliminado\nSe quitó de los **totales** del mes.', 'info')
     await data.refresh()
   }
 
@@ -159,13 +194,13 @@ export default function Expenses({
     <main className="screen">
       <h1 className="title">Gastos</h1>
 
-      <div className="seg" role="group" aria-label="Filtrar por quién pagó">
-        <button type="button" aria-pressed={who === 'all'} onClick={() => setWho('all')}>
-          Todo
+      <div className="seg" role="group" aria-label="Ver los gastos de">
+        <button type="button" aria-pressed={who === 'all'} onClick={() => { setWho('all'); setCatFilter('all') }}>
+          Todo el hogar
         </button>
         {hh.members.map((m) => (
-          <button key={m.user_id} type="button" aria-pressed={who === m.user_id} onClick={() => setWho(m.user_id)}>
-            {m.display_name}
+          <button key={m.user_id} type="button" aria-pressed={who === m.user_id} onClick={() => { setWho(m.user_id); setCatFilter('all') }}>
+            {m.user_id === hh.me.user_id ? 'Yo' : m.display_name}
           </button>
         ))}
       </div>
@@ -177,74 +212,172 @@ export default function Expenses({
       )}
 
       <section className="card">
-        <strong>Presupuesto por categoría</strong>
-        {data.categories.map((c) => {
-          const s = spent.get(c.id) ?? 0
-          const over = c.monthly_budget > 0 && s > c.monthly_budget
-          const pct = c.monthly_budget > 0 ? Math.min(100, (s * 100) / c.monthly_budget) : 0
-          return (
-            <div key={c.id} className="stack tight">
-              <div className="row between">
-                <span>{c.name}</span>
-                {editing !== c.id && (
-                  <button
-                    type="button"
-                    className="link-btn num"
-                    aria-label={`Editar categoría ${c.name}`}
-                    onClick={() => {
-                      setEditing(c.id)
-                      setValue(String(c.monthly_budget))
-                      setNameValue(c.name)
-                      setArchiveId(null)
-                    }}
-                  >
-                    <span className={over ? 'over' : ''}>{money(s)}</span> /{' '}
-                    {c.monthly_budget > 0 ? money(c.monthly_budget) : 'definir'}
-                  </button>
+        <strong>{person ? (person.user_id === hh.me.user_id ? 'Tus números' : `Números de ${person.display_name}`) : 'Números del hogar'} en {monthName(month)}</strong>
+        {list.length === 0 ? (
+          <span className="muted">Todavía no hay gastos este mes para calcular.</span>
+        ) : (
+          <>
+            <div className="tiles">
+              <div className="tile">
+                <span className="muted small-text">{person ? 'Pagó' : 'Gastaron'}</span>
+                <span className="amount-sm num">{money(totalSpent)}</span>
+                {person && householdTotal > 0 && (
+                  <span className="line-help">{Math.round((totalSpent * 100) / householdTotal)} % de lo que gasta el hogar</span>
                 )}
               </div>
-              <div className="bar" aria-hidden="true">
-                <span style={{ width: `${pct}%`, background: over ? 'var(--warn)' : 'var(--accent)' }} />
+              <div className="tile">
+                <span className="muted small-text">Cada día en promedio</span>
+                <span className="amount-sm num">{money(metrics.avgPerDay)}</span>
+                {metrics.projection !== null && <span className="line-help">A este ritmo: {money(metrics.projection)} al cerrar el mes</span>}
               </div>
-              {editing === c.id && (
-                <div className="stack tight">
-                  <input
-                    className="input"
-                    maxLength={40}
-                    value={nameValue}
-                    onChange={(e) => setNameValue(e.target.value)}
-                    aria-label="Nombre de la categoría"
-                  />
-                  <div className="row">
-                  <input
-                    className="input"
-                    inputMode="numeric"
-                    value={value}
-                    onChange={(e) => setValue(digitsOnly(e.target.value))}
-                    aria-label={`Presupuesto mensual de ${c.name}`}
-                  />
-                  <button type="button" className="btn small" disabled={busy} onClick={() => void saveBudget(c.id)}>
-                    Guardar
-                  </button>
-                  <button type="button" className="btn ghost small" onClick={() => setEditing(null)}>
-                    Cancelar
-                  </button>
-                  </div>
-                  <button type="button" className="btn danger small" disabled={busy} onClick={() => void archiveCategory(c.id)}>
-                    {archiveId === c.id ? '¿Seguro? Se conservan sus gastos' : 'Quitar categoría'}
-                  </button>
+              <div className="tile">
+                <span className="muted small-text">Frente al mes pasado</span>
+                <span className="amount-sm num">{delta === null ? 'Sin datos' : delta === 0 ? 'Igual' : `${delta > 0 ? '+' : '−'}${Math.abs(delta)} %`}</span>
+                <span className="line-help">
+                  {delta === null ? 'Aún no hay un mes anterior para comparar' : delta > 0 ? 'Gastan más que antes' : delta < 0 ? 'Gastan menos que antes' : 'Mismo gasto'}
+                </span>
+              </div>
+              {topCat && topCat.spent > 0 && (
+                <div className="tile">
+                  <span className="muted small-text">Donde más se va</span>
+                  <span className="amount-sm">{topCat.name}</span>
+                  <span className="line-help">{Math.round((topCat.spent * 100) / Math.max(1, totalSpent))} % del gasto</span>
                 </div>
               )}
             </div>
-          )
-        })}
+            {personStats && (
+              <span className="line-help">
+                <Rich text={`De lo que pagó, **${money(personStats.paidShared)}** fue compartido y **${money(personStats.paidPersonal)}** personal. Su costo real del mes es **${money(personStats.trueCost)}**.`} />
+              </span>
+            )}
+            {metrics.topDay && (
+              <span className="line-help">
+                <Rich text={`Su día más fuerte fue el **${metrics.topDay.day} de ${monthName(month)}** con **${money(metrics.topDay.amount)}**.`} />
+              </span>
+            )}
+          </>
+        )}
+      </section>
+
+      <Intro
+        title="Presupuesto por categoría: un tope de gasto para cada cosa"
+        text="Cada categoría agrupa un tipo de gasto: supermercado, transporte, ocio. Si le pones un tope mensual, la barra te muestra cuánto llevan gastado y cuánto les queda."
+        steps={[
+          'Toca el **lápiz** de una categoría.',
+          'Escribe cuánto quieren gastar **al mes** en ella y guarda.',
+          'Mira la barra: mientras más llena, más cerca del tope. Si se pone roja, ya se pasaron.',
+          'Toca **Ver en qué se fue** para saber qué compras pesaron más.',
+        ]}
+      />
+
+      <section className="card">
+        <strong>Presupuesto por categoría</strong>
+        {[...data.categories]
+          .sort((a, b) => (spent.get(b.id) ?? 0) - (spent.get(a.id) ?? 0))
+          .map((c) => {
+            const s = spent.get(c.id) ?? 0
+            const hasBudget = c.monthly_budget > 0
+            const over = hasBudget && s > c.monthly_budget
+            const pct = hasBudget ? Math.min(100, Math.round((s * 100) / c.monthly_budget)) : 0
+            const share = totalSpent > 0 ? Math.round((s * 100) / totalSpent) : 0
+            const items = openCat === c.id ? whereItWent(list.filter((e) => e.category_id === c.id)) : []
+            return (
+              <div key={c.id} className="stack tight cat-row">
+                <div className="row between">
+                  <strong>{c.name}</strong>
+                  {editing !== c.id && (
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label={`Editar la categoría ${c.name}`}
+                      onClick={() => {
+                        setEditing(c.id)
+                        setValue(String(c.monthly_budget))
+                        setNameValue(c.name)
+                        setArchiveId(null)
+                      }}
+                    >
+                      <Icon name="edit" size={20} />
+                    </button>
+                  )}
+                </div>
+                <div className="row between">
+                  <span className={over ? 'over num strong' : 'num strong'}>{money(s)}</span>
+                  <span className="muted num small-text">{hasBudget ? `de ${money(c.monthly_budget)}` : 'sin tope definido'}</span>
+                </div>
+                {hasBudget && (
+                  <div className="bar" role="img" aria-label={`${c.name}: ${pct} % del presupuesto`}>
+                    <span style={{ width: `${pct}%`, background: over ? 'var(--warn)' : pct >= 80 ? 'var(--amber)' : 'var(--accent)' }} />
+                  </div>
+                )}
+                <span className={over ? 'line-help over' : 'line-help'}>
+                  {hasBudget
+                    ? over
+                      ? `Se pasaron por ${money(s - c.monthly_budget)}.`
+                      : `Les quedan ${money(c.monthly_budget - s)} (${100 - pct} % libre).`
+                    : 'Toca el lápiz para ponerle un tope mensual.'}
+                  {s > 0 && ` · ${share} % de todo lo gastado`}
+                </span>
+                {s > 0 && (
+                  <button type="button" className="link-btn" aria-expanded={openCat === c.id} onClick={() => setOpenCat(openCat === c.id ? null : c.id)}>
+                    {openCat === c.id ? 'Ocultar' : 'Ver en qué se fue'}
+                  </button>
+                )}
+                {openCat === c.id && (
+                  <div className="where">
+                    {items.slice(0, 6).map((it) => (
+                      <div className="row between small-text" key={it.label}>
+                        <span className="ellipsis">
+                          {it.label}
+                          {it.count > 1 && <span className="muted"> · {it.count} veces</span>}
+                        </span>
+                        <span className="num strong">{money(it.total)}</span>
+                      </div>
+                    ))}
+                    {items.length > 6 && <span className="line-help">y {items.length - 6} más en los movimientos.</span>}
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() => {
+                        setCatFilter(c.id)
+                        setShowAll(false)
+                      }}
+                    >
+                      Ver solo estos movimientos ↓
+                    </button>
+                  </div>
+                )}
+                {editing === c.id && (
+                  <div className="stack tight">
+                    <label className="line-help" htmlFor={`cn-${c.id}`}>Nombre de la categoría</label>
+                    <input id={`cn-${c.id}`} className="input" maxLength={40} value={nameValue} onChange={(e) => setNameValue(e.target.value)} />
+                    <label className="line-help" htmlFor={`cb-${c.id}`}>Cuánto quieren gastar al mes en {c.name} (CLP)</label>
+                    <input id={`cb-${c.id}`} className="input" inputMode="numeric" placeholder="Ej. 250000" value={value} onChange={(e) => setValue(digitsOnly(e.target.value))} />
+                    <div className="row">
+                      <button type="button" className="btn small" disabled={busy} onClick={() => void saveBudget(c.id)}>
+                        Guardar
+                      </button>
+                      <button type="button" className="btn ghost small" onClick={() => setEditing(null)}>
+                        Cancelar
+                      </button>
+                    </div>
+                    <button type="button" className="btn danger small" disabled={busy} onClick={() => void archiveCategory(c.id)}>
+                      {archiveId === c.id ? '¿Seguro? Se conservan sus gastos' : 'Quitar categoría'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         {newCat ? (
           <div className="stack tight">
-            <input className="input" maxLength={40} placeholder="Nombre de la categoría" value={newName} onChange={(e) => setNewName(e.target.value)} aria-label="Nombre de la nueva categoría" />
-            <input className="input" inputMode="numeric" placeholder="Presupuesto mensual (opcional)" value={newBudget} onChange={(e) => setNewBudget(digitsOnly(e.target.value))} aria-label="Presupuesto mensual" />
+            <label className="line-help" htmlFor="nc-name">Nombre de la nueva categoría</label>
+            <input id="nc-name" className="input" maxLength={40} placeholder="Ej. Mascotas, Educación" value={newName} onChange={(e) => setNewName(e.target.value)} />
+            <label className="line-help" htmlFor="nc-budget">Tope mensual (opcional)</label>
+            <input id="nc-budget" className="input" inputMode="numeric" placeholder="Ej. 80000" value={newBudget} onChange={(e) => setNewBudget(digitsOnly(e.target.value))} />
             <div className="row">
               <button type="button" className="btn small" disabled={busy} onClick={() => void addCategory()}>
-                Crear
+                Crear categoría
               </button>
               <button type="button" className="btn ghost small" onClick={() => setNewCat(false)}>
                 Cancelar
@@ -259,11 +392,32 @@ export default function Expenses({
       </section>
 
       <section className="card">
-        <strong>Movimientos del mes</strong>
-        <span className="muted small-text">Toca un gasto para corregirlo.</span>
-        {list.length === 0 && <span className="muted">Sin gastos para mostrar.</span>}
+        <strong>Movimientos de {monthName(month)}</strong>
+        <span className="muted small-text">
+          {visible.length === 0
+            ? 'Sin gastos para mostrar.'
+            : `${visible.length} ${visible.length === 1 ? 'gasto' : 'gastos'} por ${money(visible.reduce((s, e) => s + e.amount, 0))}. Toca uno para corregirlo.`}
+        </span>
+        <div className="chips" role="group" aria-label="Filtrar por categoría">
+          <button type="button" className="chip" aria-pressed={catFilter === 'all'} onClick={() => setCatFilter('all')}>
+            Todas
+          </button>
+          {data.categories
+            .filter((c) => (spent.get(c.id) ?? 0) > 0)
+            .map((c) => (
+              <button key={c.id} type="button" className="chip" aria-pressed={catFilter === c.id} onClick={() => setCatFilter(c.id)}>
+                {c.name}
+              </button>
+            ))}
+        </div>
         <div>
-          {list.map((e) =>
+          {shownGroups.map((g) => (
+            <div key={g.date} className="day-group">
+              <div className="row between day-head">
+                <strong>{dayHeading(g.date)}</strong>
+                <span className="muted num small-text">{money(g.total)}</span>
+              </div>
+              {g.items.map((e) =>
             editExp === e.id ? (
               <div className="stack tight item-edit" key={e.id}>
                 <input
@@ -332,14 +486,16 @@ export default function Expenses({
                   aria-label={`Editar gasto ${e.note || catName.get(e.category_id) || ''}`}
                   onClick={() => startEdit(e)}
                 >
-                  <div className="ellipsis">{e.note || catName.get(e.category_id) || 'Gasto'}</div>
+                  <div className="ellipsis strong">{e.note || catName.get(e.category_id) || 'Gasto'}</div>
                   <div className="muted small-text">
-                    {catName.get(e.category_id) ?? 'Sin categoría'} · {shortDate(e.spent_on)}
-                    {e.shared ? '' : ' · personal'}
-                    {e.recurring_id ? ' · fijo' : ''}
+                    {catName.get(e.category_id) ?? 'Sin categoría'} · Pagó {members.get(e.paid_by)?.display_name ?? 'alguien'}
+                  </div>
+                  <div className="tags">
+                    <span className={e.shared ? 'tag' : 'tag alt'}>{e.shared ? 'Compartido' : 'Personal'}</span>
+                    {e.recurring_id && <span className="tag">Gasto fijo</span>}
                   </div>
                 </button>
-                <span className="num">{money(e.amount)}</span>
+                <span className="num strong">{money(e.amount)}</span>
                 <button
                   type="button"
                   className={confirmId === e.id ? 'icon-btn confirm' : 'icon-btn'}
@@ -350,8 +506,15 @@ export default function Expenses({
                 </button>
               </div>
             ),
-          )}
+              )}
+            </div>
+          ))}
         </div>
+        {!showAll && visible.length > PAGE && (
+          <button type="button" className="btn ghost small" onClick={() => setShowAll(true)}>
+            Ver los {visible.length} gastos
+          </button>
+        )}
       </section>
     </main>
   )

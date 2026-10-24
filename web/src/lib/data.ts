@@ -45,6 +45,29 @@ export interface HouseholdData {
   refresh: () => Promise<void>
 }
 
+type Group = 'month' | 'static'
+
+/** Qué grupo de datos hay que recargar cuando cambia cada tabla */
+const GROUPS_OF: Record<string, Group[]> = {
+  expenses: ['month'],
+  incomes: ['month'],
+  categories: ['static'],
+  goals: ['static'],
+  contributions: ['static'],
+  debts: ['static'],
+  debt_payments: ['static'],
+  salaries: ['static'],
+  profiles: ['static'],
+  recurring_expenses: ['static'],
+  members: ['month', 'static'],
+  households: ['month', 'static'],
+}
+
+/** Junta varios avisos seguidos (por ejemplo, al generarse varios gastos fijos) en una sola consulta */
+const REFRESH_DEBOUNCE_MS = 350
+/** Si la app estuvo oculta más que esto, al volver se refresca aunque no haya llegado ningún aviso */
+const STALE_AFTER_MS = 30_000
+
 export function useData(
   householdId: string,
   userId: string,
@@ -68,18 +91,19 @@ export function useData(
   const [financeReady, setFinanceReady] = useState(true)
   const [loadedKey, setLoadedKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const seq = useRef(0)
+  const [staticReady, setStaticReady] = useState(false)
+  const monthSeq = useRef(0)
+  const staticSeq = useRef(0)
   const key = `${year}-${monthIndex}`
 
-  const refresh = useCallback(async () => {
-    const mine = ++seq.current
+  // Gastos e ingresos cambian con el mes elegido; todo lo demás (categorías, metas, deudas…) no.
+  const loadMonth = useCallback(async () => {
+    const mine = ++monthSeq.current
     const thisKey = `${year}-${monthIndex}`
     const start = toISO(new Date(year, monthIndex, 1))
     const prevStart = toISO(new Date(year, monthIndex - 1, 1))
     const end = toISO(new Date(year, monthIndex + 1, 1))
-
-    const [cats, exps, gls, cons, sal, dts, pays, profs, incs, recs] = await Promise.all([
-      supabase.from('categories').select('*').eq('household_id', householdId).eq('archived', false).order('position'),
+    const [exps, incs] = await Promise.all([
       supabase
         .from('expenses')
         .select('*')
@@ -88,12 +112,6 @@ export function useData(
         .lt('spent_on', end)
         .order('spent_on', { ascending: false })
         .order('created_at', { ascending: false }),
-      supabase.from('goals').select('*').eq('household_id', householdId).eq('archived', false).order('created_at'),
-      supabase.from('contributions').select('*').eq('household_id', householdId).order('created_at', { ascending: false }),
-      supabase.from('salaries').select('*').maybeSingle(),
-      supabase.from('debts').select('*').eq('household_id', householdId).eq('archived', false).order('created_at'),
-      supabase.from('debt_payments').select('*').eq('household_id', householdId).order('paid_on', { ascending: false }),
-      supabase.from('profiles').select('*').eq('household_id', householdId),
       supabase
         .from('incomes')
         .select('*')
@@ -101,19 +119,39 @@ export function useData(
         .gte('received_on', start)
         .lt('received_on', end)
         .order('received_on', { ascending: false }),
+    ])
+    if (mine !== monthSeq.current) return
+    if (exps.error) {
+      setError(exps.error.message)
+      return
+    }
+    const rows = exps.data ?? []
+    setExpenses(rows.filter((e) => e.spent_on >= start))
+    setPrevExpenses(rows.filter((e) => e.spent_on < start))
+    setIncomes(incs.error ? [] : (incs.data ?? []))
+    setError(null)
+    setLoadedKey(thisKey)
+  }, [householdId, year, monthIndex])
+
+  const loadStatic = useCallback(async () => {
+    const mine = ++staticSeq.current
+    const [cats, gls, cons, sal, dts, pays, profs, recs] = await Promise.all([
+      supabase.from('categories').select('*').eq('household_id', householdId).eq('archived', false).order('position'),
+      supabase.from('goals').select('*').eq('household_id', householdId).eq('archived', false).order('created_at'),
+      supabase.from('contributions').select('*').eq('household_id', householdId).order('created_at', { ascending: false }),
+      supabase.from('salaries').select('*').maybeSingle(),
+      supabase.from('debts').select('*').eq('household_id', householdId).eq('archived', false).order('created_at'),
+      supabase.from('debt_payments').select('*').eq('household_id', householdId).order('paid_on', { ascending: false }),
+      supabase.from('profiles').select('*').eq('household_id', householdId),
       supabase.from('recurring_expenses').select('*').eq('household_id', householdId).order('day_of_month'),
     ])
-    if (mine !== seq.current) return
-
-    const err = cats.error ?? exps.error ?? gls.error ?? cons.error
+    if (mine !== staticSeq.current) return
+    const err = cats.error ?? gls.error ?? cons.error
     if (err) {
       setError(err.message)
       return
     }
-    const rows = exps.data ?? []
     setCategories(cats.data ?? [])
-    setExpenses(rows.filter((e) => e.spent_on >= start))
-    setPrevExpenses(rows.filter((e) => e.spent_on < start))
     setGoals(gls.data ?? [])
     setContributions(cons.data ?? [])
     // Sueldo y deudas no deben tumbar el resto de la app si faltan en la base
@@ -124,30 +162,42 @@ export function useData(
     setDebtPayments(finErr ? [] : (pays.data ?? []))
     setProfileReady(!profs.error)
     setProfiles(profs.error ? [] : (profs.data ?? []))
-    setIncomes(incs.error ? [] : (incs.data ?? []))
     setRecurring(recs.error ? [] : (recs.data ?? []))
-    setError(null)
-    setLoadedKey(thisKey)
-  }, [householdId, year, monthIndex])
+    setStaticReady(true)
+  }, [householdId])
 
-  const refreshRef = useRef(refresh)
+  // Recarga completa: la usan las pantallas después de guardar algo propio
+  const refresh = useCallback(async () => {
+    await Promise.all([loadMonth(), loadStatic()])
+  }, [loadMonth, loadStatic])
+
+  const loadMonthRef = useRef(loadMonth)
+  const loadStaticRef = useRef(loadStatic)
   const membersRef = useRef(onMembersChange)
   useEffect(() => {
-    refreshRef.current = refresh
+    loadMonthRef.current = loadMonth
+    loadStaticRef.current = loadStatic
     membersRef.current = onMembersChange
-  }, [refresh, onMembersChange])
+  }, [loadMonth, loadStatic, onMembersChange])
 
-  // Carga al abrir y cada vez que cambia el mes
+  // Al abrir: todo. Al cambiar de mes: solo gastos e ingresos del mes nuevo.
   useEffect(() => {
-    void refresh()
-  }, [refresh])
+    void loadStatic()
+  }, [loadStatic])
+  useEffect(() => {
+    void loadMonth()
+  }, [loadMonth])
 
-  // Gastos fijos: se generan al abrir la app y al volver a ella (por si cambió el día)
+  // Gastos fijos: se generan al abrir y, después, solo cuando cambia el día (no en cada vuelta a la app)
+  const lastApplyDay = useRef('')
   useEffect(() => {
     let cancelled = false
     const apply = async () => {
+      const today = toISO(new Date())
+      if (today === lastApplyDay.current) return
+      lastApplyDay.current = today
       const { data: created } = await supabase.rpc('apply_recurring')
-      if (!cancelled && created) void refreshRef.current()
+      if (!cancelled && created) void loadMonthRef.current()
     }
     void apply()
     const onVisible = () => {
@@ -162,26 +212,58 @@ export function useData(
 
   // Tiempo real por canales privados: 'hh:<hogar>' solo lo escuchan sus miembros y
   // 'u:<usuario>' solo la misma persona (sueldo e ingresos). Solo avisan qué tabla cambió.
+  // Cada aviso recarga únicamente el grupo afectado, junta ráfagas en una sola consulta y,
+  // si la app está en segundo plano, espera a que vuelvas para recargar una vez.
   useEffect(() => {
     let cancelled = false
+    const dirty = new Set<Group>()
+    let timer: number | undefined
+    let hiddenAt = 0
+
+    const flush = () => {
+      timer = undefined
+      if (dirty.has('month')) void loadMonthRef.current()
+      if (dirty.has('static')) void loadStaticRef.current()
+      dirty.clear()
+    }
+    const mark = (groups: Group[]) => {
+      for (const g of groups) dirty.add(g)
+      if (document.visibilityState === 'hidden') return
+      window.clearTimeout(timer)
+      timer = window.setTimeout(flush, REFRESH_DEBOUNCE_MS)
+    }
+
     const channels = [`hh:${householdId}`, `u:${userId}`].map((topic) =>
       supabase
         .channel(topic, { config: { private: true } })
         .on('broadcast', { event: 'change' }, ({ payload }: { payload?: { table?: string } }) => {
-          if (payload?.table === 'members' || payload?.table === 'households') membersRef.current?.()
-          void refreshRef.current()
+          const table = payload?.table ?? ''
+          if (table === 'members' || table === 'households') membersRef.current?.()
+          mark(GROUPS_OF[table] ?? ['month', 'static'])
         }),
     )
     void supabase.realtime.setAuth().then(() => {
       if (!cancelled) for (const ch of channels) ch.subscribe()
     })
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void refreshRef.current()
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now()
+        return
+      }
+      if (dirty.size > 0) flush()
+      else if (hiddenAt && Date.now() - hiddenAt > STALE_AFTER_MS) {
+        dirty.add('month')
+        dirty.add('static')
+        flush()
+      }
+      hiddenAt = 0
     }
-    document.addEventListener('visibilitychange', onVisible)
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       cancelled = true
-      document.removeEventListener('visibilitychange', onVisible)
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
       for (const ch of channels) void supabase.removeChannel(ch)
     }
   }, [householdId, userId])
@@ -200,7 +282,7 @@ export function useData(
     recurring,
     profileReady,
     financeReady,
-    ready: loadedKey !== null,
+    ready: loadedKey !== null && staticReady,
     loading: loadedKey !== key,
     error,
     refresh,

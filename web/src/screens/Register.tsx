@@ -57,7 +57,7 @@ export default function Register({
     }
     if (created) notifyPartner('expense', created.id)
     await data.refresh()
-    onSaved(`Guardado: ${money(amount)}`)
+    onSaved(`Gasto registrado\nSe anotaron **${money(amount)}** en ${data.categories.find((c) => c.id === catId)?.name ? `**${data.categories.find((c) => c.id === catId)?.name}**` : 'tus gastos'}.`)
   }
 
   return (

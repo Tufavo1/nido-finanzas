@@ -22,6 +22,7 @@ interface Props {
   onMonth: (delta: number) => void
   alerts: Alert[]
   onGo: (tab: AlertTab) => void
+  onSettings: () => void
 }
 
 const DOW = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
@@ -35,7 +36,7 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
   )
 }
 
-export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo }: Props) {
+export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo, onSettings }: Props) {
   const [requestedView, setView] = useState<string>('all')
   const [day, setDay] = useState<number | null>(null)
 
@@ -135,8 +136,15 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
           <span className="eyebrow">{partner ? `Tú y ${partner.display_name}` : 'Tu hogar'}</span>
           <h1 className="title">Hola, {hh.me.display_name}</h1>
         </div>
-        {members.length === 2 ? <AvatarPair people={members} /> : <Logo size={30} />}
+        <div className="row">
+          {members.length === 2 ? <AvatarPair people={members} /> : <Logo size={30} />}
+          <button type="button" className="icon-btn" aria-label="Ajustes y seguridad" onClick={onSettings}>
+            <Icon name="gear" />
+          </button>
+        </div>
       </div>
+
+      <AlertsCard alerts={alerts} onGo={onGo} />
 
       <div className="row between">
         <button type="button" className="icon-btn" aria-label="Mes anterior" onClick={() => change(-1)}>
@@ -206,8 +214,6 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
         </div>
         {deltaText && <span className="muted small-text">{deltaText}</span>}
       </section>
-
-      <AlertsCard alerts={alerts} onGo={onGo} />
 
       {data.expenses.length === 0 && (
         <section className="card empty">
@@ -287,7 +293,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
             />
           </div>
           <span className="muted small-text">
-            Gastos {salaryCheck.spentPct} % + cuotas {salaryCheck.debtPct} % de tu sueldo. Detalle en la pestaña Plata.
+            Gastos {salaryCheck.spentPct} % + cuotas {salaryCheck.debtPct} % de tu sueldo. Detalle en la pestaña Finanzas.
           </span>
         </section>
       )}

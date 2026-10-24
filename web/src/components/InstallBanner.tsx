@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { installPromptSnoozed, promptInstall, snoozeInstallPrompt, useInstallState } from '../lib/install'
+import type { Notify } from './Toast'
 
 /** Pregunta una vez si quiere instalar la app. Si dice que no, queda el botón en Ajustes. */
-export default function InstallBanner({ onToast }: { onToast: (text: string) => void }) {
+export default function InstallBanner({ onToast }: { onToast: Notify }) {
   const state = useInstallState()
   const [hidden, setHidden] = useState(installPromptSnoozed)
   if (hidden || (state !== 'available' && state !== 'ios')) return null
@@ -10,12 +11,12 @@ export default function InstallBanner({ onToast }: { onToast: (text: string) => 
   function later() {
     snoozeInstallPrompt()
     setHidden(true)
-    onToast('Listo. Puedes instalarla cuando quieras desde Ajustes.')
+    onToast('Sin problema\nPuedes instalarla cuando quieras desde **Ajustes**.', 'info')
   }
 
   async function install() {
     const ok = await promptInstall()
-    if (ok) onToast('¡Contigo quedó instalada!')
+    if (ok) onToast('Contigo quedó instalada\nYa puedes abrirla desde tu **pantalla de inicio**.')
     else later()
   }
 
@@ -25,7 +26,7 @@ export default function InstallBanner({ onToast }: { onToast: (text: string) => 
         <strong>¿Quieres instalar Contigo?</strong>
         <span className="muted small-text install-text">
           {state === 'ios'
-            ? 'Toca el botón Compartir del navegador y luego «Añadir a pantalla de inicio».'
+            ? 'Toca el botón Compartir del navegador y luego Añadir a pantalla de inicio.'
             : 'Se abre más rápido, a pantalla completa y con su propio ícono.'}
         </span>
       </div>

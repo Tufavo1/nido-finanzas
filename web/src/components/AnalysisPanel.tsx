@@ -10,6 +10,7 @@ import { monthName } from '../lib/ui'
 import { SLICE_COLORS, levelColor } from '../lib/chartColors'
 import { Bars, Donut, Gauge } from './Charts'
 import Logo from './Logo'
+import { Rich } from '../lib/rich'
 
 interface Props {
   hh: Household
@@ -258,8 +259,8 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
                 {MARK[f.level]}
               </span>
               <div className="grow">
-                <div className="strong">{f.title}</div>
-                <div className="muted small-text">{f.detail}</div>
+                <div className="strong"><Rich text={f.title} /></div>
+                <div className="muted small-text"><Rich text={f.detail} /></div>
               </div>
             </div>
           ))}

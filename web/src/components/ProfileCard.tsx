@@ -5,12 +5,13 @@ import type { HouseholdData } from '../lib/data'
 import { EMPLOYMENT, adviceFor } from '../lib/profile'
 import type { Employment } from '../lib/profile'
 import { supabase } from '../lib/supabase'
+import type { Notify } from './Toast'
 
 interface Props {
   hh: Household
   data: HouseholdData
   reload: () => Promise<void>
-  onToast: (text: string) => void
+  onToast: Notify
 }
 
 export default function ProfileCard({ hh, data, reload, onToast }: Props) {
@@ -66,7 +67,7 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
       return
     }
     setEditing(false)
-    onToast('Perfil guardado')
+    onToast('Perfil guardado\nTus **recomendaciones** se ajustaron a tu perfil.')
     await reload()
     await data.refresh()
   }
@@ -133,7 +134,7 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
             </>
           ) : (
             <span className="muted small-text">
-              Para guardar profesión falta aplicar la migración «20261018060000_perfil_edicion».
+              Para guardar profesión falta aplicar la migración <strong>20261018060000_perfil_edicion</strong>.
             </span>
           )}
           {error && (

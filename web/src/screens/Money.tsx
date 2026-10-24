@@ -6,24 +6,26 @@ import AnalysisPanel from '../components/AnalysisPanel'
 import IncomesCard from '../components/IncomesCard'
 import Intro from '../components/Intro'
 import RecurringPanel from '../components/RecurringPanel'
-import { analyzeSalary, monthIncome, myDebtShare, summarizeDebts } from '../lib/finance'
+import { analyzeSalary, monthIncome, monthsToPayoff, myDebtShare, summarizeDebts } from '../lib/finance'
 import type { DebtView, Finding } from '../lib/finance'
 import { money, todayISO } from '../lib/format'
 import { computeMetrics } from '../lib/metrics'
 import { supabase } from '../lib/supabase'
-import { digitsOnly, memberColor, monthName } from '../lib/ui'
+import { Rich } from '../lib/rich'
+import { daysUntil, digitsOnly, inDays, longDate, memberColor, monthName, nextOccurrence } from '../lib/ui'
+import type { Notify } from '../components/Toast'
 
 interface Props {
   hh: Household
   data: HouseholdData
   month: Date
-  onToast: (text: string) => void
+  onToast: Notify
 }
 
 const KINDS = [
   { key: 'tarjeta', label: 'Tarjeta', help: 'Tarjeta de crédito o de una tienda.' },
   { key: 'credito', label: 'Crédito', help: 'Crédito de consumo, hipotecario o de auto.' },
-  { key: 'prestamo', label: 'Préstamo', help: 'Plata prestada por un banco, una persona o un familiar.' },
+  { key: 'prestamo', label: 'Préstamo', help: 'Dinero prestado por un banco, una persona o un familiar.' },
   { key: 'otro', label: 'Otra', help: 'Cualquier otra plata que se deba.' },
 ] as const
 
@@ -39,8 +41,8 @@ function Findings({ list }: { list: Finding[] }) {
             {MARK[f.level]}
           </span>
           <div>
-            <div className="strong">{f.title}</div>
-            <div className="muted small-text">{f.detail}</div>
+            <div className="strong"><Rich text={f.title} /></div>
+            <div className="muted small-text"><Rich text={f.detail} /></div>
           </div>
         </div>
       ))}
@@ -105,7 +107,7 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
       return
     }
     setEditing(false)
-    onToast('Sueldo guardado')
+    onToast('Sueldo guardado\nTu **balance** del mes ya está al día.')
     await data.refresh()
   }
 
@@ -116,13 +118,13 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
   return (
     <>
       <Intro
-        title="Sueldo: lo que ganas cada mes"
-        text="Aquí anotas cuánta plata te llega al mes. Con ese dato, la app te dice cuánto te sobra después de tus gastos y de pagar tus deudas."
-        showSteps={!salary}
+        title="Sueldo: cuánto te depositan al mes"
+        text="Aquí guardas lo que te pagan por tu trabajo. Con ese número la app calcula cuánto te sobra después de pagar tus gastos y tus deudas, y solo tú lo ves. Los bonos o ventas ocasionales no van aquí: anótalos en Ingresos extra."
         steps={[
-          'Escribe cuánta plata te llega a la cuenta cada mes (ya con los descuentos).',
-          'Escribe qué día del mes te pagan.',
-          'Toca «Guardar mi sueldo». Abajo verás cuánto te queda y si vas bien.',
+          'Escribe tu sueldo **líquido**: lo que realmente llega a tu cuenta, después de los descuentos de AFP, salud e impuestos.',
+          'Elige el **día del mes** en que te depositan.',
+          'Toca **Guardar mi sueldo**.',
+          'Más abajo verás **cuánto te queda** este mes y si vas bien.',
         ]}
       />
 
@@ -147,8 +149,8 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
                 : 'Es un dato privado: solo lo ves tú.'}
             </span>
             <div className="field">
-              <label htmlFor="salary">¿Cuánto te llega al banco cada mes?</label>
-              <span className="line-help">Es el sueldo «líquido»: lo que recibes después de descuentos.</span>
+              <label htmlFor="salary">Sueldo líquido mensual</label>
+              <span className="line-help">Lo que te depositan, ya sin descuentos de AFP, salud ni impuestos. No incluyas bonos ocasionales.</span>
               <input
                 id="salary" autoComplete="off"
                 className="input"
@@ -157,11 +159,23 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
                 value={amount}
                 onChange={(e) => setAmount(digitsOnly(e.target.value))}
               />
-              {amount && <span className="hint num">Escribiste: {money(Number(amount))}</span>}
+              {amount && <span className="hint num">Escribiste {money(Number(amount))}: son unos {money(Math.round(Number(amount) / 30))} por día.</span>}
             </div>
             <div className="field">
-              <label htmlFor="payday">¿Qué día del mes te pagan?</label>
-              <span className="line-help">Un número del 1 al 31. Por ejemplo, 5.</span>
+              <label htmlFor="payday">Día del mes en que te pagan</label>
+              <div className="chips" role="group" aria-label="Días de pago comunes">
+                {[1, 5, 10, 15, 25, 30].map((n) => (
+                  <button key={n} type="button" className="chip" aria-pressed={payDay === String(n)} onClick={() => setPayDay(String(n))}>
+                    Día {n}
+                  </button>
+                ))}
+              </div>
+              <span className="line-help">Elige uno o escribe otro número del 1 al 31.</span>
+              {Number(payDay) >= 1 && Number(payDay) <= 31 && (
+                <span className="hint">
+                  Tu próximo pago: {longDate(nextOccurrence(Number(payDay)))} ({inDays(daysUntil(nextOccurrence(Number(payDay))))}).
+                </span>
+              )}
               <input
                 id="payday"
                 className="input"
@@ -200,7 +214,7 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
             <div className="stack tight">
               {data.incomes.length > 0 && (
                 <div className="row between">
-                  <span className="muted">Plata que entró (sueldo + extras)</span>
+                  <span className="muted">Ingresos del mes (sueldo + extras)</span>
                   <span className="num">{money(a.income)}</span>
                 </div>
               )}
@@ -269,7 +283,7 @@ function DebtCard({
   v: DebtView
   hh: Household
   data: HouseholdData
-  onToast: (t: string) => void
+  onToast: Notify
 }) {
   const d = v.debt
   const [paying, setPaying] = useState(false)
@@ -308,7 +322,7 @@ function DebtCard({
       return
     }
     setPaying(false)
-    onToast(`Pago de ${money(Math.min(n, v.remaining))} registrado`)
+    onToast(`Pago registrado\nSe abonaron **${money(Math.min(n, v.remaining))}** a la deuda.`)
     await data.refresh()
   }
 
@@ -323,7 +337,7 @@ function DebtCard({
       setError('No se pudo borrar la deuda')
       return
     }
-    onToast('Deuda borrada')
+    onToast('Deuda eliminada\nSe quitó junto con su **historial** de pagos.', 'info')
     await data.refresh()
   }
 
@@ -356,7 +370,7 @@ function DebtCard({
       setError('No se pudo borrar el pago')
       return
     }
-    onToast('Pago borrado')
+    onToast('Pago eliminado\nEl **saldo** de la deuda se recalculó.', 'info')
     await data.refresh()
   }
 
@@ -366,7 +380,7 @@ function DebtCard({
       setError('No se pudo archivar')
       return
     }
-    onToast('Deuda archivada')
+    onToast('Deuda archivada\nYa no cuenta en tus **cuotas** mensuales.', 'info')
     await data.refresh()
   }
 
@@ -525,7 +539,7 @@ function DebtForm({
   hh: Household
   data: HouseholdData
   onClose: () => void
-  onToast: (t: string) => void
+  onToast: Notify
   existing?: HouseholdData['debts'][number]
 }) {
   const [name, setName] = useState(existing?.name ?? '')
@@ -566,7 +580,7 @@ function DebtForm({
       setError('No se pudo guardar la deuda')
       return
     }
-    onToast(existing ? 'Deuda actualizada' : 'Deuda agregada')
+    onToast(existing ? 'Deuda actualizada\nSus **cuotas** y saldo se recalcularon.' : 'Deuda agregada\nYa aparece en tu plan de **pago**.')
     onClose()
     await data.refresh()
   }
@@ -575,8 +589,9 @@ function DebtForm({
     <form className="card" onSubmit={(e) => void submit(e)}>
       <strong>{existing ? 'Editar deuda' : 'Agregar una deuda'}</strong>
       <div className="field">
-        <label htmlFor="d-name">1. ¿Cómo la quieres llamar?</label>
-        <input id="d-name" className="input" maxLength={60} placeholder="Ej. Tarjeta del banco, Préstamo del auto" value={name} onChange={(e) => setName(e.target.value)} />
+        <label htmlFor="d-name">1. Nombre de la deuda</label>
+        <span className="line-help">Escribe algo que la reconozcas al verla: el banco, la tienda o la persona.</span>
+        <input id="d-name" className="input" maxLength={60} placeholder="Ej. Tarjeta Banco Estado, Crédito del auto, Préstamo de mamá" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       <div className="field">
         <span id="d-kind" className="strong">2. ¿Qué tipo de deuda es?</span>
@@ -610,23 +625,34 @@ function DebtForm({
         </span>
       </div>
       <div className="field">
-        <label htmlFor="d-total">{existing ? '4. Monto total de la deuda' : '4. ¿Cuánta plata se debe hoy?'}</label>
+        <label htmlFor="d-total">{existing ? '4. Monto total de la deuda' : '4. Saldo: lo que se debe hoy'}</label>
+        <span className="line-help">Lo que falta pagar ahora, no lo que pidieron al principio. En una tarjeta, el monto total facturado.</span>
         <input id="d-total" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800000" value={total} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
         {total && <span className="hint num">Escribiste: {money(Number(total))}</span>}
       </div>
       <div className="field">
-        <label htmlFor="d-fee">5. ¿Cuánto pagan cada mes? (opcional)</label>
-        <span className="line-help">Es la cuota mensual. Si no la sabes, déjalo vacío.</span>
-        <input id="d-fee" autoComplete="off" className="input" inputMode="numeric" value={fee} onChange={(e) => setFee(digitsOnly(e.target.value))} />
+        <label htmlFor="d-fee">5. Cuota mensual (opcional)</label>
+        <span className="line-help">Lo que pagan cada mes por esta deuda. Con ella calculamos en cuántos meses terminan.</span>
+        <input id="d-fee" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 65000" value={fee} onChange={(e) => setFee(digitsOnly(e.target.value))} />
+        {Number(fee) > 0 && Number(total) > 0 && (
+          <span className="hint">
+            {(() => {
+              const m = monthsToPayoff(Number(total), Number(fee), Number(rate.replace(',', '.') || '0') || 0)
+              return m === null
+                ? 'Con esa cuota y ese interés la deuda no baja: conviene subir la cuota.'
+                : `Pagando ${money(Number(fee))} al mes terminarían en ~${m} ${m === 1 ? 'mes' : 'meses'}.`
+            })()}
+          </span>
+        )}
       </div>
       <div className="field">
-        <label htmlFor="d-rate">6. ¿Cobran interés? (opcional)</label>
-        <span className="line-help">Porcentaje que se suma cada mes. Si no cobra, déjalo vacío.</span>
+        <label htmlFor="d-rate">6. Interés mensual en % (opcional)</label>
+        <span className="line-help">Aparece en el contrato o en la cartola como tasa mensual. Si no cobra interés, déjalo vacío.</span>
         <input id="d-rate" autoComplete="off" className="input" inputMode="decimal" placeholder="Ej. 2,5" value={rate} onChange={(e) => setRate(e.target.value.replace(/[^\d.,]/g, '').slice(0, 5))} />
       </div>
       <div className="field">
-        <label htmlFor="d-due">7. ¿Qué día del mes vence? (opcional)</label>
-        <span className="line-help">Así la app te avisa cuando se acerque.</span>
+        <label htmlFor="d-due">7. Día de vencimiento (opcional)</label>
+        <span className="line-help">El día del mes en que hay que pagar la cuota. Te avisamos cuando se acerque.</span>
         <input id="d-due" className="input" inputMode="numeric" value={due} onChange={(e) => setDue(e.target.value.replace(/\D/g, '').slice(0, 2))} />
       </div>
       {error && (
@@ -672,7 +698,7 @@ function BetweenUs({ hh, data, month }: Pick<Props, 'hh' | 'data' | 'month'>) {
     level = iOwe ? 'warn' : 'ok'
   } else if (m.shared === 0) {
     main = 'Aún no hay gastos compartidos este mes.'
-    help = 'Cuando anoten un gasto «compartido», aquí verán quién le debe plata a quién.'
+    help = 'Cuando anoten un gasto **compartido**, aquí verán quién le debe dinero a quién.'
   }
 
   return (
@@ -701,13 +727,13 @@ function DebtsPanel({ hh, data, month, onToast }: Props) {
   return (
     <>
       <Intro
-        title="Deudas: lo que se debe a bancos, tiendas o personas"
-        text="Anota cada deuda para ver cuánto falta pagar y en cuánto tiempo terminan. Cada vez que paguen una cuota, tóquenla aquí para ir bajando el saldo."
-        showSteps={empty}
+        title="Deudas: lo que debes y cuándo terminas de pagar"
+        text="Una deuda es plata que todavía tienes que devolver: una tarjeta, un crédito del banco o un préstamo de un familiar. Al anotarla, la app te muestra cuánto falta y en cuántos meses terminas."
         steps={[
-          'Toca «Agregar una deuda» y escribe su nombre y cuánta plata se debe.',
-          'Si la sabes, escribe la cuota mensual y el interés.',
-          'Cuando pagues una cuota, entra a la deuda y toca «Anotar un pago».',
+          'Toca **Agregar una deuda**.',
+          'Ponle un nombre que reconozcas, por ejemplo Tarjeta Banco Estado, y escribe **cuánto falta pagar hoy**.',
+          'Si lo sabes, agrega la **cuota mensual** y el **interés**. Con eso calculamos en cuántos meses terminas.',
+          'Cada vez que pagues una cuota, abre la deuda y toca **Anotar un pago**. El saldo baja solo.',
         ]}
       />
 
@@ -767,14 +793,14 @@ export default function Money(props: Props) {
 
   return (
     <main className="screen plata">
-      <h1 className="title">Mi plata</h1>
+      <h1 className="title">Mis finanzas</h1>
 
       {!data.financeReady ? (
         <section className="card">
           <strong>Falta activar esta sección</strong>
           <span className="muted">
             La base de datos aún no tiene las tablas de sueldo y deudas. Aplica la migración
-            «20261018050000_sueldo_deudas» y recarga.
+            <strong>20261018050000_sueldo_deudas</strong> y recarga.
           </span>
           <button type="button" className="btn small" onClick={() => void data.refresh()}>
             Reintentar

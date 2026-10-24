@@ -68,7 +68,7 @@ export default function App() {
     })
     void consumeRecoveryLink().then(async (r) => {
       if (r === 'ready') setRecovering(true)
-      if (r === 'invalid') setAuthNotice('El enlace del correo venció o ya se usó. Pide uno nuevo con «Olvidé mi contraseña».')
+      if (r === 'invalid') setAuthNotice('El enlace del correo venció o ya se usó. Pide uno nuevo con la opción Olvidé mi contraseña.')
       const { data: cur } = await supabase.auth.getSession()
       setSession(cur.session)
     })

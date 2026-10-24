@@ -5,12 +5,13 @@ import type { HouseholdData } from '../lib/data'
 import { money, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import { digitsOnly, monthName } from '../lib/ui'
+import type { Notify } from './Toast'
 
 interface Props {
   hh: Household
   data: HouseholdData
   month: Date
-  onToast: (text: string) => void
+  onToast: Notify
 }
 
 /** Ingresos extra del mes (bonos, ventas, honorarios). Privados: la pareja no los ve. */
@@ -46,7 +47,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
     setAmount('')
     setDate(todayISO())
     setOpen(false)
-    onToast('Ingreso guardado')
+    onToast('Ingreso extra guardado\nSe sumó a tu **balance** del mes.')
     await data.refresh()
   }
 
@@ -67,7 +68,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
   return (
     <section className="card" aria-label="Otros ingresos">
       <div className="row between">
-        <strong>Plata extra de {monthName(month)}</strong>
+        <strong>Ingresos extra de {monthName(month)}</strong>
         <span className="pill">🔒 Solo tú</span>
       </div>
       <span className="muted small-text">
@@ -132,7 +133,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
         </form>
       ) : (
         <button type="button" className="btn ghost small" onClick={() => setOpen(true)}>
-          Agregar plata extra
+          Agregar ingreso extra
         </button>
       )}
     </section>

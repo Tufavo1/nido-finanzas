@@ -4,17 +4,32 @@ import type { Household } from '../App'
 import type { HouseholdData, Recurring } from '../lib/data'
 import { money } from '../lib/format'
 import { supabase } from '../lib/supabase'
-import { digitsOnly } from '../lib/ui'
+import { daysUntil, digitsOnly, inDays, longDate, nextOccurrence } from '../lib/ui'
 import Avatar from './Avatar'
 import Intro from './Intro'
+import type { Notify } from './Toast'
 
 interface Props {
   hh: Household
   data: HouseholdData
-  onToast: (text: string) => void
+  onToast: Notify
 }
 
-const IDEAS = ['Arriendo', 'Luz', 'Agua', 'Gas', 'Internet', 'Celular', 'Streaming'] as const
+/** Gastos típicos: al elegirlos se llena el nombre, se sugiere la categoría y se muestra un ejemplo de monto */
+const IDEAS = [
+  { name: 'Arriendo', hint: 'El pago mensual de la casa o el departamento.', example: '350000', cat: ['hogar', 'cuentas'] },
+  { name: 'Dividendo', hint: 'La cuota del crédito hipotecario de tu vivienda.', example: '420000', cat: ['hogar', 'cuentas'] },
+  { name: 'Luz', hint: 'La boleta de electricidad. Si cambia cada mes, pon un promedio.', example: '35000', cat: ['hogar', 'cuentas'] },
+  { name: 'Agua', hint: 'La boleta del agua. Si cambia cada mes, pon un promedio.', example: '18000', cat: ['hogar', 'cuentas'] },
+  { name: 'Gas', hint: 'Gas de cañería o balones. Pon lo que gastas al mes.', example: '25000', cat: ['hogar', 'cuentas'] },
+  { name: 'Internet', hint: 'El plan de internet o fibra de la casa.', example: '22000', cat: ['hogar', 'cuentas'] },
+  { name: 'Celular', hint: 'El plan del teléfono. Si son dos, anótalos por separado.', example: '15000', cat: ['hogar', 'cuentas'] },
+  { name: 'Streaming', hint: 'Netflix, Spotify, Disney u otra suscripción.', example: '9000', cat: ['ocio'] },
+  { name: 'Gimnasio', hint: 'La mensualidad del gimnasio o clases.', example: '25000', cat: ['ocio', 'salud'] },
+  { name: 'Seguro', hint: 'Seguro de auto, salud o vida pagado cada mes.', example: '30000', cat: ['salud', 'otros'] },
+  { name: 'Colegio', hint: 'Mensualidad del colegio, jardín o universidad.', example: '180000', cat: ['otros'] },
+  { name: 'Transporte', hint: 'Pase mensual, bencina fija o estacionamiento.', example: '40000', cat: ['transporte'] },
+] as const
 
 /** Gastos que se repiten cada mes (arriendo, luz, streaming…). Se anotan solos el día indicado. */
 export default function RecurringPanel({ hh, data, onToast }: Props) {
@@ -30,6 +45,7 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const idea = IDEAS.find((i) => i.name === note)
   const catName = new Map(data.categories.map((c) => [c.id, c.name] as const))
   const people = new Map(hh.everyone.map((m) => [m.user_id, m] as const))
   const active = data.recurring.filter((r) => r.active)
@@ -50,6 +66,12 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
     await supabase.rpc('apply_recurring')
     await data.refresh()
     return true
+  }
+
+  function pickIdea(i: (typeof IDEAS)[number]) {
+    setNote(i.name)
+    const match = data.categories.find((c) => i.cat.some((k) => c.name.toLowerCase().includes(k)))
+    if (match) setCatId(match.id)
   }
 
   async function add(e: FormEvent) {
@@ -75,7 +97,7 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
           shared: solo ? false : shared,
           day_of_month: d,
         }),
-      'Gasto fijo guardado',
+      'Gasto fijo guardado\nSe anotará solo cada **mes**.',
     )
     if (saved) {
       setNote('')
@@ -87,7 +109,7 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
   function toggle(r: Recurring) {
     void run(
       () => supabase.from('recurring_expenses').update({ active: !r.active }).eq('id', r.id),
-      r.active ? 'Gasto fijo en pausa' : 'Gasto fijo reactivado',
+      r.active ? 'Gasto fijo en pausa\nNo se anotará hasta que lo **reactives**.' : 'Gasto fijo reactivado\nVolverá a anotarse cada **mes**.',
     )
   }
 
@@ -97,19 +119,19 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
       return
     }
     setConfirmId(null)
-    void run(() => supabase.from('recurring_expenses').delete().eq('id', r.id), 'Gasto fijo eliminado')
+    void run(() => supabase.from('recurring_expenses').delete().eq('id', r.id), 'Gasto fijo eliminado\nYa no se anotará más.')
   }
 
   return (
     <>
       <Intro
-        title="Gastos fijos: lo que pagas todos los meses"
-        text="Son pagos que se repiten siempre, como el arriendo, la luz, el internet o el celular. Los anotas una sola vez y la app los registra sola cada mes, en el día que elijas."
-        showSteps={data.recurring.length === 0}
+        title="Gastos fijos: lo que pagas igual cada mes"
+        text="Son pagos que se repiten todos los meses con el mismo monto: arriendo, luz, internet, celular, suscripciones. Los anotas una sola vez y la app los agrega a tus gastos sola. Para compras que cambian, como el supermercado, usa el botón Registrar."
         steps={[
-          'Toca «Agregar un gasto fijo».',
-          'Escribe qué es, cuánto cuesta y qué día del mes se paga.',
-          'Listo: cada mes aparecerá solo entre tus gastos. No tienes que anotarlo de nuevo.',
+          'Toca **Agregar un gasto fijo**.',
+          'Elige qué es, por ejemplo **Arriendo**, y escribe cuánto pagas al mes.',
+          'Elige el **día del mes** en que se paga y su categoría.',
+          'Listo: cada mes aparecerá solo en tus gastos. No tienes que anotarlo otra vez.',
         ]}
       />
 
@@ -136,8 +158,13 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
                 <div className="grow">
                   <div className="strong">{r.note}</div>
                   <div className="muted small-text">
-                    Se paga el día {r.day_of_month} de cada mes · {catName.get(r.category_id) ?? 'Sin categoría'}
+                    {catName.get(r.category_id) ?? 'Sin categoría'} · todos los meses el día {r.day_of_month}
                   </div>
+                  {r.active && (
+                    <div className="small-text">
+                      Próximo pago: {longDate(nextOccurrence(r.day_of_month))} ({inDays(daysUntil(nextOccurrence(r.day_of_month)))})
+                    </div>
+                  )}
                   {!solo && (
                     <div className="muted small-text">
                       Lo paga {people.get(r.paid_by)?.display_name ?? 'alguien'} ·{' '}
@@ -164,7 +191,7 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
             </div>
           ))}
           <span className="line-help">
-            «Pausar» detiene el gasto sin perder sus datos. Si borras uno que ya se anotó este mes, no vuelve a aparecer.
+            <strong>Pausar</strong> detiene el gasto sin perder sus datos. Si borras uno que ya se anotó este mes, no vuelve a aparecer.
           </span>
         </section>
       )}
@@ -173,31 +200,41 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
         <form className="card" onSubmit={(e) => void add(e)}>
           <strong>Agregar un gasto fijo</strong>
           <div className="field">
-            <label htmlFor="rec-note">1. ¿Qué es lo que pagas?</label>
-            <div className="chips" role="group" aria-label="Ideas">
+            <label htmlFor="rec-note">1. ¿Qué pagas? Elige uno o escríbelo</label>
+            <div className="chips" role="group" aria-label="Gastos fijos comunes">
               {IDEAS.map((i) => (
-                <button key={i} type="button" className="chip" aria-pressed={note === i} onClick={() => setNote(i)}>
-                  {i}
+                <button key={i.name} type="button" className="chip" aria-pressed={note === i.name} onClick={() => pickIdea(i)}>
+                  {i.name}
                 </button>
               ))}
             </div>
-            <input id="rec-note" className="input" maxLength={120} placeholder="O escríbelo aquí"
+            {idea && <span className="line-help">{idea.hint}</span>}
+            <input id="rec-note" className="input" maxLength={120} placeholder="Ej. Arriendo depto, Plan de celular de Ana"
               value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
           <div className="field">
-            <label htmlFor="rec-amount">2. ¿Cuánto cuesta cada mes?</label>
-            <input id="rec-amount" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 350000" value={amount}
+            <label htmlFor="rec-amount">2. Monto mensual (CLP)</label>
+            <span className="line-help">Lo que pagas cada mes. Si varía, pon un promedio.</span>
+            <input id="rec-amount" autoComplete="off" className="input" inputMode="numeric" placeholder={idea ? `Ej. ${idea.example}` : 'Ej. 350000'} value={amount}
               onChange={(e) => setAmount(digitsOnly(e.target.value))} />
-            {amount && <span className="hint num">Escribiste: {money(Number(amount))}</span>}
+            {amount && <span className="hint num">Son {money(Number(amount))} al mes, {money(Number(amount) * 12)} al año.</span>}
           </div>
           <div className="field">
-            <label htmlFor="rec-day">3. ¿Qué día del mes se paga?</label>
-            <span className="line-help">Un número del 1 al 31. Por ejemplo, 5.</span>
+            <label htmlFor="rec-day">3. Día del mes en que se paga</label>
+            <div className="chips" role="group" aria-label="Días comunes">
+              {[1, 5, 10, 15, 20, 25, 30].map((n) => (
+                <button key={n} type="button" className="chip" aria-pressed={day === String(n)} onClick={() => setDay(String(n))}>
+                  Día {n}
+                </button>
+              ))}
+            </div>
+            <span className="line-help">Elige uno o escribe otro número del 1 al 31.</span>
             <input id="rec-day" className="input" inputMode="numeric" value={day}
               onChange={(e) => setDay(e.target.value.replace(/\D/g, '').slice(0, 2))} />
           </div>
           <div className="field">
-            <span id="rec-cat" className="strong">4. ¿Qué tipo de gasto es?</span>
+            <span id="rec-cat" className="strong">4. Categoría: ¿en qué grupo lo cuentas?</span>
+            <span className="line-help">Así aparece en tu presupuesto por categoría en la pestaña Gastos.</span>
             <div className="chips" role="group" aria-labelledby="rec-cat">
               {data.categories.map((c) => (
                 <button key={c.id} type="button" className="chip" aria-pressed={catId === c.id} onClick={() => setCatId(c.id)}>
