@@ -14,6 +14,7 @@ import { money, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import { notifyPartner } from '../lib/push'
 import { digitsOnly, shortDate } from '../lib/ui'
+import Spin from '../components/Spin'
 
 const STATE: Record<GoalState, { label: string; tone: 'ok' | 'info' | 'warn' | 'bad' }> = {
   done: { label: 'Cumplida', tone: 'ok' },
@@ -240,7 +241,7 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
             <span className="hint">Con una fecha, la app te dice cuánto aportar por mes.</span>
           </div>
           <button className="btn" type="submit" disabled={busy}>
-            Crear meta
+            {busy ? <Spin label="Creando meta…" /> : 'Crear meta'}
           </button>
         </form>
       )}
@@ -301,7 +302,7 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
                 <input className="input" type="date" value={gDate} onChange={(e) => setGDate(e.target.value)} aria-label="Fecha objetivo" />
                 <div className="row">
                   <button type="button" className="btn small" disabled={busy} onClick={() => void saveGoal(g.id)}>
-                    Guardar
+                    {busy ? <Spin label="Guardando…" /> : 'Guardar'}
                   </button>
                   <button type="button" className="btn ghost small" onClick={() => setEditGoal(null)}>
                     Cancelar
@@ -366,7 +367,7 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
                   aria-label={`Aporte a ${g.name}`}
                 />
                 <button type="button" className="btn small" disabled={busy} onClick={() => void contribute(g.id)}>
-                  Aportar
+                  {busy ? <Spin label="Registrando aporte…" /> : 'Aportar'}
                 </button>
                 <button type="button" className="btn ghost small" onClick={() => setOpenId(null)}>
                   Cancelar
@@ -395,7 +396,7 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
                       <input className="input" type="date" max={todayISO()} value={cDate} onChange={(e) => setCDate(e.target.value)} aria-label="Fecha del aporte" />
                       <div className="row">
                         <button type="button" className="btn small" disabled={busy} onClick={() => void saveContribution(c.id)}>
-                          Guardar
+                          {busy ? <Spin label="Guardando…" /> : 'Guardar'}
                         </button>
                         <button type="button" className="btn ghost small" onClick={() => setEditC(null)}>
                           Cancelar

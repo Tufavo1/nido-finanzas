@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import InstallBanner from '../components/InstallBanner'
 import Logo from '../components/Logo'
+import { INSTAGRAM_HANDLE, INSTAGRAM_URL, copyright } from '../lib/about'
 import { captchaToken } from '../lib/captcha'
 import { NEEDS } from '../lib/needs'
 import { supabase } from '../lib/supabase'
 import { STRENGTH_LABEL, createThrottle, friendlyError, passwordStrength } from '../lib/security'
+import Spin from '../components/Spin'
 
 const throttle = createThrottle()
 
@@ -155,7 +158,7 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
             </p>
           )}
           <button className="btn" type="submit" disabled={busy}>
-            {mode === 'login' ? 'Entrar' : mode === 'register' ? 'Crear cuenta' : 'Enviarme el enlace'}
+            {busy ? <Spin label={mode === 'login' ? 'Entrando…' : mode === 'register' ? 'Creando tu cuenta…' : 'Enviando…'} /> : mode === 'login' ? 'Entrar' : mode === 'register' ? 'Crear cuenta' : 'Enviarme el enlace'}
           </button>
         </form>
         {mode === 'login' && (
@@ -181,7 +184,7 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
           {mode === 'login' ? 'Crear una cuenta' : mode === 'register' ? 'Ya tengo cuenta' : 'Volver a iniciar sesión'}
         </button>
         <details className="auth-needs">
-          <summary>¿Qué necesita Contigo para funcionar?</summary>
+          <summary>¿Qué necesito para usar Contigo?</summary>
           <ul>
             {NEEDS.map((n) => (
               <li key={n.id}>
@@ -190,7 +193,14 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
             ))}
           </ul>
         </details>
+        <footer className="auth-foot">
+          <span>{copyright()}</span>
+          <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer">
+            Síguenos en Instagram {INSTAGRAM_HANDLE}
+          </a>
+        </footer>
       </main>
+      <InstallBanner onAuth />
     </div>
   )
 }

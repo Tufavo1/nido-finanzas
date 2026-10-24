@@ -4,6 +4,7 @@ import { confirmPassword } from '../lib/reauth'
 import { supabase } from '../lib/supabase'
 import { createThrottle } from '../lib/security'
 import Logo from './Logo'
+import Spin from './Spin'
 
 const throttle = createThrottle()
 
@@ -61,7 +62,7 @@ export default function LockScreen({ onUnlock }: { onUnlock: () => void }) {
           </p>
         )}
         <button className="btn" type="submit" disabled={busy || !pw}>
-          {busy ? 'Verificando…' : 'Desbloquear'}
+          {busy ? <Spin label="Verificando…" /> : 'Desbloquear'}
         </button>
         <button type="button" className="link-btn" onClick={() => void supabase.auth.signOut()}>
           Cerrar sesión

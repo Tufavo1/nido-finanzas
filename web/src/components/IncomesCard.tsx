@@ -6,6 +6,7 @@ import { money, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import { digitsOnly, monthName } from '../lib/ui'
 import type { Notify } from './Toast'
+import Spin from './Spin'
 
 interface Props {
   hh: Household
@@ -124,7 +125,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
           </div>
           <div className="row">
             <button className="btn small" type="submit" disabled={busy}>
-              Guardar ingreso
+              {busy ? <Spin label="Guardando ingreso…" /> : 'Guardar ingreso'}
             </button>
             <button type="button" className="btn ghost small" onClick={() => setOpen(false)}>
               Cancelar

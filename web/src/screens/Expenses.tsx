@@ -11,6 +11,7 @@ import { groupByDay, whereItWent } from '../lib/moves'
 import { Rich } from '../lib/rich'
 import { dayHeading, digitsOnly, monthName } from '../lib/ui'
 import type { Notify } from '../components/Toast'
+import Spin from '../components/Spin'
 
 export default function Expenses({
   hh,
@@ -355,7 +356,7 @@ export default function Expenses({
                     <input id={`cb-${c.id}`} className="input" inputMode="numeric" placeholder="Ej. 250000" value={value} onChange={(e) => setValue(digitsOnly(e.target.value))} />
                     <div className="row">
                       <button type="button" className="btn small" disabled={busy} onClick={() => void saveBudget(c.id)}>
-                        Guardar
+                        {busy ? <Spin label="Guardando…" /> : 'Guardar'}
                       </button>
                       <button type="button" className="btn ghost small" onClick={() => setEditing(null)}>
                         Cancelar
@@ -377,7 +378,7 @@ export default function Expenses({
             <input id="nc-budget" className="input" inputMode="numeric" placeholder="Ej. 80000" value={newBudget} onChange={(e) => setNewBudget(digitsOnly(e.target.value))} />
             <div className="row">
               <button type="button" className="btn small" disabled={busy} onClick={() => void addCategory()}>
-                Crear categoría
+                {busy ? <Spin label="Creando categoría…" /> : 'Crear categoría'}
               </button>
               <button type="button" className="btn ghost small" onClick={() => setNewCat(false)}>
                 Cancelar
@@ -470,7 +471,7 @@ export default function Expenses({
                 </div>
                 <div className="row">
                   <button type="button" className="btn small" disabled={busy} onClick={() => void saveEdit(e.id)}>
-                    Guardar
+                    {busy ? <Spin label="Guardando…" /> : 'Guardar'}
                   </button>
                   <button type="button" className="btn ghost small" onClick={() => setEditExp(null)}>
                     Cancelar

@@ -16,6 +16,7 @@ import { supabase } from '../lib/supabase'
 import { Rich } from '../lib/rich'
 import { daysUntil, digitsOnly, inDays, longDate, memberColor, monthName, nextOccurrence } from '../lib/ui'
 import type { Notify } from '../components/Toast'
+import Spin from '../components/Spin'
 
 interface Props {
   hh: Household
@@ -193,7 +194,7 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
             )}
             <div className="row">
               <button className="btn small" type="submit" disabled={busy}>
-                Guardar mi sueldo
+                {busy ? <Spin label="Guardando sueldo…" /> : 'Guardar mi sueldo'}
               </button>
               {salary && (
                 <button type="button" className="btn ghost small" onClick={() => setEditing(false)}>
@@ -461,7 +462,7 @@ function DebtCard({
                 <input className="input" type="date" max={todayISO()} value={pDate} onChange={(e) => setPDate(e.target.value)} aria-label="Fecha del pago" />
                 <div className="row">
                   <button type="button" className="btn small" disabled={busy} onClick={() => void savePayment(p.id)}>
-                    Guardar
+                    {busy ? <Spin label="Guardando pago…" /> : 'Guardar'}
                   </button>
                   <button type="button" className="btn ghost small" onClick={() => setEditPay(null)}>
                     Cancelar
@@ -511,7 +512,7 @@ function DebtCard({
           </div>
           <div className="row">
             <button className="btn small" type="submit" disabled={busy}>
-              Guardar el pago
+              {busy ? <Spin label="Registrando pago…" /> : 'Guardar el pago'}
             </button>
             <button type="button" className="btn ghost small" onClick={() => setPaying(false)}>
               Cancelar
@@ -672,7 +673,7 @@ function DebtForm({
       )}
       <div className="row">
         <button className="btn small" type="submit" disabled={busy}>
-          Guardar deuda
+          {busy ? <Spin label="Guardando deuda…" /> : 'Guardar deuda'}
         </button>
         <button className="btn ghost small" type="button" onClick={onClose}>
           Cancelar

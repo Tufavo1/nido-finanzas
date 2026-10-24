@@ -8,6 +8,7 @@ import OfflineBar from './components/OfflineBar'
 import Toast from './components/Toast'
 import type { ToastData, ToastKind } from './components/Toast'
 import { useData } from './lib/data'
+import { TOUR_EVENT, markTourSeen, tourSeen } from './lib/tour'
 import { focusMain } from './lib/a11y'
 import { buildAlerts } from './lib/engine'
 import type { AlertTab } from './lib/engine'
@@ -19,6 +20,7 @@ import Home from './screens/Home'
 const Money = lazy(() => import('./screens/Money'))
 const Register = lazy(() => import('./screens/Register'))
 const Security = lazy(() => import('./screens/Security'))
+const Tour = lazy(() => import('./components/Tour'))
 
 const TABS = [
   { key: 'home', label: 'Inicio', icon: 'home' },
@@ -69,6 +71,17 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   const clearToast = useCallback(() => setToastData(null), [])
   const setToast = useCallback((text: string, kind: ToastKind = 'success') => setToastData({ text, kind, id: Date.now() }), [])
   const data = useData(hh.household.id, hh.me.user_id, ym.y, ym.m, reload)
+  // Guía de bienvenida: sale sola la primera vez que la persona entra, y se puede volver a abrir desde Ajustes
+  const [tour, setTour] = useState(() => !tourSeen(hh.me.user_id))
+  const closeTour = useCallback(() => {
+    markTourSeen(hh.me.user_id)
+    setTour(false)
+  }, [hh.me.user_id])
+  useEffect(() => {
+    const open = () => setTour(true)
+    window.addEventListener(TOUR_EVENT, open)
+    return () => window.removeEventListener(TOUR_EVENT, open)
+  }, [])
   // Si aparece un gasto de alguien que la lista de miembros aún no conoce (p. ej. la pareja entró con la app ya abierta),
   // se recarga el hogar una vez por cada persona desconocida, para que su inicial salga siempre.
   const asked = useRef(new Set<string>())
@@ -198,6 +211,11 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
           </button>
         ))}
       </nav>
+      {tour && data.ready && (
+        <Suspense fallback={null}>
+          <Tour onClose={closeTour} />
+        </Suspense>
+      )}
       <InstallBanner onToast={setToast} />
       <UpdateBanner />
       {toast && <Toast toast={toast} onDone={clearToast} />}

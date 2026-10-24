@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import DeleteAccountInline from '../components/DeleteAccountInline'
 import { supabase } from '../lib/supabase'
+import Spin from '../components/Spin'
 
 export default function Onboarding({ onDone }: { onDone: () => Promise<void> }) {
   const [mode, setMode] = useState<'create' | 'join'>('create')
@@ -90,7 +91,7 @@ export default function Onboarding({ onDone }: { onDone: () => Promise<void> }) 
             </p>
           )}
           <button className="btn" type="submit" disabled={busy}>
-            {mode === 'create' ? 'Crear hogar' : 'Unirme'}
+            {busy ? <Spin label={mode === 'create' ? 'Creando hogar…' : 'Uniéndote…'} /> : mode === 'create' ? 'Crear hogar' : 'Unirme'}
           </button>
         </form>
 
