@@ -173,7 +173,7 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
       <div className="stack tight">
         <strong>Para tu perfil{advice.groupLabel ? ` · ${advice.groupLabel}` : ''}</strong>
         <div className="row between muted small-text">
-          <span>Fondo de emergencia sugerido</span>
+          <span>Ahorro para imprevistos sugerido</span>
           <span className="num">{advice.emergencyMonths} meses de gasto</span>
         </div>
         <div className="row between muted small-text">

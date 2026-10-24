@@ -104,7 +104,7 @@ describe('perfil', () => {
     expect(professionGroup('xx')).toBeNull()
   })
 
-  it('el colchón crece con ingreso variable y personas a cargo', () => {
+  it('el ahorro para imprevistos crece con ingreso variable y personas a cargo', () => {
     expect(adviceFor({ profession: '', employment: 'dependiente', dependents: 0 }).emergencyMonths).toBe(3)
     expect(adviceFor({ profession: '', employment: 'independiente', dependents: 0 }).emergencyMonths).toBe(6)
     expect(adviceFor({ profession: '', employment: 'independiente', dependents: 3 }).emergencyMonths).toBe(8)
