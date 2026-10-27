@@ -1336,3 +1336,11 @@ body::before {
 .reg-keys { gap: 8px; }
 .reg-keys .key { height: 48px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
 .reg-keys .key:active { transform: scale(0.96); }
+
+/* Panel de administración: avisos con semáforo */
+.adm-notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.adm-note { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border-radius: 14px; background: var(--surface-2); }
+.adm-note > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.adm-dot { flex: none; width: 12px; height: 12px; margin-top: 5px; border-radius: 50%; background: var(--accent); }
+.adm-note.warn .adm-dot { background: var(--amber); }
+.adm-note.bad .adm-dot { background: var(--warn); }
