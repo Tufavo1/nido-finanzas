@@ -94,3 +94,40 @@ export async function fetchAdminStorage(): Promise<AdminStorage> {
   if (error) throw error
   return data as unknown as AdminStorage
 }
+
+export interface AdminNote {
+  level: 'bad' | 'warn' | 'ok'
+  title: string
+  text: string
+}
+
+const pctOf = (a: number, b: number): number => (b > 0 ? Math.round((a * 100) / b) : 0)
+
+/** Indicadores simples para entender de un vistazo si la app va bien (todo en porcentajes, sin datos de nadie) */
+export function adminRates(s: AdminStats) {
+  return {
+    /** De quienes se registraron, cuántos entraron en el último mes */
+    stay: pctOf(s.users.active_30d, s.users.total),
+    /** De quienes entraron esta semana, cuántos anotaron al menos un gasto */
+    usesIt: pctOf(s.usage.users_with_expense_7d, s.users.active_7d),
+    /** De los hogares, cuántos ya tienen a la pareja adentro */
+    couples: pctOf(s.households.couples, s.households.total),
+    confirmed: pctOf(s.users.confirmed, s.users.total),
+  }
+}
+
+/** Avisos ordenados del más urgente al más tranquilo; si no hay nada que atender devuelve un solo "todo bien" */
+export function adminNotes(s: AdminStats): AdminNote[] {
+  const r = adminRates(s)
+  const out: AdminNote[] = []
+  const dbPct = pctOf(s.db_bytes, FREE_LIMITS.dbBytes)
+  if (dbPct >= 80) out.push({ level: 'bad', title: 'Se está llenando la base de datos', text: `Usas el ${dbPct} % del espacio gratuito. Conviene limpiar hogares vacíos o pasar a un plan de pago.` })
+  else if (dbPct >= 50) out.push({ level: 'warn', title: 'La base de datos ya va por la mitad', text: `Usas el ${dbPct} % del espacio gratuito. Aún hay margen, pero vale la pena vigilarlo.` })
+  const unconfirmed = s.users.total - s.users.confirmed
+  if (unconfirmed > 0 && r.confirmed < 80) out.push({ level: 'warn', title: 'Mucha gente no confirma su correo', text: `${unconfirmed} de ${s.users.total} personas no confirmaron. Puede que los correos de confirmación no estén llegando o caigan en spam.` })
+  if (s.users.total > 0 && s.users.active_7d === 0) out.push({ level: 'warn', title: 'Nadie entró esta semana', text: 'Ninguna cuenta abrió la app en los últimos 7 días.' })
+  else if (s.users.active_7d > 0 && s.usage.users_with_expense_7d === 0) out.push({ level: 'warn', title: 'Entran, pero nadie anota gastos', text: 'Hay gente entrando, pero esta semana no se registró ningún gasto. Puede que cueste entender cómo empezar.' })
+  if (s.households.total >= 4 && r.couples < 40) out.push({ level: 'warn', title: 'Pocas parejas completas', text: `Solo el ${r.couples} % de los hogares tiene a las dos personas. Muchos se quedan esperando que la pareja se una.` })
+  if (out.length === 0) out.push({ level: 'ok', title: 'Todo en orden', text: 'No hay nada que atender ahora. Los indicadores de uso y de espacio están sanos.' })
+  return out.sort((a, b) => ({ bad: 0, warn: 1, ok: 2 })[a.level] - ({ bad: 0, warn: 1, ok: 2 })[b.level])
+}

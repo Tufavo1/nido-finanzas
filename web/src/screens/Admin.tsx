@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FREE_LIMITS, deleteHouseholds, fetchAdminStats, fetchAdminStorage, fetchEmptyHouseholds, removeMember, useAdminStatus } from '../lib/admin'
+import { FREE_LIMITS, adminNotes, adminRates, deleteHouseholds, fetchAdminStats, fetchAdminStorage, fetchEmptyHouseholds, removeMember, useAdminStatus } from '../lib/admin'
 import type { AdminHousehold, AdminStats, AdminStorage } from '../lib/admin'
 import { TABLE_LABEL, fillForecast } from '../lib/storage'
 import { supabase } from '../lib/supabase'
+
+const TABS = [
+  { key: 'resumen', label: 'Resumen' },
+  { key: 'uso', label: 'Uso' },
+  { key: 'sistema', label: 'Sistema' },
+  { key: 'hogares', label: 'Hogares' },
+] as const
+type TabKey = (typeof TABS)[number]['key']
 
 const nf = new Intl.NumberFormat('es-CL')
 const COOLDOWN_S = 30
@@ -32,6 +40,21 @@ function Limit({ label, used, max, text }: { label: string; used: number; max: n
       </div>
       <div className="bar big" role="img" aria-label={`${label}: ${pct} % del límite gratuito`}>
         <span style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <span className="line-help">{text}</span>
+    </div>
+  )
+}
+
+function Rate({ label, pct, text }: { label: string; pct: number; text: string }) {
+  return (
+    <div className="stack tight">
+      <div className="row between">
+        <span>{label}</span>
+        <span className="num strong">{pct} %</span>
+      </div>
+      <div className="bar big" role="img" aria-label={`${label}: ${pct} %`}>
+        <span style={{ width: `${pct}%` }} />
       </div>
       <span className="line-help">{text}</span>
     </div>
@@ -273,6 +296,7 @@ function AdminPanel({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [wait, setWait] = useState(0)
+  const [tab, setTab] = useState<TabKey>('resumen')
   const timer = useRef<number | null>(null)
 
   const load = useCallback(async () => {
@@ -306,6 +330,10 @@ function AdminPanel({ onBack }: { onBack: () => void }) {
   }, [wait])
 
   const s = stats
+  const rates = s ? adminRates(s) : null
+  const notes = s ? adminNotes(s) : []
+  const dbPct = s ? Math.min(100, Math.round((s.db_bytes * 100) / FREE_LIMITS.dbBytes)) : 0
+
   return (
     <main className="screen plata">
       <button type="button" className="link-btn" onClick={onBack}>
@@ -313,21 +341,22 @@ function AdminPanel({ onBack }: { onBack: () => void }) {
       </button>
       <h1 className="title">Panel de administración</h1>
 
-      <section className="card explain">
-        <strong>Cómo está funcionando la app</strong>
-        <p>
-          Solo números agregados: cuánta gente la usa y qué funciones se ocupan más. Nunca se muestran montos, nombres ni
-          correos de nadie.
-        </p>
-        <div className="row between">
-          <span className="muted small-text">
-            {s ? `Actualizado ${new Date(s.generated_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}` : 'Cargando…'}
-          </span>
-          <button type="button" className="btn small" disabled={busy || wait > 0} onClick={() => void load()}>
-            {busy ? 'Actualizando…' : wait > 0 ? `Espera ${wait} s` : 'Actualizar'}
+      <div className="row between">
+        <span className="muted small-text">
+          {s ? `Actualizado a las ${new Date(s.generated_at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}` : 'Cargando…'}
+        </span>
+        <button type="button" className="btn small" disabled={busy || wait > 0} onClick={() => void load()}>
+          {busy ? 'Actualizando…' : wait > 0 ? `Espera ${wait} s` : 'Actualizar'}
+        </button>
+      </div>
+
+      <div className="seg" role="group" aria-label="Sección del panel">
+        {TABS.map((t) => (
+          <button key={t.key} type="button" aria-pressed={tab === t.key} onClick={() => setTab(t.key)}>
+            {t.label}
           </button>
-        </div>
-      </section>
+        ))}
+      </div>
 
       {error && (
         <p className="error" role="alert">
@@ -335,22 +364,64 @@ function AdminPanel({ onBack }: { onBack: () => void }) {
         </p>
       )}
 
-      {s && (
+      {s && rates && tab === 'resumen' && (
+        <>
+          <section className="card">
+            <strong>{notes[0].level === 'ok' ? 'Todo en orden' : 'Lo que conviene mirar'}</strong>
+            <ul className="adm-notes">
+              {notes.map((n) => (
+                <li key={n.title} className={`adm-note ${n.level}`}>
+                  <span className="adm-dot" aria-hidden="true" />
+                  <span>
+                    <span className="strong">{n.title}</span>
+                    <span className="line-help">{n.text}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="card">
+            <strong>La app de un vistazo</strong>
+            <div className="tiles">
+              <Tile label="Personas registradas" value={nf.format(s.users.total)} help={`${nf.format(s.users.new_7d)} nuevas esta semana`} />
+              <Tile label="Entraron esta semana" value={nf.format(s.users.active_7d)} help={`${nf.format(s.users.active_1d)} hoy`} />
+              <Tile label="Hogares" value={nf.format(s.households.total)} help={`${nf.format(s.households.couples)} en pareja`} />
+              <Tile label="Gastos esta semana" value={nf.format(s.usage.expenses_7d)} help={`${nf.format(s.usage.expenses_total)} en total`} />
+            </div>
+          </section>
+
+          <section className="card">
+            <strong>Cómo les va</strong>
+            <span className="muted small-text">Porcentajes para saber si la gente se queda y usa la app.</span>
+            <Rate label="Siguen usando la app" pct={rates.stay} text="De todas las personas registradas, las que entraron en el último mes." />
+            <Rate label="Anotan gastos" pct={rates.usesIt} text="De quienes entraron esta semana, las que registraron al menos un gasto." />
+            <Rate label="Hogares completos" pct={rates.couples} text="Hogares donde ya están las dos personas." />
+            <Rate label="Correos confirmados" pct={rates.confirmed} text="Personas que confirmaron su correo al registrarse." />
+          </section>
+
+          <section className="card">
+            <strong>Espacio disponible</strong>
+            <div className="bar big" role="img" aria-label={`${dbPct} % del espacio gratuito usado`}>
+              <span style={{ width: `${dbPct}%`, background: dbPct >= 80 ? 'var(--warn)' : dbPct >= 50 ? 'var(--amber)' : 'var(--accent)' }} />
+            </div>
+            <span className="line-help">
+              Usas {mb(s.db_bytes)} de {mb(FREE_LIMITS.dbBytes)} ({dbPct} %). Más detalle en la pestaña Sistema.
+            </span>
+          </section>
+        </>
+      )}
+
+      {s && tab === 'uso' && (
         <>
           <section className="card">
             <strong>Personas</strong>
             <div className="tiles">
-              <Tile label="Usuarios registrados" value={nf.format(s.users.total)} help={`${nf.format(s.users.confirmed)} con correo confirmado`} />
-              <Tile label="Nuevos en 7 días" value={nf.format(s.users.new_7d)} help={`${nf.format(s.users.new_30d)} en 30 días`} />
+              <Tile label="Registradas" value={nf.format(s.users.total)} help={`${nf.format(s.users.confirmed)} con correo confirmado`} />
+              <Tile label="Nuevas en 7 días" value={nf.format(s.users.new_7d)} help={`${nf.format(s.users.new_30d)} en 30 días`} />
               <Tile label="Entraron hoy" value={nf.format(s.users.active_1d)} />
-              <Tile label="Activos en 7 días" value={nf.format(s.users.active_7d)} help={`${nf.format(s.users.active_30d)} en 30 días`} />
+              <Tile label="Activas en 7 días" value={nf.format(s.users.active_7d)} help={`${nf.format(s.users.active_30d)} en 30 días`} />
             </div>
-            {s.users.total > s.users.confirmed && (
-              <span className="line-help">
-                {nf.format(s.users.total - s.users.confirmed)} personas aún no confirman su correo: puede que el correo no les
-                esté llegando.
-              </span>
-            )}
           </section>
 
           <section className="card">
@@ -359,17 +430,8 @@ function AdminPanel({ onBack }: { onBack: () => void }) {
               <Tile label="Hogares" value={nf.format(s.households.total)} />
               <Tile label="En pareja" value={nf.format(s.households.couples)} help="Con las dos personas dentro" />
               <Tile label="Esperando pareja" value={nf.format(s.households.solo)} help="Una sola persona" />
-              <Tile label="Registraron gastos esta semana" value={nf.format(s.usage.users_with_expense_7d)} help="personas" />
+              <Tile label="Anotaron gastos esta semana" value={nf.format(s.usage.users_with_expense_7d)} help="personas" />
             </div>
-          </section>
-
-          <section className="card">
-            <strong>Qué se usa más</strong>
-            <span className="muted small-text">Cuántos hogares o personas usan cada función.</span>
-            <Bars
-              rows={[...s.features].sort((a, b) => b.count - a.count).map((f) => ({ label: f.name, value: f.count }))}
-              unit=""
-            />
           </section>
 
           <section className="card">
@@ -381,6 +443,19 @@ function AdminPanel({ onBack }: { onBack: () => void }) {
             </span>
           </section>
 
+          <section className="card">
+            <strong>Qué funciones se usan más</strong>
+            <span className="muted small-text">Cuántos hogares o personas usan cada una.</span>
+            <Bars
+              rows={[...s.features].sort((a, b) => b.count - a.count).map((f) => ({ label: f.name, value: f.count }))}
+              unit=""
+            />
+          </section>
+        </>
+      )}
+
+      {s && tab === 'sistema' && (
+        <>
           <section className="card">
             <strong>Plan gratuito: cuánto queda</strong>
             <Limit
@@ -396,16 +471,16 @@ function AdminPanel({ onBack }: { onBack: () => void }) {
               text={`${nf.format(s.users.active_30d)} de ${nf.format(FREE_LIMITS.monthlyUsers)} permitidos.`}
             />
             <span className="line-help">
-              Si algún indicador pasa del 80 % se pone rojo. Los correos de confirmación también tienen un tope por hora en el plan
+              Si un indicador pasa del 80 % se pone rojo. Los correos de confirmación también tienen un tope por hora en el plan
               gratuito: con un servicio propio de correo (SMTP) ese tope sube.
             </span>
           </section>
 
-          {storage && (
+          {storage ? (
             <section className="card">
               <strong>Dónde está el espacio</strong>
               <span className="muted small-text">
-                Las tablas de la app ocupan {mb(storage.public_bytes)}; el resto de los {mb(storage.db_bytes)} son tablas internas de Supabase.
+                Las tablas de la app ocupan {mb(storage.public_bytes)}. El resto de los {mb(storage.db_bytes)} son tablas internas de Supabase.
               </span>
               <Bars
                 rows={storage.tables
@@ -416,14 +491,24 @@ function AdminPanel({ onBack }: { onBack: () => void }) {
               />
               <span className="line-help">{fillForecast(storage.db_bytes, FREE_LIMITS.dbBytes, storage.bytes_per_day).text}</span>
               <span className="line-help">
-                La app ya cuida el espacio sola: borra cada día los intentos de invitación vencidos y nunca guarda copias de tus datos en el navegador.
+                La app cuida el espacio sola: borra cada día las invitaciones vencidas y nunca guarda copias de los datos en el navegador.
               </span>
             </section>
+          ) : (
+            <p className="muted small-text">No se pudo leer el detalle del espacio.</p>
           )}
 
-          <Cleanup onChanged={() => void load()} />
+          <section className="card explain">
+            <strong>Privacidad</strong>
+            <p>
+              Este panel solo muestra números agregados. Nunca aparecen montos, nombres ni correos de nadie, y entrar exige además un
+              código de tu app de autenticación.
+            </p>
+          </section>
         </>
       )}
+
+      {s && tab === 'hogares' && <Cleanup onChanged={() => void load()} />}
     </main>
   )
 }
