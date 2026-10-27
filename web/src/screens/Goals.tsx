@@ -13,7 +13,10 @@ import { Rich } from '../lib/rich'
 import { money, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
 import { notifyPartner } from '../lib/push'
-import { digitsOnly, shortDate } from '../lib/ui'
+import { digitsOnly, shortDate, dots } from '../lib/ui'
+import ScopeBar from '../components/ScopeBar'
+import { resolveScope, scopeContributions } from '../lib/scope'
+import type { Scope } from '../lib/scope'
 import Spin from '../components/Spin'
 
 const STATE: Record<GoalState, { label: string; tone: 'ok' | 'info' | 'warn' | 'bad' }> = {
@@ -26,8 +29,10 @@ const STATE: Record<GoalState, { label: string; tone: 'ok' | 'info' | 'warn' | '
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
-export default function Goals({ hh, data, onToast }: { hh: Household; data: HouseholdData; onToast: Notify }) {
+export default function Goals({ hh, data, onToast, scope, onScope }: { hh: Household; data: HouseholdData; onToast: Notify; scope: Scope; onScope: (s: Scope) => void }) {
   const { goals, contributions } = data
+  const who = resolveScope(scope, hh.members)
+  const person = who === 'all' ? null : hh.members.find((m) => m.user_id === who)
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [target, setTarget] = useState('')
@@ -180,12 +185,15 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
 
   const rows = goals.map((g) => {
     const mine = contributions.filter((c) => c.goal_id === g.id)
-    return { g, mine, p: goalProgress(g.target_amount, g.target_date, mine) }
+    // El avance de la meta es de los dos, pero el historial y los montos se ven de quien se eligió
+    const shown = scopeContributions(mine, who)
+    return { g, mine, shown, personSaved: shown.reduce((s, c) => s + c.amount, 0), p: goalProgress(g.target_amount, g.target_date, mine) }
   })
   // Primero lo que requiere atención; las cumplidas al final
   const order: Record<GoalState, number> = { overdue: 0, behind: 1, ontrack: 2, open: 3, done: 4 }
   rows.sort((a, b) => order[a.p.state] - order[b.p.state])
   const totalSaved = rows.reduce((s, r) => s + r.p.saved, 0)
+  const personTotal = rows.reduce((s, r) => s + r.personSaved, 0)
   const totalTarget = rows.reduce((s, r) => s + r.g.target_amount, 0)
   const totalPct = totalTarget > 0 ? Math.min(100, Math.floor((totalSaved * 100) / totalTarget)) : 0
   const doneCount = rows.filter((r) => r.p.state === 'done').length
@@ -199,6 +207,8 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
           {creating ? 'Cerrar' : 'Nueva meta'}
         </button>
       </div>
+
+      <ScopeBar hh={hh} scope={who} onScope={onScope} label="Ver los aportes de" />
 
       <Intro
         title="Metas: ahorrar juntos para algo concreto"
@@ -231,7 +241,7 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
               className="input"
               inputMode="numeric"
               required
-              value={target}
+              value={dots(target)}
               onChange={(e) => setTarget(digitsOnly(e.target.value))}
             />
           </div>
@@ -261,9 +271,11 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
           <div className="hero-top">
             <Ring pct={totalPct} />
             <div className="grow">
-              <span className="muted small-text">Ahorrado en total</span>
-              <span className="amount small num">{money(totalSaved)}</span>
-              <span className="muted num small-text">de {money(totalTarget)} entre {plural(goals.length, 'meta', 'metas')}</span>
+              <span className="muted small-text">{person ? `Aportado por ${who === hh.me.user_id ? 'ti' : person.display_name}` : 'Ahorrado en total'}</span>
+              <span className="amount small num">{money(person ? personTotal : totalSaved)}</span>
+              <span className="muted num small-text">
+                {person ? `Entre los dos llevan ${money(totalSaved)} de ${money(totalTarget)}` : `de ${money(totalTarget)} entre ${plural(goals.length, 'meta', 'metas')}`}
+              </span>
             </div>
           </div>
           <div className="stats">
@@ -279,7 +291,7 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
         </section>
       )}
 
-      {rows.map(({ g, mine, p }) => {
+      {rows.map(({ g, mine, shown, personSaved, p }) => {
         const st = STATE[p.state]
         const byPerson = hh.everyone
           .map((m) => ({ m, total: mine.filter((c) => c.user_id === m.user_id).reduce((s, c) => s + c.amount, 0) }))
@@ -298,7 +310,7 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
             {editGoal === g.id && (
               <div className="stack tight">
                 <input className="input" maxLength={60} value={gName} onChange={(e) => setGName(e.target.value)} aria-label="Nombre de la meta" />
-                <input className="input" inputMode="numeric" value={gTarget} onChange={(e) => setGTarget(digitsOnly(e.target.value))} aria-label="Monto objetivo" />
+                <input className="input" inputMode="numeric" value={dots(gTarget)} onChange={(e) => setGTarget(digitsOnly(e.target.value))} aria-label="Monto objetivo" />
                 <input className="input" type="date" value={gDate} onChange={(e) => setGDate(e.target.value)} aria-label="Fecha objetivo" />
                 <div className="row">
                   <button type="button" className="btn small" disabled={busy} onClick={() => void saveGoal(g.id)}>
@@ -314,6 +326,12 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
               </div>
             )}
 
+            {person && (
+              <div className="row between small-text">
+                <span className="muted">{who === hh.me.user_id ? 'Aportaste tú' : `Aportó ${person.display_name}`}</span>
+                <span className="num strong">{money(personSaved)}</span>
+              </div>
+            )}
             <div className="goal-figures">
               <span className="amount small num">{money(p.saved)}</span>
               <span className="muted num small-text">de {money(g.target_amount)}</span>
@@ -344,7 +362,7 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
               />
             </p>
 
-            {byPerson.length > 1 && (
+            {!person && byPerson.length > 1 && (
               <div className="goal-split" aria-label="Aporte de cada persona">
                 {byPerson.map(({ m, total }) => (
                   <span key={m.user_id} className="row small-text">
@@ -362,7 +380,7 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
                   className="input"
                   inputMode="numeric"
                   placeholder="Monto"
-                  value={amt}
+                  value={dots(amt)}
                   onChange={(e) => setAmt(digitsOnly(e.target.value))}
                   aria-label={`Aporte a ${g.name}`}
                 />
@@ -386,13 +404,13 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
               </button>
             )}
 
-            {mine.length > 0 && (
+            {shown.length > 0 && (
               <div>
                 <span className="muted small-text">Historial de aportes</span>
-                {(expanded === g.id ? mine : mine.slice(0, 3)).map((c) =>
+                {(expanded === g.id ? shown : shown.slice(0, 3)).map((c) =>
                   editC === c.id ? (
                     <div className="stack tight item-edit" key={c.id}>
-                      <input className="input" inputMode="numeric" value={cAmt} onChange={(e) => setCAmt(digitsOnly(e.target.value))} aria-label="Monto del aporte" />
+                      <input className="input" inputMode="numeric" value={dots(cAmt)} onChange={(e) => setCAmt(digitsOnly(e.target.value))} aria-label="Monto del aporte" />
                       <input className="input" type="date" max={todayISO()} value={cDate} onChange={(e) => setCDate(e.target.value)} aria-label="Fecha del aporte" />
                       <div className="row">
                         <button type="button" className="btn small" disabled={busy} onClick={() => void saveContribution(c.id)}>
@@ -430,9 +448,9 @@ export default function Goals({ hh, data, onToast }: { hh: Household; data: Hous
                     </div>
                   ),
                 )}
-                {mine.length > 3 && (
+                {shown.length > 3 && (
                   <button type="button" className="link-btn" onClick={() => setExpanded(expanded === g.id ? null : g.id)}>
-                    {expanded === g.id ? 'Ver menos' : `Ver los ${mine.length} aportes`}
+                    {expanded === g.id ? 'Ver menos' : `Ver los ${shown.length} aportes`}
                   </button>
                 )}
               </div>

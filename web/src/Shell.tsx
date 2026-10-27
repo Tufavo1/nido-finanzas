@@ -20,6 +20,8 @@ import { useAppLock } from './lib/useAppLock'
 const Expenses = lazy(() => import('./screens/Expenses'))
 const Goals = lazy(() => import('./screens/Goals'))
 import Home from './screens/Home'
+import { resolveScope } from './lib/scope'
+import type { Scope } from './lib/scope'
 const Money = lazy(() => import('./screens/Money'))
 const Register = lazy(() => import('./screens/Register'))
 const Security = lazy(() => import('./screens/Security'))
@@ -50,6 +52,9 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
     const t = new URLSearchParams(location.search).get('tab')
     return TABS.some((x) => x.key === t) ? (t as Tab) : 'home'
   })
+  // De quién se ven los datos (hogar, yo o mi pareja): se mantiene al cambiar de pestaña
+  const [scopeRaw, setScope] = useState<Scope>('all')
+  const scope = resolveScope(scopeRaw, hh.members)
   const { locked, unlock } = useAppLock()
   // Al cambiar de pestaña: título del documento y foco en la pantalla nueva (no al abrir la app)
   const firstTab = useRef(true)
@@ -180,15 +185,15 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
       </main>
     )
   } else if (tab === 'home') {
-    body = <Home hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} alerts={alerts} onGo={goTo} onSnooze={snooze} onSettings={() => setTab('security')} />
+    body = <Home hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} alerts={alerts} onGo={goTo} onSnooze={snooze} onSettings={() => setTab('security')} onToast={setToast} scope={scope} onScope={setScope} />
   } else if (tab === 'expenses') {
-    body = <Expenses hh={hh} data={data} month={month} onToast={setToast} />
+    body = <Expenses hh={hh} data={data} month={month} onToast={setToast} scope={scope} onScope={setScope} />
   } else if (tab === 'add') {
     body = <Register hh={hh} data={data} onSaved={backToNow} />
   } else if (tab === 'money') {
-    body = <Money key={moneyNav.n} hh={hh} data={data} month={month} onToast={setToast} section={moneyNav.section} />
+    body = <Money key={moneyNav.n} hh={hh} data={data} month={month} onToast={setToast} section={moneyNav.section} scope={scope} onScope={setScope} />
   } else if (tab === 'goals') {
-    body = <Goals hh={hh} data={data} onToast={setToast} />
+    body = <Goals hh={hh} data={data} onToast={setToast} scope={scope} onScope={setScope} />
   } else {
     body = <Security hh={hh} reload={reload} data={data} onToast={setToast} />
   }

@@ -1,6 +1,8 @@
 import type { Debt, DebtPayment, Recurring } from './data'
 import { debtView } from './finance'
 import { toISO } from './format'
+import { fraction, portion } from './split'
+import type { Split } from './split'
 import { nextOccurrence } from './ui'
 
 /** Pagos que vienen: lo que vence en los próximos 30 días (gastos fijos, cuotas de deudas y el sueldo) y si el mes alcanza. */
@@ -37,7 +39,7 @@ export interface Upcoming {
 export interface UpcomingInput {
   now?: Date
   meId: string
-  memberCount: number
+  split: Split
   recurring: Recurring[]
   debts: Debt[]
   debtPayments: DebtPayment[]
@@ -61,6 +63,32 @@ function occurrence(day: number, now: Date, skipThisMonth: boolean): Date {
   return nextOccurrence(day, new Date(now.getFullYear(), now.getMonth() + 1, 1))
 }
 
+/** Mi parte de los gastos fijos que todavía no se anotan este mes (vencen entre hoy y fin de mes): plata ya comprometida aunque aún no salga */
+export function pendingFixedThisMonth(recurring: Recurring[], meId: string, split: Split, now: Date = new Date()): number {
+  let total = 0
+  for (const r of recurring) {
+    if (!r.active) continue
+    const mine = r.shared ? portion(r.amount, split, meId) : r.paid_by === meId ? r.amount : 0
+    if (mine <= 0) continue
+    if (r.last_applied && r.last_applied.startsWith(monthPrefix(now))) continue
+    const date = nextOccurrence(r.day_of_month, now)
+    if (!sameMonth(date, now) || r.starts_on > toISO(date)) continue
+    total += mine
+  }
+  return Math.round(total)
+}
+
+/** Mi parte de todos los gastos fijos activos en un mes normal, se hayan anotado ya o no */
+export function monthlyFixedTotal(recurring: Recurring[], meId: string, split: Split, now: Date = new Date()): number {
+  const endOfMonth = toISO(new Date(now.getFullYear(), now.getMonth() + 1, 0))
+  let total = 0
+  for (const r of recurring) {
+    if (!r.active || r.starts_on > endOfMonth) continue
+    total += r.shared ? portion(r.amount, split, meId) : r.paid_by === meId ? r.amount : 0
+  }
+  return Math.round(total)
+}
+
 export function buildUpcoming(input: UpcomingInput): Upcoming {
   const now = input.now ?? new Date()
   const today = startOfDay(now)
@@ -70,7 +98,7 @@ export function buildUpcoming(input: UpcomingInput): Upcoming {
 
   for (const r of input.recurring) {
     if (!r.active) continue
-    const mine = r.shared ? r.amount / Math.max(input.memberCount, 1) : r.paid_by === input.meId ? r.amount : 0
+    const mine = r.shared ? portion(r.amount, input.split, input.meId) : r.paid_by === input.meId ? r.amount : 0
     if (mine <= 0) continue
     // Si ya se anotó este mes, el próximo es el del mes que viene
     const appliedThisMonth = !!r.last_applied && r.last_applied.startsWith(monthPrefix(now))
@@ -83,7 +111,7 @@ export function buildUpcoming(input: UpcomingInput): Upcoming {
     if (d.owner_id !== input.meId && d.owner_id !== null) continue
     const v = debtView(d, input.debtPayments, now)
     if (v.remaining <= 0 || d.monthly_payment <= 0 || !d.due_day) continue
-    const share = d.owner_id === input.meId ? 1 : 1 / Math.max(input.memberCount, 1)
+    const share = d.owner_id === input.meId ? 1 : fraction(input.split, input.meId)
     const pending = Math.max(0, d.monthly_payment - v.paidThisMonth)
     const paidThisMonth = pending === 0
     const late = !paidThisMonth && d.due_day < today.getDate()

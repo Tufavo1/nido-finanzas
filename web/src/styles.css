@@ -987,6 +987,16 @@ body::before {
 }
 .set-body .card.about { background: none; border: 0; }
 
+/* ---------- Bloques que se abren dentro de una tarjeta ---------- */
+.fold { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.fold-head { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.fold-head:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.fold-head:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -3px; }
+.fold-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fold.open .set-chev { transform: rotate(180deg); }
+.fold-body { display: flex; flex-direction: column; gap: 10px; padding: 2px 14px 14px; }
+.fold-body p { margin: 0; line-height: 1.5; }
+
 /* ---------- Ayuda desplegable ---------- */
 .card.help { padding: 0; gap: 0; overflow: hidden; }
 .help-head {
@@ -1150,6 +1160,10 @@ body::before {
 /* ---------- Pantallas anchas: tablet, PC y MacBook ----------
    Todo va dentro de media queries de 700px hacia arriba: en el celular no cambia ninguna regla.
    Solo afecta a la app con sesión (la que tiene barra de pestañas), no al ingreso ni a la guía inicial. */
+/* Botón de agregar arriba a la derecha de cada sección de Finanzas */
+.panel-actions { display: flex; justify-content: flex-end; }
+.plata .panel-actions .btn { width: auto; height: 40px; padding: 0 16px; font-size: 15px; box-shadow: none; }
+
 @media (min-width: 700px) {
   .app:has(> .tabbar) { max-width: none; margin: 0; padding-left: 92px; }
   /* El teclado de Registrar se queda angosto: estirado a todo el ancho sería incómodo de usar */
@@ -1233,3 +1247,92 @@ body::before {
   .app:has(> .tabbar) > .screen:not(.center-y):not(:has(.keypad, .set-group)) > :not(.card),
   .app:has(> .tabbar) > .screen:not(.center-y):not(:has(.keypad, .set-group)) > .card:is(.hero, .alerts, .calm, .wide) { column-span: all; }
 }
+
+/* Registrar: compacto, el monto siempre queda a la vista */
+.reg { gap: 10px; }
+.reg > .title { display: none; }
+.reg-top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: -4px -4px 0;
+  padding: 8px 4px 6px;
+  background: var(--bg);
+}
+.reg-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: var(--surface);
+}
+.reg-amount .amount.big { font-size: 40px; line-height: 44px; padding: 0; }
+.reg-empty { opacity: 0.45; }
+.reg-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.reg-chips::-webkit-scrollbar { display: none; }
+.reg-chips .chip { flex: none; height: 32px; padding: 0 12px; font-size: 13px; }
+.reg-who { display: flex; align-items: center; gap: 10px; }
+.reg-who .seg { flex: 1; min-width: 0; }
+.reg-shared { display: flex; align-items: center; gap: 8px; font-size: 14px; flex: none; }
+.reg-meta { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
+.reg-meta .input { height: 42px; min-width: 0; font-size: 14px; }
+.reg-keys { gap: 6px; }
+.reg-keys .key { height: 46px; font-size: 20px; border-radius: 12px; }
+.reg-top { background: transparent; margin: 0; padding: 0 0 4px; }
+.reg-amount {
+  background: color-mix(in srgb, var(--surface) 92%, var(--bg));
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 24px -14px rgba(0, 0, 0, 0.5);
+}
+.reg-amount .amount.big { font-size: 44px; line-height: 48px; color: var(--accent); }
+.reg-empty { opacity: 0.4; }
+.reg-who .seg { padding: 4px; }
+.reg-who .seg button { height: 36px; }
+.reg-pct { display: flex; align-items: center; gap: 6px; font-weight: 700; }
+.reg-pct .input { width: 90px; height: 42px; text-align: center; font-size: 16px; }
+
+/* Registrar: rediseño por bloques */
+.reg { gap: 12px; }
+.reg-amount {
+  padding: 14px 12px 12px;
+  border-radius: 24px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface) 70%);
+}
+.reg-amount .amount.big { font-size: 48px; line-height: 52px; letter-spacing: -0.02em; }
+.reg-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.reg-card .seg { background: var(--surface-2); border: 0; }
+.reg-line { display: flex; align-items: center; gap: 10px; }
+.reg-line .seg { flex: 1; min-width: 0; }
+.reg-label { font-size: 13px; color: var(--muted); width: 44px; flex: none; }
+.reg-togs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tog {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 14px 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  font-size: 14px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.tog-dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--muted); display: grid; place-items: center; }
+.tog[aria-pressed='true'] { background: color-mix(in srgb, var(--accent) 28%, transparent); border-color: var(--accent); font-weight: 700; }
+.tog[aria-pressed='true'] .tog-dot { background: var(--accent); border-color: var(--accent); }
+.tog[aria-pressed='true'] .tog-dot::after { content: ''; width: 5px; height: 9px; border: solid var(--ink); border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-1px, -1px); }
+.reg-card .reg-meta .input { background: var(--surface-2); border-width: 1px; border-radius: 14px; }
+.reg-pct .input { background: var(--surface-2); border-radius: 12px; width: 76px; }
+.reg-keys { gap: 8px; }
+.reg-keys .key { height: 48px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.reg-keys .key:active { transform: scale(0.96); }

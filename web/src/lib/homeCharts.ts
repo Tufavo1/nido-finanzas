@@ -1,3 +1,5 @@
+import { portion } from './split'
+import type { Split } from './split'
 import type { HistExpense, MonthBar } from './analysis'
 import { monthKey } from './analysis'
 import { monthShort } from './ui'
@@ -103,8 +105,8 @@ export function weekdayBars(rows: Row[]): { bars: WeekdayBar[]; top: number | nu
   return { bars, top: max > 0 ? bars.findIndex((b) => b.amount === max) : null }
 }
 
-/** Gasto de cada uno de los últimos meses (del hogar o de una persona). */
-export function monthlyTotals(history: Pick<HistExpense, 'amount' | 'paid_by' | 'spent_on'>[], who: string, month: Date, months = 6): { bars: MonthBar[]; avg: number | null } {
+/** Gasto de cada uno de los últimos meses: del hogar, o lo que le corresponde a una persona. */
+export function monthlyTotals(history: Pick<HistExpense, 'amount' | 'paid_by' | 'spent_on' | 'shared'>[], who: string, month: Date, months = 6, split: Split = 2): { bars: MonthBar[]; avg: number | null } {
   const keys: { key: string; label: string }[] = []
   for (let i = months - 1; i >= 0; i--) {
     const d = new Date(month.getFullYear(), month.getMonth() - i, 1)
@@ -112,9 +114,11 @@ export function monthlyTotals(history: Pick<HistExpense, 'amount' | 'paid_by' | 
   }
   const sums = new Map<string, number>(keys.map((k) => [k.key, 0]))
   for (const e of history) {
-    if (who !== 'all' && e.paid_by !== who) continue
+    // De una persona: lo suyo y su parte de lo compartido, no lo que pagó
+    const mine = who === 'all' ? e.amount : e.shared ? portion(e.amount, split, who) : e.paid_by === who ? e.amount : 0
+    if (mine <= 0) continue
     const k = e.spent_on.slice(0, 7)
-    if (sums.has(k)) sums.set(k, (sums.get(k) ?? 0) + e.amount)
+    if (sums.has(k)) sums.set(k, (sums.get(k) ?? 0) + mine)
   }
   const cur = monthKey(month)
   const bars = keys.map((k) => ({ key: k.key, label: k.label, amount: Math.round(sums.get(k.key) ?? 0), current: k.key === cur }))

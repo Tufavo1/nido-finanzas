@@ -2,6 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Household } from '../App'
 import type { Expense, HouseholdData } from '../lib/data'
 import AlertsCard from '../components/AlertsCard'
+import SavingsCheck from '../components/SavingsCheck'
+import ScopeBar from '../components/ScopeBar'
+import { scopeExpenses } from '../lib/scope'
+import type { Scope } from '../lib/scope'
+import type { Notify } from '../components/Toast'
+import { savedInMonth } from '../lib/goals'
+import { splitOf } from '../lib/split'
 import Avatar, { AvatarPair } from '../components/Avatar'
 import Icon from '../components/Icon'
 import Logo from '../components/Logo'
@@ -11,6 +18,8 @@ import { MonthCurveCard, SixMonthsCard, WeekdayCard } from '../components/HomeCh
 import { compact, monthGrid } from '../lib/calendar'
 import { daysLeftInMonth, money } from '../lib/format'
 import { analyzeSalary, myDebtShare } from '../lib/finance'
+import { monthKey as monthKeyOf, myShare } from '../lib/analysis'
+import { pendingFixedThisMonth } from '../lib/upcoming'
 import { computeMetrics } from '../lib/metrics'
 import type { Alert, AlertTab, MoneySection } from '../lib/engine'
 import { memberColor, monthName, shortDate } from '../lib/ui'
@@ -25,6 +34,9 @@ interface Props {
   onGo: (tab: AlertTab, section?: MoneySection) => void
   onSnooze: (id: string, days: number) => void
   onSettings: () => void
+  onToast: Notify
+  scope: Scope
+  onScope: (s: Scope) => void
 }
 
 const DOW = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
@@ -38,17 +50,17 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
   )
 }
 
-export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo, onSnooze, onSettings }: Props) {
-  const [requestedView, setView] = useState<string>('all')
+export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo, onSnooze, onSettings, onToast, scope, onScope }: Props) {
   const [day, setDay] = useState<number | null>(null)
 
   const members = hh.members
+  const split = useMemo(() => splitOf(members), [members])
   const partner = members.find((m) => m.user_id !== hh.me.user_id)
   const byId = useMemo(() => new Map(hh.everyone.map((m) => [m.user_id, m] as const)), [hh.everyone])
   const catName = useMemo(() => new Map(data.categories.map((c) => [c.id, c.name] as const)), [data.categories])
 
   // Si la persona elegida ya no está en el hogar, volver a la vista del hogar
-  const view = requestedView === 'all' || byId.has(requestedView) ? requestedView : 'all'
+  const view = scope === 'all' || byId.has(scope) ? scope : 'all'
 
   // Al cambiar de mes el día elegido deja de tener sentido
   const monthKey = `${month.getFullYear()}-${month.getMonth()}`
@@ -60,15 +72,13 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
     () => computeMetrics(data.expenses, data.prevExpenses, data.categories, members, month),
     [data.expenses, data.prevExpenses, data.categories, members, month],
   )
-  const viewExpenses = useMemo<Expense[]>(
-    () => (view === 'all' ? data.expenses : data.expenses.filter((e) => e.paid_by === view)),
-    [data.expenses, view],
-  )
+  // De una persona se ve lo que le corresponde: lo suyo y su parte de lo compartido, aunque lo haya pagado la otra
+  const viewExpenses = useMemo<Expense[]>(() => scopeExpenses(data.expenses, view, split), [data.expenses, view, split])
+  const viewPrev = useMemo<Expense[]>(() => scopeExpenses(data.prevExpenses, view, split), [data.prevExpenses, view, split])
   const sub = useMemo(() => {
     if (view === 'all') return all
-    const prev = data.prevExpenses.filter((e) => e.paid_by === view)
-    return computeMetrics(viewExpenses, prev, data.categories, members, month)
-  }, [view, all, viewExpenses, data.prevExpenses, data.categories, members, month])
+    return computeMetrics(viewExpenses, viewPrev, data.categories, members, month)
+  }, [view, all, viewExpenses, viewPrev, data.categories, members, month])
   const person = view === 'all' ? null : (all.people.find((p) => p.userId === view) ?? null)
 
   // Sueldo: dato privado, solo se calcula para mí y nunca para la pareja
@@ -78,8 +88,11 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
       ? analyzeSalary({
           income: data.salary.amount,
           spent: mine.trueCost,
-          commitments: myDebtShare(data.debts, data.debtPayments, hh.me.user_id, members.length),
+          commitments: myDebtShare(data.debts, data.debtPayments, hh.me.user_id, split),
           month,
+          pendingFixed: pendingFixedThisMonth(data.recurring, hh.me.user_id, split),
+          fixedBooked: data.expenses.reduce((s, e) => (e.recurring_id ? s + myShare(e, hh.me.user_id, split) : s), 0),
+          saved: savedInMonth(data.contributions, hh.me.user_id, monthKeyOf(month)),
         })
       : null
 
@@ -160,21 +173,12 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
         </button>
       </div>
 
-      <div className="seg" role="group" aria-label="Ver gastos de">
-        <button type="button" aria-pressed={view === 'all'} onClick={() => setView('all')}>
-          Hogar
-        </button>
-        {[hh.me, ...(partner ? [partner] : [])].map((m) => (
-          <button key={m.user_id} type="button" aria-pressed={view === m.user_id} onClick={() => setView(m.user_id)}>
-            {m.user_id === hh.me.user_id ? 'Yo' : m.display_name}
-          </button>
-        ))}
-      </div>
+      <ScopeBar hh={hh} scope={view} onScope={onScope} label="Ver gastos de" />
 
       <section className="card hero">
         <div className="hero-top">
           <div className="grow">
-            <span className="muted">{view === 'all' ? 'Gastado en el mes' : `Pagó ${byId.get(view)?.display_name ?? ''}`}</span>
+            <span className="muted">{view === 'all' ? 'Gastado en el mes' : view === hh.me.user_id ? 'Te corresponde en el mes' : `Le corresponde a ${byId.get(view)?.display_name ?? ''}`}</span>
             <span className="amount num">{money(sub.total)}</span>
             {view === 'all' && <span className={budget > 0 && left < 0 ? 'over' : 'muted'}>{status}</span>}
           </div>
@@ -220,7 +224,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
       {viewExpenses.length > 0 && (
         <MonthCurveCard
           expenses={viewExpenses}
-          prevExpenses={view === 'all' ? data.prevExpenses : data.prevExpenses.filter((e) => e.paid_by === view)}
+          prevExpenses={viewPrev}
           budget={view === 'all' ? budget : 0}
           month={month}
           isCurrent={isCurrent}
@@ -297,21 +301,33 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
           </div>
           <strong className="verdict-title">{salaryCheck.headline}</strong>
           <div className="row between">
-            <span className="muted">Te queda</span>
-            <span className={salaryCheck.free < 0 ? 'over num' : 'num'}>{money(salaryCheck.free)}</span>
+            <span className="muted">{salaryCheck.pendingFixed > 0 ? 'Libre de verdad' : 'Te queda'}</span>
+            <span className={salaryCheck.realFree < 0 ? 'over num' : 'num'}>{money(salaryCheck.realFree)}</span>
           </div>
+          {salaryCheck.saved > 0 && (
+            <span className="muted small-text">Ya apartaste {money(salaryCheck.saved)} para ahorrar: está descontado de lo que te queda.</span>
+          )}
+          {salaryCheck.pendingFixed > 0 && (
+            <span className="muted small-text">
+              Hoy tienes {money(salaryCheck.free)}, pero aún vencen {money(salaryCheck.pendingFixed)} en gastos fijos este mes.
+            </span>
+          )}
           <div className="bar" aria-hidden="true">
             <span
               style={{
-                width: `${Math.min(100, salaryCheck.spentPct + salaryCheck.debtPct)}%`,
+                width: `${Math.min(100, salaryCheck.spentPct + salaryCheck.debtPct + (salaryCheck.income > 0 ? Math.round((salaryCheck.saved * 100) / salaryCheck.income) : 0))}%`,
                 background: salaryCheck.level === 'ok' ? 'var(--accent)' : salaryCheck.level === 'warn' ? 'var(--amber)' : 'var(--warn)',
               }}
             />
           </div>
           <span className="muted small-text">
-            Gastos {salaryCheck.spentPct} % + cuotas {salaryCheck.debtPct} % de tu sueldo. Detalle en la pestaña Finanzas.
+            Gastos {salaryCheck.spentPct} % + cuotas {salaryCheck.debtPct} %{salaryCheck.saved > 0 ? ` + ahorro ${salaryCheck.income > 0 ? Math.round((salaryCheck.saved * 100) / salaryCheck.income) : 0} %` : ''} de tu sueldo. Detalle en la pestaña Finanzas.
           </span>
         </section>
+      )}
+
+      {data.salary && data.financeReady && (view === 'all' || view === hh.me.user_id) && (
+        <SavingsCheck hh={hh} data={data} month={month} onToast={onToast} onGoals={() => onGo('goals')} />
       )}
 
       {view === 'all' ? (
@@ -333,7 +349,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
             ))}
           </div>
           <span className="muted small-text">
-            El número de la derecha es el costo real de cada uno: sus gastos personales más su mitad de lo compartido.
+            El número de la derecha es el costo real de cada uno: sus gastos personales más su parte de lo compartido.
           </span>
         </section>
       ) : (
@@ -343,7 +359,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
             <Line label="Pagó en total" value={money(person.paid)} />
             <Line label="De eso, compartido" value={money(person.paidShared)} />
             <Line label="De eso, personal" value={money(person.paidPersonal)} />
-            <Line label="Su mitad de lo compartido" value={money(person.fairShare)} />
+            <Line label="Su parte de lo compartido" value={money(person.fairShare)} />
             <Line label="Costo real" value={money(person.trueCost)} strong />
             <span className={person.balance < 0 ? 'over' : 'muted'}>
               {person.balance > 0

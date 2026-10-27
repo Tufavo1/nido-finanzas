@@ -8,17 +8,27 @@ import Intro from '../components/Intro'
 import RecurringPanel from '../components/RecurringPanel'
 import SalaryCalculator from '../components/SalaryCalculator'
 import DebtSimulator from '../components/DebtSimulator'
-import { analyzeSalary, monthIncome, monthsToPayoff, myDebtShare, summarizeDebts } from '../lib/finance'
+import { monthKey as monthKeyOf, myShare } from '../lib/analysis'
+import SavingsCheck from '../components/SavingsCheck'
+import { savedInMonth } from '../lib/goals'
+import { isCustomSplit, percentOf, splitOf } from '../lib/split'
+import ScopeBar from '../components/ScopeBar'
+import { resolveScope, scopeDebts, scopeDebtShares } from '../lib/scope'
+import type { Scope } from '../lib/scope'
+import { monthlyFixedTotal, pendingFixedThisMonth } from '../lib/upcoming'
+import { analyzeSalary, monthIncome, monthsToPayoff, myDebtShare, summarizeDebts, typicalMonth } from '../lib/finance'
 import type { DebtView, Finding } from '../lib/finance'
 import { money, todayISO } from '../lib/format'
 import { computeMetrics } from '../lib/metrics'
 import { supabase } from '../lib/supabase'
 import { Rich } from '../lib/rich'
-import { daysUntil, digitsOnly, inDays, longDate, memberColor, monthName, nextOccurrence } from '../lib/ui'
+import { daysUntil, digitsOnly, inDays, longDate, memberColor, monthName, nextOccurrence, dots } from '../lib/ui'
 import type { Notify } from '../components/Toast'
 import type { MoneySection } from '../lib/engine'
 import Spin from '../components/Spin'
 import DebtInsights from '../components/DebtInsights'
+import BankRates from '../components/BankRates'
+import DebtGuidedForm from '../components/DebtGuidedForm'
 
 interface Props {
   hh: Household
@@ -27,6 +37,9 @@ interface Props {
   onToast: Notify
   /** Pestaña con la que abre (al llegar desde un aviso) */
   section?: MoneySection
+  /** De quién se ven los datos: el hogar o una persona */
+  scope: Scope
+  onScope: (s: Scope) => void
 }
 
 const KINDS = [
@@ -80,7 +93,8 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
     [data.expenses, data.prevExpenses, data.categories, hh.members, month],
   )
   const me = metrics.people.find((p) => p.userId === hh.me.user_id)
-  const commitments = myDebtShare(data.debts, data.debtPayments, hh.me.user_id, hh.members.length)
+  const split = useMemo(() => splitOf(hh.members), [hh.members])
+  const commitments = myDebtShare(data.debts, data.debtPayments, hh.me.user_id, split)
   const isCurrent = month.getFullYear() === new Date().getFullYear() && month.getMonth() === new Date().getMonth()
 
   async function save(e: FormEvent) {
@@ -119,8 +133,30 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
   }
 
   const a = salary
-    ? analyzeSalary({ income: monthIncome(salary, data.incomes), spent: me?.trueCost ?? 0, commitments, month })
+    ? analyzeSalary({
+        income: monthIncome(salary, data.incomes),
+        spent: me?.trueCost ?? 0,
+        commitments,
+        month,
+        pendingFixed: pendingFixedThisMonth(data.recurring, hh.me.user_id, split),
+        fixedBooked: data.expenses.reduce((s, e) => (e.recurring_id ? s + myShare(e, hh.me.user_id, split) : s), 0),
+        saved: savedInMonth(data.contributions, hh.me.user_id, monthKeyOf(month)),
+      })
     : null
+
+  // Un mes completo con todos los fijos y las cuotas, para que el número no dependa de cuándo se creó cada cosa
+  const typical =
+    a && salary && isCurrent
+      ? typicalMonth({
+          income: a.income,
+          monthlyFixed: monthlyFixedTotal(data.recurring, hh.me.user_id, split),
+          commitments,
+          spent: a.spent,
+          fixedBooked: data.expenses.reduce((t, e) => (e.recurring_id ? t + myShare(e, hh.me.user_id, split) : t), 0),
+          pendingFixed: a.pendingFixed,
+          month,
+        })
+      : null
 
   return (
     <>
@@ -163,10 +199,10 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
                 className="input"
                 inputMode="numeric"
                 placeholder="Ej. 1500000"
-                value={amount}
+                value={dots(amount)}
                 onChange={(e) => setAmount(digitsOnly(e.target.value))}
               />
-              {amount && <span className="hint num">Escribiste {money(Number(amount))}: son unos {money(Math.round(Number(amount) / 30))} por día.</span>}
+              {amount && <span className="hint num">Son unos {money(Math.round(Number(amount) / 30))} por día.</span>}
             </div>
             <div className="field">
               <label htmlFor="payday">Día del mes en que te pagan</label>
@@ -219,6 +255,7 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
 
       {a && salary && (
         <>
+          <SavingsCheck hh={hh} data={data} month={month} onToast={onToast} />
           <section className={`card verdict ${a.level}`}>
             <span className="muted small-text">
               Tu situación en {monthName(month)} {month.getFullYear()}
@@ -238,7 +275,7 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
                   {money(a.spent)} · {a.spentPct} %
                 </span>
               </div>
-              <span className="line-help">Tus gastos personales más tu mitad de los compartidos.</span>
+              <span className="line-help">Tus gastos personales más tu parte de los compartidos.</span>
               <Meter pct={a.spentPct} level={a.spentPct > 90 ? 'bad' : a.spentPct > 70 ? 'warn' : 'ok'} />
               {a.commitments > 0 && (
                 <>
@@ -252,11 +289,37 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
                   <Meter pct={a.debtPct} level={a.debtPct > 40 ? 'bad' : a.debtPct > 30 ? 'warn' : 'ok'} />
                 </>
               )}
+              {a.saved > 0 && (
+                <>
+                  <div className="row between">
+                    <span className="muted">Ahorro que apartaste</span>
+                    <span className="num">
+                      {money(a.saved)} · {a.income > 0 ? Math.round((a.saved * 100) / a.income) : 0} %
+                    </span>
+                  </div>
+                  <span className="line-help">Lo que guardaste en tus metas este mes. Sale de tu sueldo igual que un gasto.</span>
+                  <Meter pct={a.income > 0 ? Math.round((a.saved * 100) / a.income) : 0} level="ok" />
+                </>
+              )}
               <div className="row between">
                 <strong>Hoy te sobra</strong>
                 <strong className={a.free < 0 ? 'over num' : 'num'}>{money(a.free)}</strong>
               </div>
               {a.free < 0 && <span className="line-help">Número negativo: ya gastaste más de lo que entró.</span>}
+              {isCurrent && a.pendingFixed > 0 && (
+                <>
+                  <div className="row between">
+                    <span className="muted">Gastos fijos que aún vencen</span>
+                    <span className="num">− {money(a.pendingFixed)}</span>
+                  </div>
+                  <span className="line-help">Son pagos que todavía no salen este mes (arriendo, suscripciones…), pero ya están comprometidos.</span>
+                  <div className="row between">
+                    <strong>Libre de verdad</strong>
+                    <strong className={a.realFree < 0 ? 'over num' : 'num'}>{money(a.realFree)}</strong>
+                  </div>
+                  <span className="line-help">Esto es lo único que puedes gastar sin dejar un pago sin cubrir.</span>
+                </>
+              )}
               {a.projectedFree !== null && (
                 <div className="row between">
                   <span className="muted">Te sobraría a fin de mes</span>
@@ -274,6 +337,46 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
               )}
             </div>
           </section>
+
+          {typical && (typical.fixed > 0 || typical.commitments > 0) && (
+            <section className={`card verdict ${typical.left < 0 ? 'bad' : 'ok'}`}>
+              <strong>Cómo es un mes completo</strong>
+              <span className="muted small-text">
+                Con todos tus gastos fijos y tus deudas, y con lo que gastas día a día, esto es lo que te queda cada mes.
+              </span>
+              <div className="stack tight">
+                <div className="row between">
+                  <span className="muted">Ganas</span>
+                  <span className="num">{money(typical.income)}</span>
+                </div>
+                <div className="row between">
+                  <span className="muted">Gastos fijos de cada mes</span>
+                  <span className="num">− {money(typical.fixed)}</span>
+                </div>
+                <div className="row between">
+                  <span className="muted">Cuotas de deudas</span>
+                  <span className="num">− {money(typical.commitments)}</span>
+                </div>
+                <div className="row between">
+                  <span className="muted">Gastos del día a día</span>
+                  <span className="num">− {money(typical.variable)}</span>
+                </div>
+                <span className="line-help">Es lo que llevas gastado este mes sin contar los fijos, calculado para el mes completo.</span>
+                <div className="row between">
+                  <strong>Te queda en un mes normal</strong>
+                  <strong className={typical.left < 0 ? 'over num' : 'num'}>{money(typical.left)}</strong>
+                </div>
+                {typical.left < 0 && (
+                  <span className="line-help">Con tus fijos y tus deudas, un mes normal te deja en rojo. Conviene bajar algún gasto o subir los ingresos.</span>
+                )}
+                {typical.unbookedFixed > 0 && (
+                  <span className="hint">
+                    Este mes todavía no se anotaron {money(typical.unbookedFixed)} de tus gastos fijos, porque los creaste después de su día de pago. Por eso no están en lo que has gastado ni en lo que te sobra hoy. Si ya los pagaste, anótalos como un gasto normal.
+                  </span>
+                )}
+              </div>
+            </section>
+          )}
 
           {a.findings.length > 0 && (
             <section className="card">
@@ -423,6 +526,9 @@ function DebtCard({
         <span className="muted small-text">{done ? 'Ya no se debe nada' : 'Todavía falta pagar'}</span>
         <span className="amount num small">{money(v.remaining)}</span>
         <span className="muted small-text num">La deuda era de {money(d.original_amount)}</span>
+        {v.accrued > 0 && !done && (
+          <span className="muted small-text num">Incluye {money(v.accrued)} de interés que se fue sumando mes a mes desde que la anotaron.</span>
+        )}
       </div>
       <Meter pct={v.progressPct} level="ok" />
       <div className="row between muted small-text">
@@ -462,7 +568,7 @@ function DebtCard({
           {myPays.map((p) =>
             editPay === p.id ? (
               <div className="stack tight item-edit" key={p.id}>
-                <input className="input" inputMode="numeric" value={pAmt} onChange={(e) => setPAmt(digitsOnly(e.target.value))} aria-label="Monto del pago" />
+                <input className="input" inputMode="numeric" value={dots(pAmt)} onChange={(e) => setPAmt(digitsOnly(e.target.value))} aria-label="Monto del pago" />
                 <input className="input" type="date" max={todayISO()} value={pDate} onChange={(e) => setPDate(e.target.value)} aria-label="Fecha del pago" />
                 <div className="row">
                   <button type="button" className="btn small" disabled={busy} onClick={() => void savePayment(p.id)}>
@@ -509,7 +615,7 @@ function DebtCard({
               id={`pay-${d.id}`}
               className="input"
               inputMode="numeric"
-              value={value}
+              value={dots(value)}
               onChange={(e) => setValue(digitsOnly(e.target.value))}
             />
             <span className="hint">Esto solo anota el pago en la app; no mueve plata de tu banco.</span>
@@ -544,7 +650,7 @@ function DebtCard({
   )
 }
 
-function DebtForm({
+function DebtEditForm({
   hh,
   data,
   onClose,
@@ -642,13 +748,12 @@ function DebtForm({
       <div className="field">
         <label htmlFor="d-total">{existing ? '4. Monto total de la deuda' : '4. Saldo: lo que se debe hoy'}</label>
         <span className="line-help">Lo que falta pagar ahora, no lo que pidieron al principio. En una tarjeta, el monto total facturado.</span>
-        <input id="d-total" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800000" value={total} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
-        {total && <span className="hint num">Escribiste: {money(Number(total))}</span>}
+        <input id="d-total" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800000" value={dots(total)} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
       </div>
       <div className="field">
         <label htmlFor="d-fee">5. Cuota mensual (opcional)</label>
         <span className="line-help">Lo que pagan cada mes por esta deuda. Con ella calculamos en cuántos meses terminan.</span>
-        <input id="d-fee" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 65000" value={fee} onChange={(e) => setFee(digitsOnly(e.target.value))} />
+        <input id="d-fee" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 65000" value={dots(fee)} onChange={(e) => setFee(digitsOnly(e.target.value))} />
         {Number(fee) > 0 && Number(total) > 0 && (
           <span className="hint">
             {(() => {
@@ -687,8 +792,14 @@ function DebtForm({
   )
 }
 
+/** Deuda nueva: flujo guiado. Editar una existente: el formulario completo. */
+function DebtForm(props: { hh: Household; data: HouseholdData; onClose: () => void; onToast: Notify; existing?: HouseholdData['debts'][number]; defaultOwner?: string }) {
+  return props.existing ? <DebtEditForm {...props} /> : <DebtGuidedForm hh={props.hh} data={props.data} onClose={props.onClose} onToast={props.onToast} defaultOwner={props.defaultOwner} />
+}
+
 /** Cuánto se deben entre ustedes por los gastos compartidos del mes (quién puso más plata). */
-function BetweenUs({ hh, data, month }: Pick<Props, 'hh' | 'data' | 'month'>) {
+function BetweenUs({ hh, data, month, onToast }: Pick<Props, 'hh' | 'data' | 'month' | 'onToast'>) {
+  const split = useMemo(() => splitOf(hh.members), [hh.members])
   const m = useMemo(
     () => computeMetrics(data.expenses, data.prevExpenses, data.categories, hh.members, month),
     [data.expenses, data.prevExpenses, data.categories, hh.members, month],
@@ -724,23 +835,118 @@ function BetweenUs({ hh, data, month }: Pick<Props, 'hh' | 'data' | 'month'>) {
       {mine && other && m.shared > 0 && (
         <span className="line-help">
           Gastos compartidos de {monthName(month)}: {money(m.shared)}. Tú pusiste {money(mine.paidShared)} y {other.name}{' '}
-          puso {money(other.paidShared)}; a cada uno le toca la mitad ({money(mine.fairShare)}).
+          puso {money(other.paidShared)}; a ti te toca {money(mine.fairShare)} ({percentOf(split, meId)} %).
         </span>
       )}
       <span className="line-help">
         Este saldo sale solo de los gastos compartidos del mes que estás viendo. Cambia el mes arriba para ver otros.
       </span>
+      <SplitSetting hh={hh} data={data} split={split} onToast={onToast} custom={isCustomSplit(split)} />
     </section>
   )
 }
 
-function DebtsPanel({ hh, data, month, onToast }: Props) {
+/** Cómo se reparten los gastos compartidos: por defecto mitad y mitad, o el porcentaje que acuerden. */
+function SplitSetting({ hh, data, split, custom, onToast }: Pick<Props, 'hh' | 'data' | 'onToast'> & { split: ReturnType<typeof splitOf>; custom: boolean }) {
+  const meId = hh.me.user_id
+  const other = hh.members.find((m) => m.user_id !== meId)
+  const mine = percentOf(split, meId)
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(String(mine))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function apply(pct: number | null) {
+    setBusy(true)
+    setError(null)
+    const { error: err } = await supabase.rpc('set_expense_split', { pct })
+    setBusy(false)
+    if (err) {
+      console.error(err)
+      setError('No se pudo cambiar el reparto. Intenta de nuevo.')
+      return
+    }
+    setEditing(false)
+    onToast(pct === null ? 'Reparto a mitad y mitad\nLos gastos compartidos se dividen por igual.' : `Reparto guardado\nTú pones el **${pct} %** de lo compartido y ${other?.display_name ?? 'tu pareja'} el **${100 - pct} %**.`)
+    await data.refresh()
+  }
+
+  if (!other) return null
+  const n = Number(value)
+  const valid = Number.isInteger(n) && n >= 1 && n <= 99
+
+  return (
+    <div className="stack tight">
+      <strong className="small-text">Reparto de lo compartido</strong>
+      <span className="muted small-text">
+        {custom ? `Tú ${mine} % · ${other.display_name} ${100 - mine} %` : 'Mitad y mitad (50 % cada uno)'}
+      </span>
+      {!editing ? (
+        <button type="button" className="btn ghost small" onClick={() => { setValue(String(mine)); setEditing(true) }}>
+          Cambiar el reparto
+        </button>
+      ) : (
+        <>
+          <span className="line-help">Útil si uno gana más y acordaron que ponga una parte mayor. Vale para todos los gastos, fijos y deudas compartidas.</span>
+          <div className="chips" role="group" aria-label="Tu parte de lo compartido">
+            {[30, 40, 50, 60, 70].map((p) => (
+              <button key={p} type="button" className="chip" aria-pressed={value === String(p)} onClick={() => setValue(String(p))}>
+                {p} %
+              </button>
+            ))}
+          </div>
+          <div className="field">
+            <label htmlFor="split-pct">Tu parte (de 1 a 99 %)</label>
+            <input id="split-pct" className="input" inputMode="numeric" value={value} onChange={(e) => setValue(e.target.value.replace(/\D/g, '').slice(0, 2))} />
+            {valid && <span className="hint">{other.display_name} pondría el {100 - n} %.</span>}
+          </div>
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="row">
+            <button type="button" className="btn small" disabled={busy || !valid} onClick={() => void apply(n)}>
+              {busy ? <Spin label="Guardando reparto…" /> : 'Guardar reparto'}
+            </button>
+            {custom && (
+              <button type="button" className="btn ghost small" disabled={busy} onClick={() => void apply(null)}>
+                Volver a mitad y mitad
+              </button>
+            )}
+            <button type="button" className="btn ghost small" onClick={() => setEditing(false)}>
+              Cancelar
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
   const [adding, setAdding] = useState(false)
-  const s = summarizeDebts(data.debts, data.debtPayments)
-  const empty = data.debts.length === 0
+  const who = resolveScope(scope, hh.members)
+  const debts = scopeDebts(data.debts, who)
+  const real = summarizeDebts(debts, data.debtPayments)
+  // Para una persona, las deudas compartidas cuentan solo su parte en los totales y el análisis
+  const mine = scopeDebtShares(data.debts, data.debtPayments, who, splitOf(hh.members))
+  const s = summarizeDebts(mine.debts, mine.payments)
+  const empty = debts.length === 0
+  const person = hh.members.find((m) => m.user_id === who)
 
   return (
     <>
+      {adding ? (
+        <DebtForm hh={hh} data={data} onClose={() => setAdding(false)} onToast={onToast} defaultOwner={who === 'all' ? '' : who} />
+      ) : (
+        <div className="panel-actions">
+          <button type="button" className="btn small" onClick={() => setAdding(true)}>
+            + Agregar una deuda
+          </button>
+        </div>
+      )}
+
       <Intro
         title="Deudas: lo que debes y cuándo terminas de pagar"
         text="Una deuda es plata que todavía tienes que devolver: una tarjeta, un crédito del banco o un préstamo de un familiar. Al anotarla, la app te muestra cuánto falta y en cuántos meses terminas."
@@ -752,11 +958,11 @@ function DebtsPanel({ hh, data, month, onToast }: Props) {
         ]}
       />
 
-      <BetweenUs hh={hh} data={data} month={month} />
+      {who === 'all' && <BetweenUs hh={hh} data={data} month={month} onToast={onToast} />}
 
       {s.remaining > 0 && (
         <section className="card">
-          <strong>Resumen de lo que se debe</strong>
+          <strong>{who === 'all' ? 'Resumen de lo que se debe' : who === hh.me.user_id ? 'Resumen de lo que te toca pagar' : `Resumen de lo que le toca pagar a ${person?.display_name ?? 'tu pareja'}`}</strong>
           <span className="muted small-text">Falta pagar en total</span>
           <span className="amount num">{money(s.remaining)}</span>
           <div className="row between">
@@ -772,13 +978,15 @@ function DebtsPanel({ hh, data, month, onToast }: Props) {
         </section>
       )}
 
-      <DebtInsights debts={data.debts} payments={data.debtPayments} />
+      <DebtInsights debts={mine.debts} payments={mine.payments} />
 
       {empty ? (
         <section className="card">
-          <strong>Todavía no hay deudas anotadas</strong>
+          <strong>{person && data.debts.length > 0 ? `${who === hh.me.user_id ? 'No tienes' : `${person.display_name} no tiene`} deudas anotadas` : 'Todavía no hay deudas anotadas'}</strong>
           <span className="muted">
-            Si no deben nada, no hagas nada. Si tienen una tarjeta, un crédito o un préstamo, agrégalo para llevar el control.
+            {person && data.debts.length > 0
+              ? 'Aquí se muestran las deudas de esta persona y las que son de los dos. Cambia a Hogar para ver todas.'
+              : 'Si no deben nada, no hagas nada. Si tienen una tarjeta, un crédito o un préstamo, agrégalo para llevar el control.'}
           </span>
         </section>
       ) : (
@@ -788,17 +996,12 @@ function DebtsPanel({ hh, data, month, onToast }: Props) {
         </section>
       )}
 
-      {s.views.map((v) => (
+      {real.views.map((v) => (
         <DebtCard key={v.debt.id} v={v} hh={hh} data={data} onToast={onToast} />
       ))}
 
-      {adding ? (
-        <DebtForm hh={hh} data={data} onClose={() => setAdding(false)} onToast={onToast} />
-      ) : (
-        <button type="button" className="btn" onClick={() => setAdding(true)}>
-          Agregar una deuda
-        </button>
-      )}
+      <BankRates debts={debts} payments={data.debtPayments} />
+
     </>
   )
 }
@@ -807,10 +1010,22 @@ function DebtsPanel({ hh, data, month, onToast }: Props) {
 export default function Money(props: Props) {
   const [tab, setTab] = useState<MoneySection>(props.section ?? 'analysis')
   const { data } = props
+  const who = resolveScope(props.scope, props.hh.members)
+  const partner = who !== 'all' && who !== props.hh.me.user_id ? props.hh.members.find((m) => m.user_id === who) : undefined
+  // El sueldo y el análisis personal son privados: de tu pareja no se pueden ver
+  const privateNotice = partner && (
+    <section className="card">
+      <strong>Esto es privado</strong>
+      <span className="muted">
+        El sueldo, los ingresos y el análisis personal de {partner.display_name} solo los ve esa persona. Puedes mirar sus gastos fijos y sus deudas en las otras pestañas.
+      </span>
+    </section>
+  )
 
   return (
     <main className="screen plata">
       <h1 className="title">Mis finanzas</h1>
+      <ScopeBar hh={props.hh} scope={who} onScope={props.onScope} label="Ver las finanzas de" />
 
       {!data.financeReady ? (
         <section className="card">
@@ -847,15 +1062,17 @@ export default function Money(props: Props) {
               Deudas
             </button>
           </div>
-          {tab === 'analysis' && <AnalysisPanel {...props} onGoSalary={() => setTab('salary')} />}
-          {tab === 'salary' && (
-            <>
-              <SalaryPanel {...props} />
-              <IncomesCard {...props} />
-            </>
-          )}
+          {tab === 'analysis' && (privateNotice ?? <AnalysisPanel {...props} onGoSalary={() => setTab('salary')} />)}
+          {tab === 'salary' &&
+            (privateNotice ?? (
+              <>
+                <SalaryPanel {...props} />
+                <IncomesCard {...props} />
+              </>
+            ))}
           {tab === 'fixed' && <RecurringPanel {...props} />}
-          {tab === 'debts' && <DebtsPanel {...props} />}        </>
+          {tab === 'debts' && <DebtsPanel {...props} />}
+        </>
       )}
     </main>
   )

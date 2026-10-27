@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData, Recurring } from '../lib/data'
 import { money } from '../lib/format'
 import { supabase } from '../lib/supabase'
-import { daysUntil, digitsOnly, inDays, longDate, nextOccurrence } from '../lib/ui'
+import { daysUntil, digitsOnly, inDays, longDate, nextOccurrence, dots } from '../lib/ui'
+import { resolveScope, scopeRecurring } from '../lib/scope'
+import { splitOf } from '../lib/split'
+import type { Scope } from '../lib/scope'
 import Avatar from './Avatar'
 import Intro from './Intro'
 import type { Notify } from './Toast'
@@ -14,6 +17,7 @@ interface Props {
   hh: Household
   data: HouseholdData
   onToast: Notify
+  scope: Scope
 }
 
 /** Gastos típicos: al elegirlos se llena el nombre, se sugiere la categoría y se muestra un ejemplo de monto */
@@ -33,14 +37,18 @@ const IDEAS = [
 ] as const
 
 /** Gastos que se repiten cada mes (arriendo, luz, streaming…). Se anotan solos el día indicado. */
-export default function RecurringPanel({ hh, data, onToast }: Props) {
+export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
+  const who = resolveScope(scope, hh.members)
+  const person = hh.members.find((m) => m.user_id === who)
+  const split = useMemo(() => splitOf(hh.members), [hh.members])
+  const list = scopeRecurring(data.recurring, who, split)
   const solo = hh.members.length < 2
   const [open, setOpen] = useState(false)
   const [note, setNote] = useState('')
   const [amount, setAmount] = useState('')
   const [day, setDay] = useState('1')
   const [catId, setCatId] = useState(data.categories[0]?.id ?? '')
-  const [paidBy, setPaidBy] = useState(hh.me.user_id)
+  const [paidBy, setPaidBy] = useState(who === 'all' ? hh.me.user_id : who)
   const [shared, setShared] = useState(true)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -49,7 +57,7 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
   const idea = IDEAS.find((i) => i.name === note)
   const catName = new Map(data.categories.map((c) => [c.id, c.name] as const))
   const people = new Map(hh.everyone.map((m) => [m.user_id, m] as const))
-  const active = data.recurring.filter((r) => r.active)
+  const active = list.filter((r) => r.active)
   const monthly = active.reduce((s, r) => s + r.amount, 0)
 
   async function run(task: () => PromiseLike<{ error: unknown }>, ok?: string) {
@@ -125,78 +133,6 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
 
   return (
     <>
-      <Intro
-        title="Gastos fijos: lo que pagas igual cada mes"
-        text="Son pagos que se repiten todos los meses con el mismo monto: arriendo, luz, internet, celular, suscripciones. Los anotas una sola vez y la app los agrega a tus gastos sola. Para compras que cambian, como el supermercado, usa el botón Registrar."
-        steps={[
-          'Toca **Agregar un gasto fijo**.',
-          'Elige qué es, por ejemplo **Arriendo**, y escribe cuánto pagas al mes.',
-          'Elige el **día del mes** en que se paga y su categoría.',
-          'Listo: cada mes aparecerá solo en tus gastos. No tienes que anotarlo otra vez.',
-        ]}
-      />
-
-      {active.length > 0 && (
-        <section className="card">
-          <span className="muted">Entre todos, cada mes pagan</span>
-          <span className="amount num">{money(monthly)}</span>
-        </section>
-      )}
-
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-
-      {data.recurring.length > 0 && (
-        <section className="card">
-          <strong>Sus gastos fijos</strong>
-          {data.recurring.map((r) => (
-            <div key={r.id} style={r.active ? undefined : { opacity: 0.7 }}>
-              <div className="item" style={{ paddingBottom: 6 }}>
-                {!solo && <Avatar name={people.get(r.paid_by)?.display_name} color={people.get(r.paid_by)?.color} size={28} />}
-                <div className="grow">
-                  <div className="strong">{r.note}</div>
-                  <div className="muted small-text">
-                    {catName.get(r.category_id) ?? 'Sin categoría'} · todos los meses el día {r.day_of_month}
-                  </div>
-                  {r.active && (
-                    <div className="small-text">
-                      Próximo pago: {longDate(nextOccurrence(r.day_of_month))} ({inDays(daysUntil(nextOccurrence(r.day_of_month)))})
-                    </div>
-                  )}
-                  {!solo && (
-                    <div className="muted small-text">
-                      Lo paga {people.get(r.paid_by)?.display_name ?? 'alguien'} ·{' '}
-                      {r.shared ? 'se divide entre los dos' : 'es solo de esa persona'}
-                    </div>
-                  )}
-                  {!r.active && <div className="small-text strong">En pausa: no se anota mientras tanto</div>}
-                </div>
-                <span className="num">{money(r.amount)}</span>
-              </div>
-              <div className="fixed-actions">
-                <button type="button" className="txt-btn" disabled={busy} onClick={() => toggle(r)}>
-                  {r.active ? 'Pausar' : 'Volver a activar'}
-                </button>
-                <button
-                  type="button"
-                  className={confirmId === r.id ? 'txt-btn warn' : 'txt-btn'}
-                  aria-label={confirmId === r.id ? `Confirmar borrado de ${r.note}` : `Borrar ${r.note}`}
-                  onClick={() => remove(r)}
-                >
-                  {confirmId === r.id ? 'Toca otra vez para borrar' : 'Borrar'}
-                </button>
-              </div>
-            </div>
-          ))}
-          <span className="line-help">
-            <strong>Pausar</strong> detiene el gasto sin perder sus datos. Si borras uno que ya se anotó este mes, no vuelve a aparecer.
-          </span>
-        </section>
-      )}
-
       {open ? (
         <form className="card" onSubmit={(e) => void add(e)}>
           <strong>Agregar un gasto fijo</strong>
@@ -216,7 +152,7 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
           <div className="field">
             <label htmlFor="rec-amount">2. Monto mensual (CLP)</label>
             <span className="line-help">Lo que pagas cada mes. Si varía, pon un promedio.</span>
-            <input id="rec-amount" autoComplete="off" className="input" inputMode="numeric" placeholder={idea ? `Ej. ${idea.example}` : 'Ej. 350000'} value={amount}
+            <input id="rec-amount" autoComplete="off" className="input" inputMode="numeric" placeholder={idea ? `Ej. ${idea.example}` : 'Ej. 350000'} value={dots(amount)}
               onChange={(e) => setAmount(digitsOnly(e.target.value))} />
             {amount && <span className="hint num">Son {money(Number(amount))} al mes, {money(Number(amount) * 12)} al año.</span>}
           </div>
@@ -264,7 +200,7 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
                 </div>
                 <span className="line-help">
                   {shared
-                    ? 'Sí: a cada uno le toca la mitad. Si lo paga uno solo, el otro le debe su parte.'
+                    ? 'Sí: a cada uno le toca su parte (por defecto la mitad). Si lo paga uno solo, el otro le debe su parte.'
                     : 'No: es un gasto solo de quien lo paga.'}
                 </span>
               </div>
@@ -285,9 +221,91 @@ export default function RecurringPanel({ hh, data, onToast }: Props) {
           </div>
         </form>
       ) : (
-        <button type="button" className="btn" onClick={() => setOpen(true)}>
-          Agregar un gasto fijo
-        </button>
+        <div className="panel-actions">
+          <button type="button" className="btn small" onClick={() => setOpen(true)}>
+            + Agregar un gasto fijo
+          </button>
+        </div>
+      )}
+
+      <Intro
+        title="Gastos fijos: lo que pagas igual cada mes"
+        text="Son pagos que se repiten todos los meses con el mismo monto: arriendo, luz, internet, celular, suscripciones. Los anotas una sola vez y la app los agrega a tus gastos sola. Para compras que cambian, como el supermercado, usa el botón Registrar."
+        steps={[
+          'Toca **Agregar un gasto fijo**.',
+          'Elige qué es, por ejemplo **Arriendo**, y escribe cuánto pagas al mes.',
+          'Elige el **día del mes** en que se paga y su categoría.',
+          'Listo: cada mes aparecerá solo en tus gastos. No tienes que anotarlo otra vez.',
+        ]}
+      />
+
+      {active.length > 0 && (
+        <section className="card">
+          <span className="muted">{person ? `${who === hh.me.user_id ? 'Tú pagas' : `${person.display_name} paga`} cada mes` : 'Entre todos, cada mes pagan'}</span>
+          <span className="amount num">{money(monthly)}</span>
+        </section>
+      )}
+
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+
+      {person && list.length === 0 && data.recurring.length > 0 && (
+        <section className="card">
+          <strong>{who === hh.me.user_id ? 'No tienes' : `${person.display_name} no tiene`} gastos fijos a su nombre</strong>
+          <span className="muted">Cambia a Hogar para ver todos los gastos fijos.</span>
+        </section>
+      )}
+
+      {list.length > 0 && (
+        <section className="card">
+          <strong>Sus gastos fijos</strong>
+          {list.map((r) => (
+            <div key={r.id} style={r.active ? undefined : { opacity: 0.7 }}>
+              <div className="item" style={{ paddingBottom: 6 }}>
+                {!solo && <Avatar name={people.get(r.paid_by)?.display_name} color={people.get(r.paid_by)?.color} size={28} />}
+                <div className="grow">
+                  <div className="strong">{r.note}</div>
+                  <div className="muted small-text">
+                    {catName.get(r.category_id) ?? 'Sin categoría'} · todos los meses el día {r.day_of_month}
+                  </div>
+                  {r.active && (
+                    <div className="small-text">
+                      Próximo pago: {longDate(nextOccurrence(r.day_of_month))} ({inDays(daysUntil(nextOccurrence(r.day_of_month)))})
+                    </div>
+                  )}
+                  {!solo && (
+                    <div className="muted small-text">
+                      Lo paga {people.get(r.paid_by)?.display_name ?? 'alguien'} ·{' '}
+                      {r.shared ? 'se divide entre los dos' : 'es solo de esa persona'}
+                      {person && r.fullAmount !== undefined ? ` · ${who === hh.me.user_id ? 'tu parte' : 'su parte'} de ${money(r.fullAmount)}` : ''}
+                    </div>
+                  )}
+                  {!r.active && <div className="small-text strong">En pausa: no se anota mientras tanto</div>}
+                </div>
+                <span className="num">{money(r.amount)}</span>
+              </div>
+              <div className="fixed-actions">
+                <button type="button" className="txt-btn" disabled={busy} onClick={() => toggle(r)}>
+                  {r.active ? 'Pausar' : 'Volver a activar'}
+                </button>
+                <button
+                  type="button"
+                  className={confirmId === r.id ? 'txt-btn warn' : 'txt-btn'}
+                  aria-label={confirmId === r.id ? `Confirmar borrado de ${r.note}` : `Borrar ${r.note}`}
+                  onClick={() => remove(r)}
+                >
+                  {confirmId === r.id ? 'Toca otra vez para borrar' : 'Borrar'}
+                </button>
+              </div>
+            </div>
+          ))}
+          <span className="line-help">
+            <strong>Pausar</strong> detiene el gasto sin perder sus datos. Si borras uno que ya se anotó este mes, no vuelve a aparecer.
+          </span>
+        </section>
       )}
     </>
   )

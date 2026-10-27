@@ -6,6 +6,10 @@ import { computeMetrics } from './metrics'
 import { smartAlerts } from './smartAlerts'
 import type { ExpRow } from './expenseAnalysis'
 import { adviceFor } from './profile'
+import { pendingFixedThisMonth } from './upcoming'
+import { isEmergencyGoal, savedInMonth } from './goals'
+import { monthKey, myShare } from './analysis'
+import { splitOf } from './split'
 
 export type AlertLevel = 'bad' | 'warn' | 'info' | 'ok'
 export type AlertTab = 'home' | 'expenses' | 'money' | 'goals' | 'security'
@@ -61,7 +65,6 @@ export function compareAlerts(a: Alert, b: Alert): number {
 }
 
 const RANK: Record<AlertLevel, number> = { bad: 0, warn: 1, info: 2, ok: 3 }
-const EMERGENCY = /emergencia|colch[oó]n|imprevisto/i
 
 const dayOf = (iso: string) => Number(iso.slice(8, 10))
 const median = (xs: number[]) => {
@@ -269,9 +272,12 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
       const a = analyzeSalary({
         income: monthIncome(data.salary, data.incomes),
         spent: me?.trueCost ?? 0,
-        commitments: myDebtShare(data.debts, data.debtPayments, hh.me.user_id, hh.members.length),
+        commitments: myDebtShare(data.debts, data.debtPayments, hh.me.user_id, splitOf(hh.members)),
+        saved: savedInMonth(data.contributions, hh.me.user_id, monthKey(month)),
         month,
         now,
+        pendingFixed: pendingFixedThisMonth(data.recurring, hh.me.user_id, splitOf(hh.members), now),
+        fixedBooked: data.expenses.reduce((s, e) => (e.recurring_id ? s + myShare(e, hh.me.user_id, splitOf(hh.members)) : s), 0),
       })
       for (const f of a.findings) {
         if (f.level === 'ok') continue
@@ -373,7 +379,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
     const baseline = isCurrent ? prevFull || m.projection || m.total : m.total
     if (baseline > 0) {
       const target = baseline * advice.emergencyMonths
-      const fundGoals = data.goals.filter((g) => EMERGENCY.test(g.name))
+      const fundGoals = data.goals.filter((g) => isEmergencyGoal(g.name))
       if (fundGoals.length === 0) {
         add({
           id: 'fund-missing',

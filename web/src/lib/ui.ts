@@ -56,3 +56,6 @@ export function dayHeading(iso: string, now: Date = new Date()): string {
   const text = longDate(date)
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
+
+/** Muestra una cifra con puntos de miles mientras se escribe (1500000 → 1.500.000) */
+export const dots = (s: string): string => s.replace(/\B(?=(\d{3})+(?!\d))/g, '.')

@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
+import ScopeBar from '../components/ScopeBar'
+import { splitOf } from '../lib/split'
+import { resolveScope, scopeExpenses } from '../lib/scope'
+import type { Scope } from '../lib/scope'
 import Avatar from '../components/Avatar'
 import Icon from '../components/Icon'
 import Intro from '../components/Intro'
@@ -9,7 +13,7 @@ import { supabase } from '../lib/supabase'
 import { computeMetrics } from '../lib/metrics'
 import { groupByDay, whereItWent } from '../lib/moves'
 import { Rich } from '../lib/rich'
-import { dayHeading, digitsOnly, monthName } from '../lib/ui'
+import { dayHeading, digitsOnly, monthName, dots } from '../lib/ui'
 import type { Notify } from '../components/Toast'
 import Spin from '../components/Spin'
 import ExpenseInsights from '../components/ExpenseInsights'
@@ -19,13 +23,21 @@ export default function Expenses({
   data,
   month,
   onToast,
+  scope,
+  onScope,
 }: {
   hh: Household
   data: HouseholdData
   month: Date
   onToast: Notify
+  scope: Scope
+  onScope: (s: Scope) => void
 }) {
-  const [who, setWho] = useState<string>('all')
+  const who = resolveScope(scope, hh.members)
+  const setWho = (w: Scope) => {
+    onScope(w)
+    setCatFilter('all')
+  }
   const [editing, setEditing] = useState<string | null>(null)
   const [value, setValue] = useState('')
   const [confirmId, setConfirmId] = useState<string | null>(null)
@@ -49,7 +61,10 @@ export default function Expenses({
 
   const members = new Map(hh.everyone.map((m) => [m.user_id, m] as const))
   const catName = new Map(data.categories.map((c) => [c.id, c.name] as const))
-  const list = data.expenses.filter((e) => who === 'all' || e.paid_by === who)
+  const split = useMemo(() => splitOf(hh.members), [hh.members])
+  // De una persona: lo suyo y su parte de lo compartido, aunque lo haya pagado la otra
+  const list = useMemo(() => scopeExpenses(data.expenses, who, split), [data.expenses, who, split])
+  const householdMetrics = useMemo(() => computeMetrics(data.expenses, data.prevExpenses, data.categories, hh.members, month), [data.expenses, data.prevExpenses, data.categories, hh.members, month])
   const person = who === 'all' ? null : members.get(who)
 
   const spent = new Map<string, number>()
@@ -58,13 +73,13 @@ export default function Expenses({
 
   // Métricas de la vista elegida (hogar o una persona)
   const metrics = useMemo(() => {
-    const prev = who === 'all' ? data.prevExpenses : data.prevExpenses.filter((e) => e.paid_by === who)
+    const prev = scopeExpenses(data.prevExpenses, who, split)
     return computeMetrics(list, prev, data.categories, hh.members, month)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.expenses, data.prevExpenses, data.categories, hh.members, month, who])
+  }, [list, data.prevExpenses, data.categories, hh.members, month, who, split])
   const householdTotal = data.expenses.reduce((s, e) => s + e.amount, 0)
   const topCat = metrics.byCategory[0]
-  const personStats = person ? metrics.people.find((p) => p.userId === person.user_id) : null
+  const personStats = person ? householdMetrics.people.find((p) => p.userId === person.user_id) : null
   const delta = metrics.deltaPct
 
   const visible = catFilter === 'all' ? list : list.filter((e) => e.category_id === catFilter)
@@ -142,7 +157,8 @@ export default function Expenses({
 
   function startEdit(e: HouseholdData['expenses'][number]) {
     setEditExp(e.id)
-    setEAmount(String(e.amount))
+    // Se edita el gasto entero, no solo la parte que le toca a la persona elegida
+    setEAmount(String((e as { fullAmount?: number }).fullAmount ?? e.amount))
     setENote(e.note ?? '')
     setECat(e.category_id)
     setEShared(e.shared)
@@ -196,16 +212,7 @@ export default function Expenses({
     <main className="screen">
       <h1 className="title">Gastos</h1>
 
-      <div className="seg" role="group" aria-label="Ver los gastos de">
-        <button type="button" aria-pressed={who === 'all'} onClick={() => { setWho('all'); setCatFilter('all') }}>
-          Todo el hogar
-        </button>
-        {hh.members.map((m) => (
-          <button key={m.user_id} type="button" aria-pressed={who === m.user_id} onClick={() => { setWho(m.user_id); setCatFilter('all') }}>
-            {m.user_id === hh.me.user_id ? 'Yo' : m.display_name}
-          </button>
-        ))}
-      </div>
+      <ScopeBar hh={hh} scope={who} onScope={setWho} label="Ver los gastos de" />
 
       {error && (
         <p className="error" role="alert">
@@ -221,7 +228,7 @@ export default function Expenses({
           <>
             <div className="tiles">
               <div className="tile">
-                <span className="muted small-text">{person ? 'Pagó' : 'Gastaron'}</span>
+                <span className="muted small-text">{person ? (person.user_id === hh.me.user_id ? 'Te corresponde' : 'Le corresponde') : 'Gastaron'}</span>
                 <span className="amount-sm num">{money(totalSpent)}</span>
                 {person && householdTotal > 0 && (
                   <span className="line-help">{Math.round((totalSpent * 100) / householdTotal)} % de lo que gasta el hogar</span>
@@ -356,7 +363,7 @@ export default function Expenses({
                     <label className="line-help" htmlFor={`cn-${c.id}`}>Nombre de la categoría</label>
                     <input id={`cn-${c.id}`} className="input" maxLength={40} value={nameValue} onChange={(e) => setNameValue(e.target.value)} />
                     <label className="line-help" htmlFor={`cb-${c.id}`}>Cuánto quieren gastar al mes en {c.name} (CLP)</label>
-                    <input id={`cb-${c.id}`} className="input" inputMode="numeric" placeholder="Ej. 250000" value={value} onChange={(e) => setValue(digitsOnly(e.target.value))} />
+                    <input id={`cb-${c.id}`} className="input" inputMode="numeric" placeholder="Ej. 250000" value={dots(value)} onChange={(e) => setValue(digitsOnly(e.target.value))} />
                     <div className="row">
                       <button type="button" className="btn small" disabled={busy} onClick={() => void saveBudget(c.id)}>
                         {busy ? <Spin label="Guardando…" /> : 'Guardar'}
@@ -378,7 +385,7 @@ export default function Expenses({
             <label className="line-help" htmlFor="nc-name">Nombre de la nueva categoría</label>
             <input id="nc-name" className="input" maxLength={40} placeholder="Ej. Mascotas, Educación" value={newName} onChange={(e) => setNewName(e.target.value)} />
             <label className="line-help" htmlFor="nc-budget">Tope mensual (opcional)</label>
-            <input id="nc-budget" className="input" inputMode="numeric" placeholder="Ej. 80000" value={newBudget} onChange={(e) => setNewBudget(digitsOnly(e.target.value))} />
+            <input id="nc-budget" className="input" inputMode="numeric" placeholder="Ej. 80000" value={dots(newBudget)} onChange={(e) => setNewBudget(digitsOnly(e.target.value))} />
             <div className="row">
               <button type="button" className="btn small" disabled={busy} onClick={() => void addCategory()}>
                 {busy ? <Spin label="Creando categoría…" /> : 'Crear categoría'}
@@ -427,7 +434,7 @@ export default function Expenses({
                 <input
                   className="input"
                   inputMode="numeric"
-                  value={eAmount}
+                  value={dots(eAmount)}
                   onChange={(ev) => setEAmount(digitsOnly(ev.target.value))}
                   aria-label="Monto"
                 />
@@ -494,6 +501,9 @@ export default function Expenses({
                   <div className="muted small-text">
                     {catName.get(e.category_id) ?? 'Sin categoría'} · Pagó {members.get(e.paid_by)?.display_name ?? 'alguien'}
                   </div>
+                  {person && (e as { fullAmount?: number }).fullAmount !== undefined && (
+                    <div className="muted small-text">{person.user_id === hh.me.user_id ? 'Tu parte' : `Parte de ${person.display_name}`} de un gasto de {money((e as { fullAmount?: number }).fullAmount!)}</div>
+                  )}
                   <div className="tags">
                     <span className={e.shared ? 'tag' : 'tag alt'}>{e.shared ? 'Compartido' : 'Personal'}</span>
                     {e.recurring_id && <span className="tag">Gasto fijo</span>}

@@ -68,10 +68,10 @@ describe('Gasto por día de la semana', () => {
 
 describe('Últimos meses', () => {
   const h = [
-    { amount: 100_000, paid_by: 'a', spent_on: '2026-08-10' },
-    { amount: 300_000, paid_by: 'b', spent_on: '2026-08-12' },
-    { amount: 200_000, paid_by: 'a', spent_on: '2026-09-10' },
-    { amount: 50_000, paid_by: 'a', spent_on: '2026-10-03' },
+    { amount: 100_000, paid_by: 'a', spent_on: '2026-08-10', shared: false },
+    { amount: 300_000, paid_by: 'b', spent_on: '2026-08-12', shared: false },
+    { amount: 200_000, paid_by: 'a', spent_on: '2026-09-10', shared: false },
+    { amount: 50_000, paid_by: 'a', spent_on: '2026-10-03', shared: false },
   ]
 
   it('del hogar completo', () => {
@@ -86,6 +86,12 @@ describe('Últimos meses', () => {
     const m = monthlyTotals(h, 'a', OCT)
     expect(m.bars.find((b) => b.key === '2026-08')?.amount).toBe(100_000)
     expect(m.avg).toBe(150_000)
+  })
+
+  it('de una persona cuenta lo suyo y su parte de lo compartido, sin importar quién pagó', () => {
+    const compartido = { amount: 100_000, paid_by: 'b', spent_on: '2026-08-20', shared: true }
+    expect(monthlyTotals([...h, compartido], 'a', OCT).bars.find((b) => b.key === '2026-08')?.amount).toBe(150_000)
+    expect(monthlyTotals([...h, compartido], 'a', OCT, 6, { a: 0.7, b: 0.3 }).bars.find((b) => b.key === '2026-08')?.amount).toBe(170_000)
   })
 
   it('sin meses anteriores no hay promedio', () => expect(monthlyTotals([h[3]!], 'all', OCT).avg).toBeNull())

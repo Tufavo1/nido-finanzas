@@ -27,7 +27,13 @@ export default function Register({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const amount = digits ? Number(digits) : 0
+  const [hasDiscount, setHasDiscount] = useState(false)
+  const [discount, setDiscount] = useState('')
+
+  const gross = digits ? Number(digits) : 0
+  const pct = hasDiscount ? Math.min(100, Math.max(0, Number(discount.replace(',', '.')) || 0)) : 0
+  // Lo que realmente se pagó, ya con el descuento aplicado
+  const amount = Math.round(gross * (1 - pct / 100))
   const today = todayISO()
 
   function press(k: (typeof KEYS)[number]) {
@@ -61,15 +67,26 @@ export default function Register({
     onSaved(`Gasto registrado\nSe anotaron **${money(amount)}** en ${data.categories.find((c) => c.id === catId)?.name ? `**${data.categories.find((c) => c.id === catId)?.name}**` : 'tus gastos'}.`)
   }
 
-  return (
-    <main className="screen">
-      <h1 className="title">Nuevo gasto</h1>
-      {data.categories.length === 0 && <p className="muted">Aún no hay categorías para elegir.</p>}
-      <div className="amount big num" aria-live="polite">
-        {money(amount)}
-      </div>
+  const catName = data.categories.find((c) => c.id === catId)?.name
 
-      <div className="chips" role="group" aria-label="Categoría">
+  return (
+    <main className="screen reg">
+      <div className="reg-top">
+        <div className="reg-amount">
+          <span className="muted small-text">{catName ? `Nuevo gasto en ${catName}` : 'Nuevo gasto'}</span>
+          <div className={amount > 0 ? 'amount big num' : 'amount big num reg-empty'} aria-live="polite">
+            {money(amount)}
+          </div>
+          {pct > 0 && gross > 0 && (
+            <span className="muted small-text">
+              {money(gross)} con {pct}% de descuento
+            </span>
+          )}
+        </div>
+      </div>
+      {data.categories.length === 0 && <p className="muted">Aún no hay categorías para elegir.</p>}
+
+      <div className="chips reg-chips" role="group" aria-label="Categoría">
         {data.categories.map((c) => (
           <button key={c.id} type="button" className="chip" aria-pressed={catId === c.id} onClick={() => setCatId(c.id)}>
             {c.name}
@@ -77,49 +94,69 @@ export default function Register({
         ))}
       </div>
 
-      <div className="seg" role="group" aria-label="Quién pagó">
-        {hh.members.map((m) => (
-          <button key={m.user_id} type="button" aria-pressed={paidBy === m.user_id} onClick={() => setPaidBy(m.user_id)}>
-            {m.display_name}
+      <section className="reg-card">
+        {hh.members.length > 1 && (
+          <div className="reg-line">
+            <span className="reg-label">Pagó</span>
+            <div className="seg" role="group" aria-label="Quién pagó">
+              {hh.members.map((m) => (
+                <button key={m.user_id} type="button" aria-pressed={paidBy === m.user_id} onClick={() => setPaidBy(m.user_id)}>
+                  {m.display_name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="reg-togs">
+          <button type="button" className="tog" aria-pressed={shared} onClick={() => setShared((v) => !v)}>
+            <span className="tog-dot" aria-hidden="true" />
+            Compartido
           </button>
-        ))}
-      </div>
+          <button type="button" className="tog" aria-pressed={hasDiscount} onClick={() => setHasDiscount((v) => !v)}>
+            <span className="tog-dot" aria-hidden="true" />
+            Con descuento
+          </button>
+          {hasDiscount && (
+            <div className="reg-pct">
+              <input
+                className="input"
+                inputMode="decimal"
+                placeholder="20"
+                maxLength={5}
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value.replace(/[^\d.,]/g, ''))}
+                aria-label="Porcentaje de descuento"
+                autoFocus
+              />
+              <span>%</span>
+            </div>
+          )}
+        </div>
 
-      <div className="row between">
-        <span>Gasto compartido</span>
-        <button
-          type="button"
-          className="switch"
-          role="switch"
-          aria-checked={shared}
-          aria-label="Gasto compartido"
-          onClick={() => setShared((s) => !s)}
-        />
-      </div>
+        <div className="reg-meta">
+          <input
+            id="spent-on"
+            className="input"
+            type="date"
+            max={today}
+            required
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            aria-label="Fecha del gasto"
+          />
+          <input
+            className="input"
+            placeholder="Nota (opcional)"
+            maxLength={120}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            aria-label="Nota"
+          />
+        </div>
+      </section>
 
-      <div className="field">
-        <label htmlFor="spent-on">Fecha del gasto</label>
-        <input
-          id="spent-on"
-          className="input"
-          type="date"
-          max={today}
-          required
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
-      </div>
-
-      <input
-        className="input"
-        placeholder="Nota (opcional)"
-        maxLength={120}
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        aria-label="Nota"
-      />
-
-      <div className="keypad">
+      <div className="keypad reg-keys">
         {KEYS.map((k) => (
           <button key={k} type="button" className="key" onClick={() => press(k)} aria-label={k === 'back' ? 'Borrar' : k}>
             {k === 'back' ? <Icon name="back" /> : k}
@@ -133,7 +170,7 @@ export default function Register({
         </p>
       )}
       <button className="btn" type="button" disabled={busy || amount <= 0 || !catId || !date || date > today} onClick={() => void save()}>
-        {busy ? <Spin label="Guardando gasto…" /> : 'Guardar gasto'}
+        {busy ? <Spin label="Guardando gasto…" /> : amount > 0 ? `Guardar ${money(amount)}` : 'Guardar gasto'}
       </button>
     </main>
   )

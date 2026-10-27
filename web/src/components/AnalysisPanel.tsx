@@ -5,6 +5,7 @@ import { buildAnalysis } from '../lib/analysis'
 import type { Analysis, HistExpense } from '../lib/analysis'
 import { buildNumbers } from '../lib/numbers'
 import { buildUpcoming } from '../lib/upcoming'
+import { splitOf } from '../lib/split'
 import UpcomingCard from './UpcomingCard'
 import { buildPlan } from '../lib/advisor'
 import type { Plan } from '../lib/advisor'
@@ -90,21 +91,42 @@ function FlowCard({ f, month, isCurrent }: { f: NonNullable<Numbers['flow']>; mo
             <span className="amount-sm num">{money(f.commitments)}</span>
           </div>
         )}
+        {f.saved > 0 && (
+          <div className="tile">
+            <span className="muted small-text">Ahorro apartado</span>
+            <span className="amount-sm num">{money(f.saved)}</span>
+          </div>
+        )}
+        {isCurrent && f.pendingFixed > 0 && (
+          <div className="tile">
+            <span className="muted small-text">Fijos que aún vencen</span>
+            <span className="amount-sm num">{money(f.pendingFixed)}</span>
+          </div>
+        )}
         <div className="tile">
-          <span className="muted small-text">{f.free < 0 ? 'Te pasaste por' : 'Te sobra hoy'}</span>
-          <span className={f.free < 0 ? 'amount-sm num over' : 'amount-sm num'}>{money(Math.abs(f.free))}</span>
+          <span className="muted small-text">{f.realFree < 0 ? 'Te faltará' : isCurrent && f.pendingFixed > 0 ? 'Libre de verdad' : 'Te sobra hoy'}</span>
+          <span className={f.realFree < 0 ? 'amount-sm num over' : 'amount-sm num'}>{money(Math.abs(isCurrent ? f.realFree : f.free))}</span>
         </div>
       </div>
+      {isCurrent && f.pendingFixed > 0 && (
+        <span className="muted small-text">
+          Hoy tienes {money(f.free)}, pero aún vencen {money(f.pendingFixed)} en gastos fijos este mes: lo que de verdad puedes gastar es {money(f.realFree)}.
+        </span>
+      )}
       <div className="stack tight">
         <span className="strong">De cada $100 que ganas</span>
-        <div className="split" role="img" aria-label={`Gastos ${f.per100.spent} pesos, deudas ${f.per100.debts} pesos, te sobran ${f.per100.left} pesos`}>
+        <div className="split" role="img" aria-label={`Gastos ${f.per100.spent} pesos, deudas ${f.per100.debts} pesos, fijos por venir ${f.per100.pending} pesos, ahorro ${f.per100.saved} pesos, te sobran ${f.per100.left} pesos`}>
           <span style={{ width: `${Math.min(100, f.per100.spent)}%`, background: 'var(--blue)' }} />
           <span style={{ width: `${Math.min(100 - Math.min(100, f.per100.spent), f.per100.debts)}%`, background: 'var(--warn)' }} />
+          <span style={{ width: `${Math.min(100 - Math.min(100, f.per100.spent + f.per100.debts), f.per100.pending)}%`, background: 'var(--amber)' }} />
+          <span style={{ width: `${Math.min(100 - Math.min(100, f.per100.spent + f.per100.debts + f.per100.pending), f.per100.saved)}%`, background: 'var(--green, var(--accent))', opacity: 0.6 }} />
           <span style={{ width: `${f.per100.left}%`, background: 'var(--accent)' }} />
         </div>
         <div className="split-legend small-text">
           <span><i style={{ background: 'var(--blue)' }} /> Gastos ${f.per100.spent}</span>
           {f.per100.debts > 0 && <span><i style={{ background: 'var(--warn)' }} /> Deudas ${f.per100.debts}</span>}
+          {f.per100.pending > 0 && <span><i style={{ background: 'var(--amber)' }} /> Fijos por venir ${f.per100.pending}</span>}
+          {f.per100.saved > 0 && <span><i style={{ background: 'var(--accent)', opacity: 0.6 }} /> Ahorro ${f.per100.saved}</span>}
           <span><i style={{ background: 'var(--accent)' }} /> Sobra ${f.per100.left}</span>
         </div>
       </div>
@@ -131,7 +153,7 @@ function FlowCard({ f, month, isCurrent }: { f: NonNullable<Numbers['flow']>; mo
       <details className="how">
         <summary>¿Cómo se calcula?</summary>
         <p>
-          «Gastas» es tu costo real: tus gastos personales más tu mitad de los compartidos. «Te sobra» es lo que ganas menos lo que gastas y
+          «Gastas» es tu costo real: tus gastos personales más tu parte de los compartidos. «Te sobra» es lo que ganas menos lo que gastas y
           menos tus cuotas de deuda. Al cierre se estima con tu ritmo diario actual. Ahorrar entre 10 % y 20 % de lo que ganas es una meta sana.
         </p>
       </details>
@@ -222,7 +244,7 @@ function DebtsCard({ d }: { d: NonNullable<Numbers['debts']> }) {
         <span className="muted small-text">Tu deuda equivale a {comma(d.monthsOfIncome)} meses de lo que ganas.</span>
       )}
       {d.stuck && <span className="small-text">Alguna cuota no alcanza ni para cubrir el interés: la deuda no baja. Sube la cuota o negocia la tasa.</span>}
-      <span className="muted small-text">Se cuenta solo lo tuyo: tus deudas y tu mitad de las compartidas. El detalle está en la pestaña Deudas.</span>
+      <span className="muted small-text">Se cuenta solo lo tuyo: tus deudas y tu parte de las compartidas. El detalle está en la pestaña Deudas.</span>
     </section>
   )
 }
@@ -233,7 +255,7 @@ function CushionCard({ c }: { c: NonNullable<Numbers['cushion']> }) {
   return (
     <section className="card" aria-label="Tu ahorro para imprevistos">
       <strong>Tu ahorro para imprevistos</strong>
-      <span className="muted small-text">Cuántos meses podrías vivir con lo que has aportado a tus metas, sin ingresos.</span>
+      <span className="muted small-text">Cuántos meses podrías vivir sin ingresos con lo que llevas en tu meta de ahorro para imprevistos.</span>
       <div className="row between">
         <span className="amount-sm num">{money(c.saved)}</span>
         <span className="strong num">{comma(c.covered)} de 6 meses</span>
@@ -342,11 +364,13 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [householdId, monthId, data.expenses, attempt])
 
+  const split = useMemo(() => splitOf(hh.members), [hh.members])
   const built = useMemo(() => {
     if (hist === null) return null
     const input = {
       meId: hh.me.user_id,
-      memberCount: hh.members.length,
+      memberCount: split,
+      goals: data.goals,
       month,
       history: hist,
       categories: data.categories,
@@ -366,7 +390,7 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
       ? buildUpcoming({
           now,
           meId: hh.me.user_id,
-          memberCount: hh.members.length,
+          split,
           recurring: data.recurring,
           debts: data.debts,
           debtPayments: data.debtPayments,
@@ -391,7 +415,7 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
         : null
     return { a: analysis, n: numbers, u: upcoming, plan }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hist, hh.me.user_id, hh.members.length, monthId, data.categories, data.salary, data.incomes, data.debts, data.debtPayments, data.contributions, data.recurring])
+  }, [hist, hh.me.user_id, split, monthId, data.goals, data.categories, data.salary, data.incomes, data.debts, data.debtPayments, data.contributions, data.recurring])
   const a = built?.a ?? null
   const n = built?.n ?? null
   const up = built?.u ?? null
@@ -475,7 +499,7 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
               <p>
                 Suma hasta 100 puntos con cuatro cosas: <strong>ahorro</strong> (40, llegando al 20 % de lo que ganas),{' '}
                 <strong>deudas</strong> (25, con cuotas bajo el 15 % de tu ingreso), <strong>presupuesto</strong> (15, categorías del hogar
-                dentro de lo definido) y <strong>ahorro para imprevistos</strong> (20, lo aportado a metas frente a 6 meses de gastos). Si falta
+                dentro de lo definido) y <strong>ahorro para imprevistos</strong> (20, lo que llevas en tu meta de imprevistos frente a 6 meses de gastos). Si falta
                 alguno, el puntaje se calcula con lo que hay. Es una orientación con tus datos; no reemplaza a un asesor financiero.
               </p>
             </details>

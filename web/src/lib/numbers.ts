@@ -1,7 +1,10 @@
 import type { Analysis, AnalysisInput } from './analysis'
 import { monthKey, myShare } from './analysis'
+import { emergencySaved } from './goals'
+import { fraction } from './split'
 import { analyzeSalary, debtView, myDebtShare, summarizeDebts } from './finance'
 import { monthName } from './ui'
+import { pendingFixedThisMonth } from './upcoming'
 
 /** Números extra del análisis personal: cada uno responde una pregunta simple («¿cuánto me sobra?», «¿qué cambió?»). */
 
@@ -9,16 +12,22 @@ export interface Flow {
   income: number
   spent: number
   commitments: number
-  /** Lo que queda hoy después de gastos y cuotas */
+  /** Ahorro que ya apartaste este mes: sale del sueldo igual que un gasto */
+  saved: number
+  /** Lo que queda hoy después de gastos, cuotas y ahorro */
   free: number
+  /** Fijos que vencen antes de fin de mes y aún no se descuentan */
+  pendingFixed: number
+  /** Lo que de verdad te queda: `free` menos los fijos que faltan */
+  realFree: number
   /** Cierre estimado del mes (mes en curso con datos suficientes); si no, lo que queda */
   outlook: number
-  /** Parte del ingreso que se ahorraría (puede ser negativa) */
+  /** Parte del ingreso que se ahorraría: lo apartado más lo que sobraría (puede ser negativa) */
   savingsPct: number
   dailyAvg: number
   safeDaily: number | null
-  /** De cada $100 que entran: cuánto se va en gastos, en cuotas y cuánto sobra (sobra no baja de 0) */
-  per100: { spent: number; debts: number; left: number }
+  /** De cada $100 que entran: cuánto se va en gastos, en cuotas, en lo que aún vence, en ahorro y cuánto sobra (sobra no baja de 0) */
+  per100: { spent: number; debts: number; pending: number; saved: number; left: number }
   /** Los gastos y las cuotas superan el ingreso */
   over: boolean
   elapsed: number
@@ -65,7 +74,7 @@ export interface DebtNumbers {
 }
 
 export interface Cushion {
-  /** Lo que has aportado a metas */
+  /** Lo que llevas en metas de ahorro para imprevistos */
   saved: number
   covered: number
   target3: number
@@ -122,21 +131,29 @@ export function buildNumbers(input: AnalysisInput, a: Analysis): Numbers {
   let flow: Flow | null = null
   let outlookFree: number | null = null
   if (income > 0) {
-    const sal = analyzeSalary({ income, spent: a.cost, commitments, month, now })
+    const fixedBooked = history.reduce((s, e) => (e.recurring_id && e.spent_on.startsWith(key) ? s + myShare(e, meId, memberCount) : s), 0)
+    const pendingFixed = isCurrent ? pendingFixedThisMonth(input.recurring, meId, memberCount, now) : 0
+    const saved = a.saved
+    const sal = analyzeSalary({ income, spent: a.cost, commitments, month, now, pendingFixed, fixedBooked, saved })
     outlookFree = sal.projectedFree ?? sal.free
     const spentPct = pctOf(a.cost, income)
     const debtsPct = pctOf(commitments, income)
+    const pendingPct = pctOf(pendingFixed, income)
+    const savedPct = pctOf(saved, income)
     flow = {
       income,
       spent: a.cost,
       commitments,
+      saved,
       free: Math.round(sal.free),
+      pendingFixed: sal.pendingFixed,
+      realFree: Math.round(sal.realFree),
       outlook: Math.round(outlookFree),
-      savingsPct: Math.round((outlookFree * 100) / income),
+      savingsPct: Math.round(((outlookFree + saved) * 100) / income),
       dailyAvg: elapsed > 0 ? Math.round(a.cost / elapsed) : 0,
       safeDaily: sal.safeDaily,
-      per100: { spent: spentPct, debts: debtsPct, left: Math.max(0, 100 - spentPct - debtsPct) },
-      over: sal.free < 0,
+      per100: { spent: spentPct, debts: debtsPct, pending: pendingPct, saved: savedPct, left: Math.max(0, 100 - spentPct - debtsPct - pendingPct - savedPct) },
+      over: sal.realFree < 0,
       elapsed,
       days,
     }
@@ -203,7 +220,7 @@ export function buildNumbers(input: AnalysisInput, a: Analysis): Numbers {
     let remaining = 0
     let interest = 0
     for (const d of mine) {
-      const share = d.owner_id === meId ? 1 : 1 / Math.max(memberCount, 1)
+      const share = d.owner_id === meId ? 1 : fraction(memberCount, meId)
       const v = debtView(d, input.debtPayments, now)
       remaining += v.remaining * share
       interest += v.monthlyInterest * share
@@ -223,8 +240,9 @@ export function buildNumbers(input: AnalysisInput, a: Analysis): Numbers {
   let cushion: Cushion | null = null
   const baseCost = a.avgPrev ?? a.cost
   if (baseCost > 0) {
-    const saved = Math.round(sum(input.contributions.filter((c) => c.user_id === meId).map((c) => c.amount)))
-    const monthly = outlookFree !== null && outlookFree > 0 ? outlookFree : 0
+    // Solo cuenta lo que está en metas de imprevistos
+    const saved = Math.round(emergencySaved(input.contributions, input.goals, meId))
+    const monthly = outlookFree !== null && outlookFree + a.saved > 0 ? outlookFree + a.saved : 0
     const target3 = Math.round(baseCost * 3)
     const target6 = Math.round(baseCost * 6)
     const months = (target: number) => (saved >= target || monthly <= 0 ? null : Math.ceil((target - saved) / monthly))

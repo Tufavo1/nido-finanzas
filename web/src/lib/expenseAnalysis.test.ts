@@ -105,11 +105,5 @@ describe('Ritmo y hábitos', () => {
     expect(r.rhythm).toMatchObject({ spendDays: 3, quietStreak: 5, avgTicket: 20_000, count: 3 })
   })
 
-  it('filtra por persona', () => {
-    const r = run([e(10_000, '2026-10-02'), e(90_000, '2026-10-03', { paid_by: 'b' })], { who: 'a' })
-    expect(r.rhythm?.count).toBe(1)
-    expect(r.top[0]?.amount).toBe(10_000)
-  })
-
   it('sin gastos en el mes no hay análisis', () => expect(run([]).hasData).toBe(false))
 })

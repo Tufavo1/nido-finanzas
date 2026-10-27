@@ -30,6 +30,7 @@ const base = (over: Partial<AnalysisInput> = {}): AnalysisInput => ({
   debts: [],
   debtPayments: [],
   contributions: [],
+  goals: [{ id: 'fund', name: 'Fondo de emergencia' }],
   recurring: [],
   ...over,
 })
@@ -125,13 +126,13 @@ describe('qué mejorar', () => {
     expect(a.insights.find((i) => i.title.includes('gastos chicos'))?.detail).toContain('9 compras')
   })
   it('avisa si el ahorro para imprevistos es corto y cómo llegar a 3 meses', () => {
-    const a = buildAnalysis(base({ history: [...prior(100_000), exp(100_000, '2026-10-05')], contributions: [{ user_id: 'a', amount: 40_000 }] }))
+    const a = buildAnalysis(base({ history: [...prior(100_000), exp(100_000, '2026-10-05')], contributions: [{ user_id: 'a', goal_id: 'fund', amount: 40_000, contributed_on: '2026-01-15' }] }))
     const f = a.insights.find((i) => i.title.startsWith('Tu ahorro para imprevistos cubre'))
     expect(f?.level).toBe('bad') // 0,4 meses
     expect(f?.detail).toContain('3 meses')
   })
   it('lo que aportó tu pareja no cuenta como tu ahorro para imprevistos', () => {
-    const a = buildAnalysis(base({ history: [...prior(100_000), exp(100_000, '2026-10-05')], contributions: [{ user_id: 'b', amount: 900_000 }] }))
+    const a = buildAnalysis(base({ history: [...prior(100_000), exp(100_000, '2026-10-05')], contributions: [{ user_id: 'b', goal_id: 'fund', amount: 900_000, contributed_on: '2026-01-15' }] }))
     expect(a.insights.find((i) => i.title.startsWith('Tu ahorro para imprevistos cubre'))?.level).toBe('bad')
   })
   it('avisa cuando el gasto lleva 3 meses subiendo', () => {

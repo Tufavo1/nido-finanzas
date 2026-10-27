@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AFPS, CL, calcularLiquido } from '../lib/chile'
 import type { AfpId, Contrato } from '../lib/chile'
 import { money } from '../lib/format'
-import { digitsOnly } from '../lib/ui'
+import { digitsOnly, dots } from '../lib/ui'
 
 const CONTRATOS: { key: Contrato; label: string }[] = [
   { key: 'indefinido', label: 'Indefinido' },
@@ -43,7 +43,7 @@ export default function SalaryCalculator({ onUse }: { onUse: (liquido: number) =
       <div className="field">
         <label htmlFor="bruto">Sueldo bruto mensual</label>
         <span className="line-help">Lo que dice tu contrato antes de descuentos. Sin bonos ni horas extra.</span>
-        <input id="bruto" className="input" inputMode="numeric" autoComplete="off" placeholder="Ej. 1200000" value={bruto} onChange={(e) => setBruto(digitsOnly(e.target.value))} />
+        <input id="bruto" className="input" inputMode="numeric" autoComplete="off" placeholder="Ej. 1200000" value={dots(bruto)} onChange={(e) => setBruto(digitsOnly(e.target.value))} />
       </div>
       <div className="field">
         <span className="label-text" id="contrato-label">
