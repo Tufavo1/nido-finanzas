@@ -24,7 +24,7 @@ export interface ExpenseInput {
   categories: { id: string; name: string; monthly_budget: number }[]
   /** Gastos fijos activos (para no sugerir como fijo algo que ya lo es) */
   recurring: { note: string; active: boolean }[]
-  /** 'all' o el id de una persona: se analiza lo que pagó */
+  /** 'all' o el id de una persona: se analiza lo que le corresponde (el historial ya viene filtrado a su parte) */
   who: string
 }
 
@@ -134,7 +134,8 @@ export function analyzeExpenses(input: ExpenseInput): ExpenseInsights {
   const catName = new Map(categories.map((c) => [c.id, c.name] as const))
   const nameOf = (id: string) => catName.get(id) ?? 'Otra categoría'
 
-  const all = input.history.filter((e) => who === 'all' || e.paid_by === who)
+  // Quien llama ya trae solo lo que le corresponde a la persona elegida
+  const all = input.history
   const cur = all.filter((e) => e.spent_on.startsWith(key))
   const prior = all.filter((e) => e.spent_on.slice(0, 7) < key)
   const label = (e: ExpRow) => e.note?.trim() || nameOf(e.category_id)

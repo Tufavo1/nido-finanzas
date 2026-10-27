@@ -1,3 +1,5 @@
+import { scopeExpenses } from '../lib/scope'
+import { splitOf } from '../lib/split'
 import { useEffect, useMemo, useState } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
@@ -10,6 +12,7 @@ import FindingList from './FindingList'
 
 /** Análisis de los gastos del mes: lo que se sale de lo normal, repetidos, suscripciones sin marcar y el ritmo de cada presupuesto. */
 export default function ExpenseInsights({ hh, data, month, who }: { hh: Household; data: HouseholdData; month: Date; who: string }) {
+  const split = useMemo(() => splitOf(hh.members), [hh.members])
   const [rows, setRows] = useState<ExpRow[] | null>(null)
   const monthId = `${month.getFullYear()}-${month.getMonth()}`
 
@@ -30,9 +33,9 @@ export default function ExpenseInsights({ hh, data, month, who }: { hh: Househol
   }, [hh.household.id, monthId, data.expenses])
 
   const r = useMemo(
-    () => (rows === null ? null : analyzeExpenses({ history: rows, month, categories: data.categories, recurring: data.recurring, who })),
+    () => (rows === null ? null : analyzeExpenses({ history: scopeExpenses(rows, who, split), month, categories: data.categories, recurring: data.recurring, who })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, monthId, data.categories, data.recurring, who],
+    [rows, monthId, data.categories, data.recurring, who, split],
   )
   if (!r || !r.hasData) return null
   const { rhythm } = r

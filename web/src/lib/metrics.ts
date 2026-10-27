@@ -1,4 +1,5 @@
 import type { Category, Expense } from './data'
+import { portion, splitOf } from './split'
 import type { Member } from './ui'
 
 export interface PersonStats {
@@ -8,7 +9,7 @@ export interface PersonStats {
   paid: number
   paidShared: number
   paidPersonal: number
-  /** Su mitad (parte justa) de lo compartido */
+  /** Su parte justa de lo compartido (la mitad, o lo que hayan acordado) */
   fairShare: number
   /** Gastos personales + su parte de lo compartido */
   trueCost: number
@@ -81,15 +82,15 @@ export function computeMetrics(
     catSpent.set(e.category_id, (catSpent.get(e.category_id) ?? 0) + e.amount)
   }
 
-  // Reparto exacto: si queda un peso suelto, va a la primera persona
-  const n = Math.max(members.length, 1)
-  const base = Math.floor(shared / n)
-  let remainder = shared - base * n
+  // Reparto exacto: lo compartido se reparte según lo acordado (por defecto, por igual) y si queda un peso suelto va a la primera persona
+  const split = splitOf(members)
+  const parts = members.map((m) => Math.floor(portion(shared, split, m.user_id)))
+  let remainder = members.length > 0 ? shared - parts.reduce((t, x) => t + x, 0) : 0
   const people: PersonStats[] = members.map((m) => {
     const mine = expenses.filter((e) => e.paid_by === m.user_id)
     const paidShared = sum(mine.filter((e) => e.shared))
     const paidPersonal = sum(mine.filter((e) => !e.shared))
-    const fairShare = base + (remainder-- > 0 ? 1 : 0)
+    const fairShare = (parts[members.indexOf(m)] ?? 0) + (remainder-- > 0 ? 1 : 0)
     return {
       userId: m.user_id,
       name: m.display_name,

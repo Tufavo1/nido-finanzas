@@ -11,7 +11,7 @@ const debt = (o: Partial<Debt> = {}): Debt =>
 const base = (o: Partial<UpcomingInput> = {}): UpcomingInput => ({
   now: NOW,
   meId: 'a',
-  memberCount: 2,
+  split: 2,
   recurring: [],
   debts: [],
   debtPayments: [],

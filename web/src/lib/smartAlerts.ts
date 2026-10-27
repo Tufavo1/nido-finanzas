@@ -8,6 +8,8 @@ import type { ExpRow } from './expenseAnalysis'
 import type { HouseholdData } from './data'
 import { analyzeSalary, monthIncome, myDebtShare } from './finance'
 import { money } from './format'
+import { savedInMonth } from './goals'
+import { splitOf } from './split'
 import { buildUpcoming } from './upcoming'
 import { longDate } from './ui'
 
@@ -33,7 +35,7 @@ export function smartAlerts({ hh, data, month, now, rows, myCost }: SmartInput):
   const isCurrent = month.getFullYear() === now.getFullYear() && month.getMonth() === now.getMonth()
   if (!isCurrent) return out
   const meId = hh.me.user_id
-  const members = hh.members.length
+  const members = splitOf(hh.members)
 
   /* ---------- Cuotas atrasadas ---------- */
   const debts = analyzeDebts(data.debts, data.debtPayments, now)
@@ -68,12 +70,12 @@ export function smartAlerts({ hh, data, month, now, rows, myCost }: SmartInput):
   const salary = data.salary
   const income = monthIncome(salary, data.incomes)
   if (data.financeReady && salary && income > 0) {
-    const sal = analyzeSalary({ income, spent: myCost, commitments: myDebtShare(data.debts, data.debtPayments, meId, members), month, now })
+    const sal = analyzeSalary({ income, spent: myCost, commitments: myDebtShare(data.debts, data.debtPayments, meId, members), month, now, saved: savedInMonth(data.contributions, meId, `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`) })
     const fixedSoFar = (rows ?? [])
       .filter((r) => r.spent_on.startsWith(`${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`) && r.recurring_id)
       .reduce((s, r) => s + myShare(r, meId, members), 0)
     const variableDaily = Math.max(0, myCost - fixedSoFar) / Math.max(now.getDate(), 1)
-    const up = buildUpcoming({ now, meId, memberCount: members, recurring: data.recurring, debts: data.debts, debtPayments: data.debtPayments, salary, free: sal.free, variableDaily })
+    const up = buildUpcoming({ now, meId, split: members, recurring: data.recurring, debts: data.debts, debtPayments: data.debtPayments, salary, free: sal.free, variableDaily })
 
     const end = up.endOfMonth
     if (end !== null && now.getDate() >= 5) {

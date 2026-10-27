@@ -1,3 +1,4 @@
+import { splitOf } from '../lib/split'
 import { useEffect, useMemo, useState } from 'react'
 import type { KeyboardEvent, PointerEvent } from 'react'
 import type { Household } from '../App'
@@ -191,7 +192,7 @@ export function MonthCurveCard({ expenses, prevExpenses, budget, month, isCurren
 }
 
 export function SixMonthsCard({ hh, data, month, who }: { hh: Household; data: HouseholdData; month: Date; who: string }) {
-  const [hist, setHist] = useState<Pick<HistExpense, 'amount' | 'paid_by' | 'spent_on'>[] | null>(null)
+  const [hist, setHist] = useState<Pick<HistExpense, 'amount' | 'paid_by' | 'spent_on' | 'shared'>[] | null>(null)
   const monthId = `${month.getFullYear()}-${month.getMonth()}`
   useEffect(() => {
     let off = false
@@ -207,12 +208,12 @@ export function SixMonthsCard({ hh, data, month, who }: { hh: Household; data: H
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hh.household.id, monthId, data.expenses])
-  const m = useMemo(() => (hist === null ? null : monthlyTotals(hist, who, month)), [hist, who, month])
+  const m = useMemo(() => (hist === null ? null : monthlyTotals(hist, who, month, 6, splitOf(hh.members))), [hist, who, month, hh.members])
   if (!m || m.bars.every((b) => b.amount === 0)) return null
   return (
     <section className="card" aria-label="Últimos 6 meses">
       <strong>Últimos 6 meses</strong>
-      <span className="muted small-text">{who === 'all' ? 'Lo que gasta el hogar cada mes.' : 'Lo que pagó esta persona cada mes.'}</span>
+      <span className="muted small-text">{who === 'all' ? 'Lo que gasta el hogar cada mes.' : 'Lo que le corresponde a esta persona cada mes, con su parte de lo compartido.'}</span>
       <Bars months={m.bars} avg={m.avg} />
       <span className="muted small-text">
         {m.avg ? `La línea punteada es el promedio de los meses anteriores: ${money(m.avg)}.` : 'Aún no hay meses anteriores para comparar.'}

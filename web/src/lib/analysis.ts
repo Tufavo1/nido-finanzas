@@ -2,7 +2,11 @@ import type { Debt, DebtPayment, Recurring } from './data'
 import { analyzeSalary, monthIncome, myDebtShare, summarizeDebts } from './finance'
 import type { Finding, Level } from './finance'
 import { money } from './format'
+import { emergencySaved, isEmergencyGoal, savedInMonth } from './goals'
+import { portion } from './split'
+import type { Split } from './split'
 import { monthName, monthShort } from './ui'
+import { pendingFixedThisMonth } from './upcoming'
 
 /** Análisis personal: qué gastas, en qué, cómo vas y qué puedes mejorar. Todo se calcula con tus propios datos. */
 
@@ -18,7 +22,8 @@ export interface HistExpense {
 
 export interface AnalysisInput {
   meId: string
-  memberCount: number
+  /** Cómo se reparte lo compartido: un número son partes iguales entre esas personas */
+  memberCount: Split
   month: Date
   now?: Date
   /** Gastos del hogar de los últimos meses, incluido el elegido */
@@ -29,7 +34,9 @@ export interface AnalysisInput {
   incomes: { amount: number }[]
   debts: Debt[]
   debtPayments: DebtPayment[]
-  contributions: { user_id: string; amount: number }[]
+  contributions: { user_id: string; goal_id: string; amount: number; contributed_on: string }[]
+  /** Metas del hogar: se usan para saber cuáles son ahorro para imprevistos */
+  goals: { id: string; name: string }[]
   recurring: Recurring[]
 }
 
@@ -86,6 +93,10 @@ export interface Analysis {
   rule: Rule | null
   insights: Finding[]
   summary: string
+  /** Ahorro que apartaste este mes (aportes a metas); ya está descontado de lo que te sobra */
+  saved: number
+  /** Meses de gasto que cubre tu ahorro para imprevistos; null si no hay con qué medirlo */
+  cushionMonths: number | null
   /** Lo que te sobraría cada mes si todo sigue igual, sumado a 6 y a 12 meses (sin intereses) */
   savings: { monthly: number; in6: number; in12: number } | null
 }
@@ -106,8 +117,8 @@ const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0)
 export const monthKey = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 
 /** Lo que de este gasto te toca a ti: lo personal tuyo completo y tu parte de lo compartido. */
-export function myShare(e: HistExpense, meId: string, memberCount: number): number {
-  if (e.shared) return e.amount / Math.max(memberCount, 1)
+export function myShare(e: HistExpense, meId: string, memberCount: Split): number {
+  if (e.shared) return portion(e.amount, memberCount, meId)
   return e.paid_by === meId ? e.amount : 0
 }
 
@@ -161,7 +172,13 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
   }
 
   const cost = Math.round(costByMonth.get(key) ?? 0)
-  const projected = isCurrent && elapsed >= 5 && cost > 0 ? Math.round((cost / elapsed) * days) : null
+  // Lo variable sigue al ritmo de hoy; los fijos ya anotados no se repiten y los que faltan se suman enteros
+  const fixedBooked = Math.min(
+    history.reduce((s, e) => (e.recurring_id && e.spent_on.startsWith(key) ? s + myShare(e, meId, memberCount) : s), 0),
+    cost,
+  )
+  const pendingFixed = isCurrent ? pendingFixedThisMonth(input.recurring, meId, memberCount, now) : 0
+  const projected = isCurrent && elapsed >= 5 && cost > 0 ? Math.round(fixedBooked + ((cost - fixedBooked) / elapsed) * days + pendingFixed) : null
   const prevKeys = keys.filter((k) => k < key)
   const prevWithData = prevKeys.filter((k) => (costByMonth.get(k) ?? 0) > 0)
   const avgPrev = prevWithData.length > 0 ? Math.round(sum(prevWithData.map((k) => costByMonth.get(k) ?? 0)) / prevWithData.length) : null
@@ -190,13 +207,18 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
   // ---------- Ingresos, cuotas y ahorro ----------
   const income = monthIncome(input.salary, input.incomes)
   const commitments = myDebtShare(input.debts, input.debtPayments, meId, memberCount)
-  const sal = income > 0 ? analyzeSalary({ income, spent: cost, commitments, month, now }) : null
+  const saved = Math.round(savedInMonth(input.contributions, meId, key))
+  const sal = income > 0 ? analyzeSalary({ income, spent: cost, commitments, month, now, pendingFixed, fixedBooked, saved }) : null
   const outlookFree = sal ? (sal.projectedFree ?? sal.free) : null
-  const savingsPct = sal && outlookFree !== null ? Math.round((outlookFree * 100) / income) : null
+  // Ahorro del mes: lo que apartaste más lo que sobraría
+  const savingsPct = sal && outlookFree !== null ? Math.round(((outlookFree + saved) * 100) / income) : null
 
-  const myContrib = sum(input.contributions.filter((c) => c.user_id === meId).map((c) => c.amount))
+  // Solo cuentan las metas de imprevistos; sin ninguna, el colchón es cero
+  const myContrib = emergencySaved(input.contributions, input.goals, meId)
   const baseCost = avgPrev ?? (cost > 0 ? cost : 0)
   const monthsCovered = baseCost > 0 ? myContrib / baseCost : null
+
+  const hasFund = input.goals.some((g) => isEmergencyGoal(g.name))
 
   // ---------- Puntaje ----------
   let score: Score | null = null
@@ -242,7 +264,9 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
         max: 20,
         points: Math.round(clamp(monthsCovered / 6, 0, 1) * 20),
         level: monthsCovered >= 3 ? 'ok' : monthsCovered >= 1 ? 'warn' : 'bad',
-        detail: `Lo que has aportado a metas cubre ${monthsCovered.toFixed(1).replace('.', ',')} meses de tus gastos. Lo ideal son 3 a 6.`,
+        detail: hasFund
+          ? `Lo que llevas en tu ahorro para imprevistos cubre ${monthsCovered.toFixed(1).replace('.', ',')} meses de tus gastos. Lo ideal son 3 a 6.`
+          : 'Aún no tienes una meta de ahorro para imprevistos (ponle «Fondo de emergencia»). Lo ideal son 3 a 6 meses de gastos.',
       })
     }
     const max = sum(parts.map((p) => p.max))
@@ -314,7 +338,7 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
   }
 
   const fixedMine = sum(
-    input.recurring.filter((r) => r.active).map((r) => (r.shared ? r.amount / Math.max(memberCount, 1) : r.paid_by === meId ? r.amount : 0)),
+    input.recurring.filter((r) => r.active).map((r) => (r.shared ? portion(r.amount, memberCount, meId) : r.paid_by === meId ? r.amount : 0)),
   )
   if (income > 0 && fixedMine > 0) {
     const share = Math.round((fixedMine * 100) / income)
@@ -323,7 +347,13 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
     }
   }
 
-  if (monthsCovered !== null && baseCost > 0) {
+  if (monthsCovered !== null && baseCost > 0 && !hasFund) {
+    insights.push({
+      level: 'warn',
+      title: 'Aún no tienes ahorro para imprevistos',
+      detail: `Primera meta: 3 meses de gastos (~${money(Math.round(baseCost * 3))}). Créala como meta con el nombre «Fondo de emergencia» y ve sumando.`,
+    })
+  } else if (monthsCovered !== null && baseCost > 0) {
     if (monthsCovered < 3) {
       const target = Math.round(baseCost * 3)
       insights.push({
@@ -369,10 +399,14 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
       summary += ` A este ritmo cerrarás cerca de ${money(projected)}`
       summary += outlookFree !== null ? (outlookFree >= 0 ? ` y te sobrarían ~${money(Math.round(outlookFree))}.` : ` y te faltarían ~${money(Math.round(-outlookFree))}.`) : '.'
     }
+    if (saved > 0) {
+      summary += ` Ya apartaste ${money(saved)} para ahorrar.`
+    }
   }
 
-  const monthly = outlookFree !== null && outlookFree > 0 ? Math.round(outlookFree) : 0
+  // Lo que puedes ahorrar al mes: lo ya apartado más lo que sobraría
+  const monthly = outlookFree !== null && outlookFree + saved > 0 ? Math.round(outlookFree + saved) : 0
   const savings = monthly > 0 ? { monthly, in6: monthly * 6, in12: monthly * 12 } : null
 
-  return { hasData: cost > 0 || months.some((m) => m.amount > 0), cost, projected, income, slices, months, avgPrev, score, rule, insights, summary, savings }
+  return { hasData: cost > 0 || months.some((m) => m.amount > 0), cost, projected, income, slices, months, avgPrev, score, rule, insights, summary, saved, cushionMonths: monthsCovered, savings }
 }

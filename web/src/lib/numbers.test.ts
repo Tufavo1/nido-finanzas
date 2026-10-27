@@ -30,6 +30,7 @@ const base = (over: Partial<AnalysisInput> = {}): AnalysisInput => ({
   debts: [],
   debtPayments: [],
   contributions: [],
+  goals: [{ id: 'fund', name: 'Fondo de emergencia' }],
   recurring: [],
   ...over,
 })
@@ -44,7 +45,7 @@ describe('Tu mes en números', () => {
   it('reparte cada $100 entre gastos, cuotas y lo que sobra', () => {
     const n = run({ salary: { amount: 1_000_000 }, history: [exp(300_000, '2026-10-02')] })
     expect(n.flow?.spent).toBe(300_000)
-    expect(n.flow?.per100).toEqual({ spent: 30, debts: 0, left: 70 })
+    expect(n.flow?.per100).toEqual({ spent: 30, debts: 0, pending: 0, saved: 0, left: 70 })
     expect(n.flow?.free).toBe(700_000)
     expect(n.flow?.over).toBe(false)
   })
@@ -125,7 +126,7 @@ describe('Colchón', () => {
     const n = run({
       salary: { amount: 1_000_000 },
       history: [exp(200_000, '2026-09-05'), exp(200_000, '2026-10-03')],
-      contributions: [{ user_id: 'a', amount: 100_000 }],
+      contributions: [{ user_id: 'a', goal_id: 'fund', amount: 100_000, contributed_on: '2026-01-15' }],
     })
     expect(n.cushion?.target3).toBe(600_000)
     expect(n.cushion?.target6).toBe(1_200_000)
@@ -138,7 +139,7 @@ describe('Colchón', () => {
     const n = run({
       salary: { amount: 1_000_000 },
       history: [exp(100_000, '2026-09-05'), exp(100_000, '2026-10-03')],
-      contributions: [{ user_id: 'a', amount: 900_000 }],
+      contributions: [{ user_id: 'a', goal_id: 'fund', amount: 900_000, contributed_on: '2026-01-15' }],
     })
     expect(n.cushion?.monthsTo3).toBeNull()
   })

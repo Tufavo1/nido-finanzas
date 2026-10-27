@@ -76,6 +76,23 @@ begin
   get diagnostics n = row_count;
   assert n = 0, 'B no edita ingresos de A';
 
+  -- ---------- Reparto de lo compartido ----------
+  perform public.como(a);
+  assert (select count(*) from public.members where household_id = h1 and share_pct is not null) = 0, 'por defecto no hay reparto acordado';
+  perform public.set_expense_split(60);
+  assert (select share_pct from public.members where household_id = h1 and user_id = a) = 60, 'A pone 60';
+  assert (select share_pct from public.members where household_id = h1 and user_id = b) = 40, 'B queda en 40';
+  perform public.como(b);
+  perform public.set_expense_split(30);
+  assert (select share_pct from public.members where household_id = h1 and user_id = a) = 70, 'si B pone 30, A queda en 70';
+  perform public.debe_fallar($q$select public.set_expense_split(0)$q$);
+  perform public.debe_fallar($q$select public.set_expense_split(100)$q$);
+  perform public.debe_fallar(format($q$update public.members set share_pct = 99 where user_id = %L$q$, b));
+  perform public.set_expense_split(null);
+  assert (select count(*) from public.members where household_id = h1 and share_pct is not null) = 0, 'null vuelve a mitad y mitad';
+  perform public.como(c);
+  perform public.debe_fallar($q$select public.set_expense_split(60)$q$);
+
   -- ---------- Gastos fijos ----------
   perform public.como(a);
   -- Desde hace 2 meses, el día 1: debe generar 3 gastos (los 2 meses previos + este)

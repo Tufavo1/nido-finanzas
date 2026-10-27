@@ -38,3 +38,23 @@ export function goalProgress(
   const state: GoalState = recent < perMonth * 0.6 ? 'behind' : 'ontrack'
   return { saved, remaining, pct, state, monthsLeft, perMonth, recent }
 }
+
+const EMERGENCY = /emergencia|colch[oó]n|imprevisto/i
+
+/** Una meta cuenta como ahorro para imprevistos si su nombre lo dice */
+export const isEmergencyGoal = (name: string): boolean => EMERGENCY.test(name)
+
+/** Lo que una persona aportó a metas en un mes (YYYY-MM): es la plata que apartó para ahorrar */
+export function savedInMonth(contributions: { user_id: string; amount: number; contributed_on: string }[], userId: string, monthKey: string): number {
+  return contributions.reduce((s, c) => (c.user_id === userId && c.contributed_on.startsWith(monthKey) ? s + c.amount : s), 0)
+}
+
+/** Lo que una persona lleva ahorrado en las metas de imprevistos */
+export function emergencySaved(
+  contributions: { user_id: string; goal_id: string; amount: number }[],
+  goals: { id: string; name: string }[],
+  userId: string,
+): number {
+  const ids = new Set(goals.filter((g) => isEmergencyGoal(g.name)).map((g) => g.id))
+  return contributions.reduce((s, c) => (c.user_id === userId && ids.has(c.goal_id) ? s + c.amount : s), 0)
+}

@@ -4,7 +4,7 @@ import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import { money, todayISO } from '../lib/format'
 import { supabase } from '../lib/supabase'
-import { digitsOnly, monthName } from '../lib/ui'
+import { digitsOnly, monthName, dots } from '../lib/ui'
 import type { Notify } from './Toast'
 import Spin from './Spin'
 
@@ -115,7 +115,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
           <div className="row">
             <div className="field grow">
               <label htmlFor="inc-amount">Monto</label>
-              <input id="inc-amount" autoComplete="off" className="input" inputMode="numeric" value={amount}
+              <input id="inc-amount" autoComplete="off" className="input" inputMode="numeric" value={dots(amount)}
                 onChange={(e) => setAmount(digitsOnly(e.target.value))} />
             </div>
             <div className="field">

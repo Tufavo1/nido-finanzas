@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { extraPaymentEffect, payoffPlan } from '../lib/finance'
 import { money } from '../lib/format'
-import { digitsOnly } from '../lib/ui'
+import { digitsOnly, dots } from '../lib/ui'
 
 const SUGGESTED = [10_000, 20_000, 50_000]
 const meses = (n: number) => `${n} ${n === 1 ? 'mes' : 'meses'}`
@@ -31,7 +31,7 @@ export default function DebtSimulator({ remaining, payment, ratePct }: { remaini
               </button>
             ))}
           </div>
-          <input className="input" inputMode="numeric" autoComplete="off" placeholder="Otro monto extra al mes" aria-label="Monto extra al mes" value={extra} onChange={(ev) => setExtra(digitsOnly(ev.target.value))} />
+          <input className="input" inputMode="numeric" autoComplete="off" placeholder="Otro monto extra al mes" aria-label="Monto extra al mes" value={dots(extra)} onChange={(ev) => setExtra(digitsOnly(ev.target.value))} />
           {e && (
             <span className="notice" role="status">
               {e.monthsSaved > 0

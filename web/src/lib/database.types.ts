@@ -253,14 +253,14 @@ isOneToOne: false
                   ]
                 },"members": {
                   Row: {
-                    "color": string,"display_name": string,"household_id": string,"joined_at": string,"left_at": string | null,"user_id": string
+                    "color": string,"display_name": string,"household_id": string,"joined_at": string,"left_at": string | null,"share_pct": number | null,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "color"?: string,"display_name": string,"household_id": string,"joined_at"?: string,"left_at"?: string | null,"user_id": string
+                    "color"?: string,"display_name": string,"household_id": string,"joined_at"?: string,"left_at"?: string | null,"share_pct"?: number | null,"user_id": string
                   }
                   Update: {
-                    "color"?: string,"display_name"?: string,"household_id"?: string,"joined_at"?: string,"left_at"?: string | null,"user_id"?: string
+                    "color"?: string,"display_name"?: string,"household_id"?: string,"joined_at"?: string,"left_at"?: string | null,"share_pct"?: number | null,"user_id"?: string
                   }
                   Relationships: [
                     {
@@ -415,6 +415,9 @@ isOneToOne: false
                            },
 "create_household":
 { Args: { "p_display_name": string,"p_name": string }; Returns: string
+                           },
+"set_expense_split":
+{ Args: { "pct": number | null }; Returns: undefined
                            },
 "create_widget_token":
 { Args: { "p_label": string }; Returns: string
