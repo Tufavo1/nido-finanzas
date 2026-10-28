@@ -4,6 +4,7 @@ import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import { EMPLOYMENT, adviceFor } from '../lib/profile'
 import type { Employment } from '../lib/profile'
+import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
 import type { Notify } from './Toast'
 import Spin from './Spin'
@@ -27,7 +28,7 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
   const [employment, setEmployment] = useState<Employment>((mine?.employment as Employment) ?? 'dependiente')
   const [dependents, setDependents] = useState(mine?.dependents ?? 0)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
 
   const advice = adviceFor(editing ? { profession, employment, dependents } : mine)
 
@@ -137,11 +138,6 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
             <span className="muted small-text">
               Para guardar profesión falta aplicar la migración <strong>20261018060000_perfil_edicion</strong>.
             </span>
-          )}
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
           )}
           <div className="row">
             <button className="btn small" type="submit" disabled={busy}>

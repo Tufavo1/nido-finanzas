@@ -8,7 +8,7 @@ import OfflineBar from './components/OfflineBar'
 import Toast from './components/Toast'
 import type { ToastData, ToastKind } from './components/Toast'
 import { useData } from './lib/data'
-import { TOUR_EVENT, markTourSeen, tourSeen } from './lib/tour'
+import { ANNOUNCE_NEWS, NEWS_EVENT, TOUR_EVENT, markNewsSeen, markTourSeen, newsSeen, tourSeen } from './lib/tour'
 import { focusMain } from './lib/a11y'
 import { buildAlerts } from './lib/engine'
 import type { AlertTab, MoneySection } from './lib/engine'
@@ -25,17 +25,21 @@ import type { Scope } from './lib/scope'
 const Money = lazy(() => import('./screens/Money'))
 const Register = lazy(() => import('./screens/Register'))
 const Security = lazy(() => import('./screens/Security'))
+const Help = lazy(() => import('./screens/Help'))
+const Profile = lazy(() => import('./screens/Profile'))
 const Tour = lazy(() => import('./components/Tour'))
 
 const TABS = [
   { key: 'home', label: 'Inicio', icon: 'home' },
   { key: 'expenses', label: 'Gastos', icon: 'list' },
-  { key: 'add', label: 'Registrar', icon: 'plus' },
   { key: 'money', label: 'Finanzas', icon: 'wallet' },
+  { key: 'add', label: 'Registrar', icon: 'plus' },
   { key: 'goals', label: 'Metas', icon: 'target' },
+  { key: 'help', label: 'Ayuda', icon: 'help' },
+  { key: 'profile', label: 'Perfil', icon: 'user' },
 ] as const
 
-// Ajustes no tiene pestaña propia: se abre con el engranaje de Inicio, así Registrar queda en el centro
+// Ajustes no tiene pestaña propia: se abre con el engranaje de Inicio. Registrar queda en el centro de las 7
 type Tab = (typeof TABS)[number]['key'] | 'security'
 
 // Cuando el navegador está libre, deja listas las pantallas pesadas para que abran al instante
@@ -79,16 +83,25 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   const clearToast = useCallback(() => setToastData(null), [])
   const setToast = useCallback((text: string, kind: ToastKind = 'success') => setToastData({ text, kind, id: Date.now() }), [])
   const data = useData(hh.household.id, hh.me.user_id, ym.y, ym.m, reload)
-  // Guía de bienvenida: sale sola la primera vez que la persona entra, y se puede volver a abrir desde Ajustes
-  const [tour, setTour] = useState(() => !tourSeen(hh.me.user_id))
+  // Guías: la de bienvenida sale sola la primera vez; la de novedades solo si tú la activas en lib/tour.ts. Ambas se abren desde Ajustes.
+  const [tour, setTour] = useState<'welcome' | 'news' | null>(() =>
+    !tourSeen(hh.me.user_id) ? 'welcome' : ANNOUNCE_NEWS && !newsSeen(hh.me.user_id) ? 'news' : null,
+  )
   const closeTour = useCallback(() => {
+    // Quien ve la bienvenida ya conoce todo lo nuevo
     markTourSeen(hh.me.user_id)
-    setTour(false)
+    markNewsSeen(hh.me.user_id)
+    setTour(null)
   }, [hh.me.user_id])
   useEffect(() => {
-    const open = () => setTour(true)
-    window.addEventListener(TOUR_EVENT, open)
-    return () => window.removeEventListener(TOUR_EVENT, open)
+    const welcome = () => setTour('welcome')
+    const news = () => setTour('news')
+    window.addEventListener(TOUR_EVENT, welcome)
+    window.addEventListener(NEWS_EVENT, news)
+    return () => {
+      window.removeEventListener(TOUR_EVENT, welcome)
+      window.removeEventListener(NEWS_EVENT, news)
+    }
   }, [])
   // Si aparece un gasto de alguien que la lista de miembros aún no conoce (p. ej. la pareja entró con la app ya abierta),
   // se recarga el hogar una vez por cada persona desconocida, para que su inicial salga siempre.
@@ -189,11 +202,15 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   } else if (tab === 'expenses') {
     body = <Expenses hh={hh} data={data} month={month} onToast={setToast} scope={scope} onScope={setScope} />
   } else if (tab === 'add') {
-    body = <Register hh={hh} data={data} onSaved={backToNow} />
+    body = <Register hh={hh} data={data} onSaved={backToNow} onToast={setToast} />
   } else if (tab === 'money') {
     body = <Money key={moneyNav.n} hh={hh} data={data} month={month} onToast={setToast} section={moneyNav.section} scope={scope} onScope={setScope} />
   } else if (tab === 'goals') {
     body = <Goals hh={hh} data={data} onToast={setToast} scope={scope} onScope={setScope} />
+  } else if (tab === 'profile') {
+    body = <Profile hh={hh} data={data} month={month} reload={reload} onToast={setToast} onGoSalary={() => goTo('money', 'salary')} onSettings={() => setTab('security')} />
+  } else if (tab === 'help') {
+    body = <Help />
   } else {
     body = <Security hh={hh} reload={reload} data={data} onToast={setToast} />
   }
@@ -249,7 +266,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
       </nav>
       {tour && data.ready && (
         <Suspense fallback={null}>
-          <Tour onClose={closeTour} />
+          <Tour kind={tour} onClose={closeTour} />
         </Suspense>
       )}
       <InstallBanner onToast={setToast} />

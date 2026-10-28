@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
+import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
 import { money } from '../lib/format'
 import { isEmergencyGoal, savedInMonth } from '../lib/goals'
@@ -34,7 +35,7 @@ export default function SavingsCheck({ hh, data, month, onToast, onGoals }: Prop
   const [goalId, setGoalId] = useState('')
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
 
   const goals = data.goals
   const firstGoal = goals.find((g) => isEmergencyGoal(g.name)) ?? goals[0]
@@ -109,11 +110,6 @@ export default function SavingsCheck({ hh, data, month, onToast, onGoals }: Prop
               onChange={(e) => setAmount(digitsOnly(e.target.value))}
             />
           </div>
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
           <div className="row">
             <button type="button" className="btn small" disabled={busy} onClick={() => void save()}>
               {busy ? <Spin label="Guardando ahorro…" /> : 'Guardar ahorro'}

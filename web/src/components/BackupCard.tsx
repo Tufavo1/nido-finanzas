@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { buildBackup, download, expensesCsv, stamp } from '../lib/backup'
+import { useToastError } from '../lib/useToastError'
 import type { Notify } from './Toast'
 
 /** Descarga de una copia de los datos del hogar. Se arma en este dispositivo: nada se envía a terceros. */
 export default function BackupCard({ onToast }: { onToast: Notify }) {
   const [busy, setBusy] = useState<'json' | 'csv' | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
 
   async function run(kind: 'json' | 'csv') {
     setBusy(kind)
@@ -41,11 +42,6 @@ export default function BackupCard({ onToast }: { onToast: Notify }) {
           {busy === 'csv' ? 'Preparando…' : 'Descargar solo los gastos (.csv para Excel)'}
         </button>
       </div>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
       <span className="hint">
         El archivo incluye tu sueldo e ingresos, que son privados: guárdalo en un lugar seguro y no lo compartas.
       </span>

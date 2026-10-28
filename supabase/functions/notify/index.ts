@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
 
     const { data: meRow } = await me
       .from('members')
-      .select('household_id, display_name')
+      .select('*')
       .eq('user_id', uid)
       .is('left_at', null)
       .maybeSingle()
@@ -89,6 +89,8 @@ Deno.serve(async (req) => {
           return reply(403, { error: 'gasto no válido' })
         }
         const { data: c } = await me.from('categories').select('name').eq('id', e.category_id).maybeSingle()
+        // Un gasto personal escondido a la pareja tampoco se le avisa por el celular
+        if (!e.shared && meRow.share_personal === false) return reply(200, { sent: 0 })
         title = `${meRow.display_name} registró un gasto`
         body = `${money(e.amount)} en ${c?.name ?? 'una categoría'}${e.shared ? '' : ' (personal)'}`
       } else {
@@ -101,6 +103,7 @@ Deno.serve(async (req) => {
           return reply(403, { error: 'aporte no válido' })
         }
         const { data: g } = await me.from('goals').select('name').eq('id', k.goal_id).maybeSingle()
+        if (meRow.share_savings === false) return reply(200, { sent: 0 })
         title = `${meRow.display_name} aportó a una meta`
         body = `${money(k.amount)} a ${g?.name ?? 'una meta'}`
       }

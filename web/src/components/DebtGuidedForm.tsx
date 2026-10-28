@@ -7,6 +7,7 @@ import type { RateProduct } from '../lib/bankData'
 import { offersFor } from '../lib/bankRates'
 import { installment, monthsToPayoff, payoffPlan } from '../lib/finance'
 import { money } from '../lib/format'
+import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
 import { digitsOnly, dots } from '../lib/ui'
 import Spin from './Spin'
@@ -44,7 +45,7 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, defaultOwne
   const [owner, setOwner] = useState(defaultOwner)
   const [due, setDue] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
 
   const bank = BANKS.find((b) => b.id === who) ?? null
   const isPerson = who === 'otra' && link === 'persona'
@@ -299,11 +300,6 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, defaultOwne
         </>
       )}
 
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
       <div className="row">
         <button className="btn small" type="submit" disabled={busy || !ready}>
           {busy ? <Spin label="Guardando deuda…" /> : 'Guardar deuda'}

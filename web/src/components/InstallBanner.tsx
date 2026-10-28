@@ -56,7 +56,7 @@ export default function InstallBanner({ onToast, onAuth = false }: { onToast?: N
         <div className="sheet-back" role="dialog" aria-modal="true" aria-label="Cómo instalar Contigo">
           <div className="sheet card">
             <strong>Instalar Contigo</strong>
-            <InstallGuide />
+            <InstallGuide onToast={onToast} />
             <button type="button" className="btn ghost small" onClick={() => setGuide(false)}>
               Entendido
             </button>

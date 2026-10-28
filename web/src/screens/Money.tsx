@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import AnalysisPanel from '../components/AnalysisPanel'
 import IncomesCard from '../components/IncomesCard'
-import Intro from '../components/Intro'
+import Modal from '../components/Modal'
+import Collapsibles from '../components/Collapsibles'
+import SectionHead from '../components/SectionHead'
 import RecurringPanel from '../components/RecurringPanel'
 import SalaryCalculator from '../components/SalaryCalculator'
 import DebtSimulator from '../components/DebtSimulator'
@@ -20,6 +23,7 @@ import { analyzeSalary, monthIncome, monthsToPayoff, myDebtShare, summarizeDebts
 import type { DebtView, Finding } from '../lib/finance'
 import { money, todayISO } from '../lib/format'
 import { computeMetrics } from '../lib/metrics'
+import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
 import { Rich } from '../lib/rich'
 import { daysUntil, digitsOnly, inDays, longDate, memberColor, monthName, nextOccurrence, dots } from '../lib/ui'
@@ -86,7 +90,7 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
   const [amount, setAmount] = useState(salary ? String(salary.amount) : '')
   const [payDay, setPayDay] = useState(salary ? String(salary.pay_day) : '1')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
 
   const metrics = useMemo(
     () => computeMetrics(data.expenses, data.prevExpenses, data.categories, hh.members, month),
@@ -97,17 +101,15 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
   const commitments = myDebtShare(data.debts, data.debtPayments, hh.me.user_id, split)
   const isCurrent = month.getFullYear() === new Date().getFullYear() && month.getMonth() === new Date().getMonth()
 
-  async function save(e: FormEvent) {
-    e.preventDefault()
-    const n = Number(amount)
-    const d = Number(payDay)
+  /** Guarda el sueldo y el día de pago; devuelve si se pudo */
+  async function persist(n: number, d: number, ok: string): Promise<boolean> {
     if (!n || n <= 0) {
       setError('Ingresa un sueldo mayor a cero')
-      return
+      return false
     }
     if (!Number.isInteger(d) || d < 1 || d > 31) {
       setError('El día de pago debe estar entre 1 y 31')
-      return
+      return false
     }
     setBusy(true)
     setError(null)
@@ -125,11 +127,28 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
     if (err) {
       console.error(err)
       setError('No se pudo guardar tu sueldo. Intenta de nuevo.')
-      return
+      return false
     }
+    setAmount(String(n))
+    setPayDay(String(d))
     setEditing(false)
-    onToast('Sueldo guardado\nTu **balance** del mes ya está al día.')
+    onToast(ok)
     await data.refresh()
+    return true
+  }
+
+  async function save(e: FormEvent) {
+    e.preventDefault()
+    await persist(Number(amount), Number(payDay), 'Sueldo guardado\nTu **balance** del mes ya está al día.')
+  }
+
+  // Desde la calculadora: el líquido calculado pasa directo a tu sueldo mensual, sin pasos de más
+  async function applyCalculated(liquido: number) {
+    return persist(
+      liquido,
+      salary?.pay_day ?? (Number(payDay) || 1),
+      `Sueldo calculado agregado\nTu sueldo mensual quedó en **${money(liquido)}**.`,
+    )
   }
 
   const a = salary
@@ -159,17 +178,8 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
       : null
 
   return (
-    <>
-      <Intro
-        title="Sueldo: cuánto te depositan al mes"
-        text="Aquí guardas lo que te pagan por tu trabajo. Con ese número la app calcula cuánto te sobra después de pagar tus gastos y tus deudas, y solo tú lo ves. Los bonos o ventas ocasionales no van aquí: anótalos en Ingresos extra."
-        steps={[
-          'Escribe tu sueldo **líquido**: lo que realmente llega a tu cuenta, después de los descuentos de AFP, salud e impuestos.',
-          'Elige el **día del mes** en que te depositan.',
-          'Toca **Guardar mi sueldo**.',
-          'Más abajo verás **cuánto te queda** este mes y si vas bien.',
-        ]}
-      />
+    <Collapsibles>
+      <SectionHead title="Tu sueldo" hint="Lo que te depositan cada mes" />
 
       <section className="card">
         <div className="row between">
@@ -227,11 +237,6 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
                 onChange={(e) => setPayDay(e.target.value.replace(/\D/g, '').slice(0, 2))}
               />
             </div>
-            {error && (
-              <p className="error" role="alert">
-                {error}
-              </p>
-            )}
             <div className="row">
               <button className="btn small" type="submit" disabled={busy}>
                 {busy ? <Spin label="Guardando sueldo…" /> : 'Guardar mi sueldo'}
@@ -246,15 +251,11 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
         )}
       </section>
 
-      <SalaryCalculator
-        onUse={(n) => {
-          setAmount(String(n))
-          setEditing(true)
-        }}
-      />
+      <SalaryCalculator onUse={applyCalculated} busy={busy} />
 
       {a && salary && (
         <>
+          <SectionHead title="Cómo te queda el mes" hint="Tu sueldo frente a gastos, deudas y ahorro" />
           <SavingsCheck hh={hh} data={data} month={month} onToast={onToast} />
           <section className={`card verdict ${a.level}`}>
             <span className="muted small-text">
@@ -386,7 +387,7 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
           )}
         </>
       )}
-    </>
+    </Collapsibles>
   )
 }
 
@@ -407,14 +408,25 @@ function DebtCard({
   const [value, setValue] = useState(String(d.monthly_payment || ''))
   const [confirm, setConfirm] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [open, setOpen] = useState(false)
   const [showPays, setShowPays] = useState(false)
   const [editPay, setEditPay] = useState<string | null>(null)
   const [pAmt, setPAmt] = useState('')
   const [pDate, setPDate] = useState('')
   const [payConfirm, setPayConfirm] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
   const myPays = data.debtPayments.filter((p) => p.debt_id === d.id)
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setOpen(false)
+      setEditing(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
   const owner = d.owner_id ? hh.everyone.find((m) => m.user_id === d.owner_id) : null
 
   async function pay(e: FormEvent) {
@@ -502,12 +514,81 @@ function DebtCard({
   }
 
   const done = v.remaining === 0
-  if (editing) return <DebtForm hh={hh} data={data} existing={d} onClose={() => setEditing(false)} onToast={onToast} />
+  const close = () => {
+    setOpen(false)
+    setEditing(false)
+    setConfirm(false)
+    setPaying(false)
+    setError(null)
+  }
+  const nextDue = d.due_day && !done ? nextOccurrence(d.due_day) : null
+  const dueLeft = nextDue ? daysUntil(nextDue) : null
+  const level = v.progressPct >= 70 ? 'ok' : 'warn'
+  const kindLabel = KINDS.find((k) => k.key === d.kind)?.label ?? 'Otra'
+  const card = (
+    <button
+      type="button"
+      className={`fixed-card${done ? ' paused' : ''}${dueLeft !== null && dueLeft <= 3 ? ' soon' : ''}`}
+      aria-haspopup="dialog"
+      aria-label={`${d.name}, falta pagar ${money(v.remaining)}. Toca para ver el detalle`}
+      onClick={() => setOpen(true)}
+    >
+      <span className="fixed-top">
+        <span className="grow fixed-name">
+          <strong>{d.name}</strong>
+          <span className="muted small-text">
+            {kindLabel} · {owner ? owner.display_name : 'De los dos'}
+          </span>
+        </span>
+        <span className="fixed-amount num">{money(v.remaining)}</span>
+      </span>
+      <Meter pct={v.progressPct} level={level} />
+      <span className="row between muted small-text">
+        <span>Pagado {v.progressPct} %</span>
+        <span>{done ? 'Saldada 🎉' : v.months === null ? 'Sin fecha de término' : `Faltan ~${v.months} ${v.months === 1 ? 'mes' : 'meses'}`}</span>
+      </span>
+      <span className="fixed-next">
+        {nextDue && dueLeft !== null ? (
+          <>
+            <span className="fixed-date">
+              <span className="muted small-text">Próximo vencimiento</span>
+              <strong>{nextDue.getDate()} de {longDate(nextDue).split(' de ')[1]}</strong>
+            </span>
+            <span className={dueLeft <= 3 ? 'pill fixed-when soon' : 'pill fixed-when'}>{inDays(dueLeft)}</span>
+          </>
+        ) : (
+          <span className="fixed-date">
+            <span className="muted small-text">Cuota mensual</span>
+            <strong>{d.monthly_payment > 0 ? money(d.monthly_payment) : 'Sin definir'}</strong>
+          </span>
+        )}
+      </span>
+    </button>
+  )
+  if (!open) return card
+  if (editing)
+    return (
+      <>
+        {card}
+        {createPortal(
+          <div className="sheet-back" role="presentation" onClick={close}>
+            <div className="sheet" onClick={(e) => e.stopPropagation()}>
+              <DebtForm hh={hh} data={data} existing={d} onClose={() => setEditing(false)} onToast={onToast} />
+            </div>
+          </div>,
+          document.body,
+        )}
+      </>
+    )
   return (
-    <section className="card">
+    <>
+    {card}
+    {createPortal(
+    <div className="sheet-back" role="presentation" onClick={close}>
+    <section className="sheet card fixed-sheet" role="dialog" aria-modal="true" aria-label={`Detalle de ${d.name}`} onClick={(e) => e.stopPropagation()}>
       <div className="row between">
         <div className="grow">
-          <strong>{d.name}</strong>
+          <strong className="fixed-title">{d.name}</strong>
           <div className="muted small-text">
             {KINDS.find((k) => k.key === d.kind)?.label ?? 'Otra'} ·{' '}
             {owner ? (
@@ -520,6 +601,9 @@ function DebtCard({
             {d.due_day ? ` · vence el ${d.due_day}` : ''}
           </div>
         </div>
+        <button type="button" className="icon-btn" aria-label="Cerrar" onClick={close}>
+          ✕
+        </button>
       </div>
 
       <div className="owe">
@@ -552,11 +636,6 @@ function DebtCard({
             ? 'La cuota de este mes ya está pagada ✓'
             : `Este mes han pagado ${money(v.paidThisMonth)} de la cuota de ${money(d.monthly_payment)}`}
         </span>
-      )}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
       )}
       {myPays.length > 0 && (
         <button type="button" className="link-btn" onClick={() => setShowPays((x) => !x)}>
@@ -647,6 +726,10 @@ function DebtCard({
         </button>
       </div>
     </section>
+    </div>,
+    document.body,
+    )}
+    </>
   )
 }
 
@@ -671,7 +754,7 @@ function DebtEditForm({
   const [rate, setRate] = useState(existing && existing.monthly_rate ? String(existing.monthly_rate).replace('.', ',') : '')
   const [due, setDue] = useState(existing?.due_day ? String(existing.due_day) : '')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -775,11 +858,6 @@ function DebtEditForm({
         <span className="line-help">El día del mes en que hay que pagar la cuota. Te avisamos cuando se acerque.</span>
         <input id="d-due" className="input" inputMode="numeric" value={due} onChange={(e) => setDue(e.target.value.replace(/\D/g, '').slice(0, 2))} />
       </div>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
       <div className="row">
         <button className="btn small" type="submit" disabled={busy}>
           {busy ? <Spin label="Guardando deuda…" /> : 'Guardar deuda'}
@@ -854,7 +932,7 @@ function SplitSetting({ hh, data, split, custom, onToast }: Pick<Props, 'hh' | '
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(String(mine))
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
 
   async function apply(pct: number | null) {
     setBusy(true)
@@ -900,11 +978,6 @@ function SplitSetting({ hh, data, split, custom, onToast }: Pick<Props, 'hh' | '
             <input id="split-pct" className="input" inputMode="numeric" value={value} onChange={(e) => setValue(e.target.value.replace(/\D/g, '').slice(0, 2))} />
             {valid && <span className="hint">{other.display_name} pondría el {100 - n} %.</span>}
           </div>
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
           <div className="row">
             <button type="button" className="btn small" disabled={busy || !valid} onClick={() => void apply(n)}>
               {busy ? <Spin label="Guardando reparto…" /> : 'Guardar reparto'}
@@ -936,27 +1009,32 @@ function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
   const person = hh.members.find((m) => m.user_id === who)
 
   return (
-    <>
-      {adding ? (
-        <DebtForm hh={hh} data={data} onClose={() => setAdding(false)} onToast={onToast} defaultOwner={who === 'all' ? '' : who} />
-      ) : (
+    <Collapsibles>
+      {!adding && (
         <div className="panel-actions">
           <button type="button" className="btn small" onClick={() => setAdding(true)}>
             + Agregar una deuda
           </button>
         </div>
       )}
+      {adding && (
+        <Modal label="Agregar una deuda" onClose={() => setAdding(false)}>
+          <DebtForm hh={hh} data={data} onClose={() => setAdding(false)} onToast={onToast} defaultOwner={who === 'all' ? '' : who} />
+        </Modal>
+      )}
 
-      <Intro
-        title="Deudas: lo que debes y cuándo terminas de pagar"
-        text="Una deuda es plata que todavía tienes que devolver: una tarjeta, un crédito del banco o un préstamo de un familiar. Al anotarla, la app te muestra cuánto falta y en cuántos meses terminas."
-        steps={[
-          'Toca **Agregar una deuda**.',
-          'Ponle un nombre que reconozcas, por ejemplo Tarjeta Banco Estado, y escribe **cuánto falta pagar hoy**.',
-          'Si lo sabes, agrega la **cuota mensual** y el **interés**. Con eso calculamos en cuántos meses terminas.',
-          'Cada vez que pagues una cuota, abre la deuda y toca **Anotar un pago**. El saldo baja solo.',
-        ]}
-      />
+      {!empty && <SectionHead title="Lo que dice el análisis" hint="Lo más importante de tus deudas, de un vistazo" />}
+
+      <DebtInsights debts={mine.debts} payments={mine.payments} part="findings" />
+
+      {empty ? null : (
+        <section className="card wide">
+          <strong>Cómo van con sus deudas</strong>
+          <Findings list={s.findings} />
+        </section>
+      )}
+
+      <SectionHead title="Resumen de deudas" hint="Cuánto falta y cuándo terminan de pagar" />
 
       {who === 'all' && <BetweenUs hh={hh} data={data} month={month} onToast={onToast} />}
 
@@ -980,8 +1058,8 @@ function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
 
       <DebtInsights debts={mine.debts} payments={mine.payments} />
 
-      {empty ? (
-        <section className="card">
+      {empty && (
+        <section className="card wide">
           <strong>{person && data.debts.length > 0 ? `${who === hh.me.user_id ? 'No tienes' : `${person.display_name} no tiene`} deudas anotadas` : 'Todavía no hay deudas anotadas'}</strong>
           <span className="muted">
             {person && data.debts.length > 0
@@ -989,20 +1067,24 @@ function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
               : 'Si no deben nada, no hagas nada. Si tienen una tarjeta, un crédito o un préstamo, agrégalo para llevar el control.'}
           </span>
         </section>
-      ) : (
-        <section className="card">
-          <strong>Cómo van con sus deudas</strong>
-          <Findings list={s.findings} />
-        </section>
       )}
 
-      {real.views.map((v) => (
-        <DebtCard key={v.debt.id} v={v} hh={hh} data={data} onToast={onToast} />
-      ))}
+      {real.views.length > 0 && (
+        <>
+          <SectionHead title="Tus deudas" hint="Toca una para ver todo, anotar un pago, editarla o borrarla" />
+          <div className="fixed-grid wide">
+            {real.views.map((v) => (
+              <DebtCard key={v.debt.id} v={v} hh={hh} data={data} onToast={onToast} />
+            ))}
+          </div>
+        </>
+      )}
+
+      <SectionHead title="Cómo pagar menos interés" hint="Tasas de bancos para comparar" />
 
       <BankRates debts={debts} payments={data.debtPayments} />
 
-    </>
+    </Collapsibles>
   )
 }
 
@@ -1067,7 +1149,10 @@ export default function Money(props: Props) {
             (privateNotice ?? (
               <>
                 <SalaryPanel {...props} />
-                <IncomesCard {...props} />
+                <Collapsibles openFirst={false}>
+                  <SectionHead title="Ingresos extra" hint="Bonos, ventas o trabajos aparte" />
+                  <IncomesCard {...props} />
+                </Collapsibles>
               </>
             ))}
           {tab === 'fixed' && <RecurringPanel {...props} />}

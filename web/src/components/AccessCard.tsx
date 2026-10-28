@@ -2,17 +2,17 @@ import { useEffect, useState } from 'react'
 import { promptInstall, useInstallState } from '../lib/install'
 import { currentPushState } from '../lib/push'
 import type { PushState } from '../lib/push'
+import type { Notify } from './Toast'
 
 type Tone = 'ok' | 'warn' | 'off'
 
 const MARK: Record<Tone, string> = { ok: '✓', warn: '!', off: '–' }
 
 /** Lo primordial de este celular, en tres filas: internet, si la app está instalada y si los avisos están activos. Solo para el administrador. */
-export default function AccessCard() {
+export default function AccessCard({ onToast }: { onToast: Notify }) {
   const install = useInstallState()
   const [push, setPush] = useState<PushState | null>(null)
   const [online, setOnline] = useState(navigator.onLine)
-  const [msg, setMsg] = useState<string | null>(null)
 
   useEffect(() => {
     void currentPushState().then(setPush)
@@ -37,7 +37,7 @@ export default function AccessCard() {
             label: 'No',
             action: {
               label: 'Instalar app',
-              run: () => void promptInstall().then((ok) => setMsg(ok ? '¡Contigo quedó instalada!' : 'No se instaló.')),
+              run: () => void promptInstall().then((ok) => (ok ? onToast('Contigo quedó instalada\nYa puedes abrirla desde su **ícono**.') : onToast('No se instaló\nPuedes intentarlo cuando quieras.', 'info'))),
             },
           }
         : { title: 'App instalada', tone: 'off', label: 'No' },
@@ -68,11 +68,6 @@ export default function AccessCard() {
           </div>
         ))}
       </div>
-      {msg && (
-        <p className="notice" role="status">
-          {msg}
-        </p>
-      )}
     </section>
   )
 }

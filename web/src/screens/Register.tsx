@@ -1,3 +1,5 @@
+import { useToastError } from '../lib/useToastError'
+import type { Notify } from '../components/Toast'
 import { useState } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
@@ -13,10 +15,12 @@ export default function Register({
   hh,
   data,
   onSaved,
+  onToast,
 }: {
   hh: Household
   data: HouseholdData
   onSaved: (message: string) => void
+  onToast: Notify
 }) {
   const [digits, setDigits] = useState('')
   const [catId, setCatId] = useState<string>(data.categories[0]?.id ?? '')
@@ -25,7 +29,7 @@ export default function Register({
   const [note, setNote] = useState('')
   const [date, setDate] = useState(todayISO)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
 
   const [hasDiscount, setHasDiscount] = useState(false)
   const [discount, setDiscount] = useState('')
@@ -164,11 +168,6 @@ export default function Register({
         ))}
       </div>
 
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
       <button className="btn" type="button" disabled={busy || amount <= 0 || !catId || !date || date > today} onClick={() => void save()}>
         {busy ? <Spin label="Guardando gasto…" /> : amount > 0 ? `Guardar ${money(amount)}` : 'Guardar gasto'}
       </button>

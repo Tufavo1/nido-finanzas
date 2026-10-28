@@ -1,5 +1,4 @@
 import { Suspense, lazy, useState } from 'react'
-import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import AboutCard from '../components/AboutCard'
 import InstallGuide from '../components/InstallGuide'
@@ -8,9 +7,9 @@ import LockSettings from '../components/LockSettings'
 import SecurityInfo from '../components/SecurityInfo'
 import SettingsItem from '../components/SettingsItem'
 import AccessCard from '../components/AccessCard'
-import Avatar from '../components/Avatar'
-import Icon from '../components/Icon'
-import { TOUR_EVENT } from '../lib/tour'
+import HomeCard from '../components/HomeCard'
+import PasswordCard from '../components/PasswordCard'
+import { NEWS_EVENT, TOUR_EVENT } from '../lib/tour'
 import { getLockMinutes } from '../lib/applock'
 import { VERSION } from '../lib/about'
 import LeaveAccount from '../components/LeaveAccount'
@@ -20,8 +19,6 @@ import ProfileCard from '../components/ProfileCard'
 import ThemeToggle from '../components/ThemeToggle'
 import type { HouseholdData } from '../lib/data'
 import { useIsAdmin } from '../lib/admin'
-import { STRENGTH_LABEL, friendlyError, passwordStrength } from '../lib/security'
-import { confirmPassword } from '../lib/reauth'
 import { supabase } from '../lib/supabase'
 import type { Notify } from '../components/Toast'
 
@@ -38,100 +35,19 @@ export default function Security({
   data: HouseholdData
   onToast: Notify
 }) {
-  const [copied, setCopied] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
   const toggle = (id: string) => setOpen((cur) => (cur === id ? null : id))
   const isAdmin = useIsAdmin()
   const [showAdmin, setShowAdmin] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const [pw, setPw] = useState('')
-  const [currentPw, setCurrentPw] = useState('')
-  const [busy, setBusy] = useState(false)
-  const strength = passwordStrength(pw)
-  const expires = hh.household.invite_expires_at
-  const expired = !expires || new Date(expires) <= new Date()
-  const code = expired ? null : hh.household.invite_code
-  const incomplete = hh.members.length < 2
-
-  async function copy(text: string) {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      setError('No se pudo copiar. Selecciona el código y cópialo a mano.')
-    }
-  }
-
-  async function changePassword(e: FormEvent) {
-    e.preventDefault()
-    if (strength < 2) {
-      setError('Usa al menos 10 caracteres y que no sea tan obvia.')
-      return
-    }
-    setBusy(true)
-    setError(null)
-    setNotice(null)
-    try {
-      // Con una sesión robada no se puede cambiar la contraseña sin conocer la actual
-      await confirmPassword(currentPw)
-    } catch (err) {
-      setBusy(false)
-      setError(err instanceof Error ? err.message : 'Contraseña actual incorrecta')
-      return
-    }
-    const { error: err } = await supabase.auth.updateUser({ password: pw })
-    setBusy(false)
-    if (err) {
-      setError(friendlyError(err.message))
-      return
-    }
-    setPw('')
-    setCurrentPw('')
-    setNotice('Contraseña actualizada.')
-  }
-
-  async function signOutOthers() {
-    setError(null)
-    setNotice(null)
-    const { error: err } = await supabase.auth.signOut({ scope: 'others' })
-    if (err) setError(friendlyError(err.message))
-    else setNotice('Cerraste sesión en tus otros dispositivos.')
-  }
-
-  async function rotate() {
-    setError(null)
-    const { error: err } = await supabase.rpc('rotate_invite_code')
-    if (err) {
-      setError(err.message)
-      return
-    }
-    await reload()
-  }
 
   if (showAdmin && isAdmin) {
     return (
       <Suspense fallback={<main className="screen center-y"><p className="muted">Cargando…</p></main>}>
-        <Admin onBack={() => setShowAdmin(false)} />
+        <Admin onBack={() => setShowAdmin(false)} onToast={onToast} />
       </Suspense>
     )
   }
 
-  const msgs = (
-    <>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p className="notice" role="status">
-          {notice}
-        </p>
-      )}
-    </>
-  )
   const item = { open: false, onToggle: toggle }
   const lockMin = getLockMinutes()
   const partner = hh.members.find((m) => m.user_id !== hh.me.user_id)
@@ -164,51 +80,7 @@ export default function Security({
           summary={partner ? `${hh.household.name} · con ${partner.display_name}` : `${hh.household.name} · 1 de 2 personas`}
           open={open === 'home'}
         >
-          {open === 'home' && msgs}
-          <section className="card">
-            <strong>{hh.household.name}</strong>
-            {hh.members.map((m) => (
-              <div className="row" key={m.user_id}>
-                <Avatar name={m.display_name} color={m.color} />
-                <span className="grow">
-                  {m.display_name}
-                  {m.user_id === hh.me.user_id ? ' (tú)' : ''}
-                </span>
-              </div>
-            ))}
-          </section>
-          <section className="card">
-            <strong>Invitación</strong>
-            {incomplete && code ? (
-              <>
-                <span className="muted">
-                  Compártelo solo con tu pareja. Sirve una vez y vence el {new Date(expires ?? '').toLocaleDateString('es-CL')}.
-                </span>
-                <div className="row between">
-                  <span className="code">{code}</span>
-                  <button type="button" className="icon-btn" aria-label="Copiar código" onClick={() => void copy(code)}>
-                    <Icon name="copy" size={20} />
-                  </button>
-                </div>
-                {copied && <span className="notice">Copiado</span>}
-                <button type="button" className="btn ghost small" onClick={() => void rotate()}>
-                  Generar código nuevo
-                </button>
-              </>
-            ) : incomplete ? (
-              <>
-                <span className="muted">
-                  {hh.household.invite_code ? 'El código venció. ' : ''}Si quieres sumar a tu pareja, genera un código y
-                  compártelo con ella o él. Un hogar es de 1 o 2 personas.
-                </span>
-                <button type="button" className="btn ghost small" onClick={() => void rotate()}>
-                  Generar código de invitación
-                </button>
-              </>
-            ) : (
-              <span className="muted">El hogar está completo (2 de 2). Nadie más puede unirse.</span>
-            )}
-          </section>
+          <HomeCard hh={hh} reload={reload} onToast={onToast} />
         </SettingsItem>
 
         <SettingsItem {...item} id="tour" icon="info" title="Guía de bienvenida" summary="Para qué sirve cada parte de la app" open={open === 'tour'}>
@@ -216,6 +88,15 @@ export default function Security({
             <span className="muted">Un recorrido corto por lo que puedes hacer en Contigo.</span>
             <button type="button" className="btn ghost small" onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}>
               Ver la guía
+            </button>
+          </section>
+        </SettingsItem>
+
+        <SettingsItem {...item} id="news" icon="info" title="Novedades" summary="Lo que cambió en la app" open={open === 'news'}>
+          <section className="card">
+            <span className="muted">Un repaso rápido de las mejoras nuevas: tarjetas, perfil, privacidad con tu pareja y más.</span>
+            <button type="button" className="btn ghost small" onClick={() => window.dispatchEvent(new Event(NEWS_EVENT))}>
+              Ver las novedades
             </button>
           </section>
         </SettingsItem>
@@ -228,54 +109,7 @@ export default function Security({
       <h2 className="set-group">Seguridad</h2>
       <div className="set-list">
         <SettingsItem {...item} id="password" icon="lock" title="Contraseña y sesiones" summary="Cambiar contraseña, cerrar otras sesiones" open={open === 'password'}>
-          {open === 'password' && msgs}
-          <section className="card">
-            <form className="stack tight" onSubmit={(e) => void changePassword(e)}>
-              <div className="field">
-                <label htmlFor="curpw">Contraseña actual</label>
-                <input
-                  id="curpw"
-                  className="input"
-                  type="password"
-                  autoComplete="current-password"
-                  value={currentPw}
-                  onChange={(e) => setCurrentPw(e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="newpw">Nueva contraseña</label>
-                <input
-                  id="newpw"
-                  className="input"
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={10}
-                  maxLength={72}
-                  value={pw}
-                  onChange={(e) => setPw(e.target.value)}
-                />
-              </div>
-              {pw && (
-                <>
-                  <div className={strength <= 1 ? 'strength weak' : 'strength'} aria-hidden="true">
-                    {[1, 2, 3, 4].map((i) => (
-                      <span key={i} className={strength >= i ? 'on' : ''} />
-                    ))}
-                  </div>
-                  <span className="hint" aria-live="polite">
-                    {STRENGTH_LABEL[strength]}
-                  </span>
-                </>
-              )}
-              <button className="btn ghost small" type="submit" disabled={busy || !pw || !currentPw}>
-                Cambiar contraseña
-              </button>
-            </form>
-            <button type="button" className="btn ghost small" onClick={() => void signOutOthers()}>
-              Cerrar sesión en otros dispositivos
-            </button>
-            <span className="hint">Úsalo si perdiste el teléfono o entraste desde un equipo ajeno.</span>
-          </section>
+          <PasswordCard onToast={onToast} />
         </SettingsItem>
 
         <SettingsItem
@@ -300,20 +134,20 @@ export default function Security({
       <div className="set-list">
         <SettingsItem {...item} id="install" icon="download" title="Cómo instalar Contigo" summary="En iPhone o Android" open={open === 'install'}>
           <section className="card">
-            <InstallGuide />
+            <InstallGuide onToast={onToast} />
           </section>
         </SettingsItem>
         {isAdmin && (
           <SettingsItem {...item} id="access" icon="wallet" title="Instalación y conexión" summary="Internet, app instalada y avisos" open={open === 'access'}>
-            <AccessCard />
+            <AccessCard onToast={onToast} />
           </SettingsItem>
         )}
         <SettingsItem {...item} id="notify" icon="bell" title="Notificaciones" summary="Avisos de tu pareja y de la app" open={open === 'notify'}>
-          <PushToggle isAdmin={isAdmin} />
+          <PushToggle isAdmin={isAdmin} onToast={onToast} />
         </SettingsItem>
         {isAdmin && (
           <SettingsItem {...item} id="widgets" icon="target" title="Widgets y accesos externos" summary="Enlaces para ver tu resumen fuera de la app" open={open === 'widgets'}>
-            <WidgetTokens />
+            <WidgetTokens onToast={onToast} />
           </SettingsItem>
         )}
       </div>
@@ -324,14 +158,14 @@ export default function Security({
           <BackupCard onToast={onToast} />
         </SettingsItem>
         <SettingsItem {...item} id="danger" icon="trash" tone="danger" title="Salir del hogar o borrar la cuenta" summary="Acciones que no se pueden deshacer" open={open === 'danger'}>
-          <LeaveAccount hh={hh} reload={reload} />
+          <LeaveAccount hh={hh} reload={reload} onToast={onToast} />
         </SettingsItem>
       </div>
 
       <h2 className="set-group">Información</h2>
       <div className="set-list">
         <SettingsItem {...item} id="about" icon="info" title="Acerca de Contigo" summary={`Versión ${VERSION}`} open={open === 'about'}>
-          <AboutCard />
+          <AboutCard onToast={onToast} />
         </SettingsItem>
       </div>
 

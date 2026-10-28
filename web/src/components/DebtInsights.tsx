@@ -27,21 +27,25 @@ function Row({ label, hint, s, tag, best }: { label: string; hint: string; s: St
 }
 
 /** Análisis inteligente de las deudas: qué orden de pago ahorra más, qué pasa con un extra y qué tan al día van los pagos. */
-export default function DebtInsights({ debts, payments }: { debts: Debt[]; payments: DebtPayment[] }) {
+/** `findings` es solo "Lo que dice el análisis" (a todo el ancho); `rest` son las demás tarjetas */
+export default function DebtInsights({ debts, payments, part = 'rest' }: { debts: Debt[]; payments: DebtPayment[]; part?: 'findings' | 'rest' }) {
   const r = useMemo(() => analyzeDebts(debts, payments), [debts, payments])
   const { plan, extras, payments: p, costs, findings } = r
   if (costs.length === 0 && p.count === 0) return null
   const months = p.byMonth.map((m, i) => ({ key: m.key, label: m.label, amount: m.amount, current: i === p.byMonth.length - 1 }))
 
+  if (part === 'findings') {
+    return findings.length > 0 ? (
+      <section className="card wide" aria-label="Análisis de tus deudas">
+        <strong>Lo que dice el análisis</strong>
+        <FindingList list={findings.slice(0, 6)} />
+        <span className="muted small-text">Se calcula solo con tus deudas y tus pagos. Son orientaciones, no asesoría financiera.</span>
+      </section>
+    ) : null
+  }
+
   return (
     <>
-      {findings.length > 0 && (
-        <section className="card" aria-label="Análisis de tus deudas">
-          <strong>Lo que dice el análisis</strong>
-          <FindingList list={findings.slice(0, 6)} />
-          <span className="muted small-text">Se calcula solo con tus deudas y tus pagos. Son orientaciones, no asesoría financiera.</span>
-        </section>
-      )}
 
       {plan && (
         <section className="card" aria-label="Estrategia de pago">

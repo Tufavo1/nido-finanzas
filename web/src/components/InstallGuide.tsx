@@ -1,3 +1,4 @@
+import type { Notify } from './Toast'
 import { useState } from 'react'
 import { detectPlatform, promptInstall, useInstallState } from '../lib/install'
 import type { Platform } from '../lib/install'
@@ -42,10 +43,9 @@ function rich(text: string) {
 }
 
 /** Cómo instalar Contigo como app, paso a paso según el aparato. Lo usan la pantalla de entrada y Ajustes. */
-export default function InstallGuide() {
+export default function InstallGuide({ onToast }: { onToast?: Notify }) {
   const state = useInstallState()
   const [platform, setPlatform] = useState<Platform>(detectPlatform)
-  const [msg, setMsg] = useState<string | null>(null)
   const guide = GUIDES[platform]
 
   if (state === 'installed') {
@@ -80,15 +80,10 @@ export default function InstallGuide() {
         <button
           type="button"
           className="btn small"
-          onClick={() => void promptInstall().then((ok) => setMsg(ok ? '¡Contigo quedó instalada!' : 'No se instaló. Puedes intentarlo cuando quieras.'))}
+          onClick={() => void promptInstall().then((ok) => (ok ? onToast?.('Contigo quedó instalada\nYa puedes abrirla desde su **ícono**.') : onToast?.('No se instaló\nPuedes intentarlo cuando quieras.', 'info')))}
         >
           Instalar ahora
         </button>
-      )}
-      {msg && (
-        <p className="notice" role="status">
-          {msg}
-        </p>
       )}
     </div>
   )

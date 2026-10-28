@@ -4,19 +4,22 @@ import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import Avatar from '../components/Avatar'
 import Icon from '../components/Icon'
-import Intro from '../components/Intro'
+import Collapsibles from '../components/Collapsibles'
+import SectionHead from '../components/SectionHead'
 import Ring from '../components/Ring'
 import type { Notify } from '../components/Toast'
 import { goalProgress } from '../lib/goals'
 import type { GoalState } from '../lib/goals'
 import { Rich } from '../lib/rich'
 import { money, todayISO } from '../lib/format'
+import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
 import { notifyPartner } from '../lib/push'
 import { digitsOnly, shortDate, dots } from '../lib/ui'
 import ScopeBar from '../components/ScopeBar'
 import { resolveScope, scopeContributions } from '../lib/scope'
 import type { Scope } from '../lib/scope'
+import Modal from '../components/Modal'
 import Spin from '../components/Spin'
 
 const STATE: Record<GoalState, { label: string; tone: 'ok' | 'info' | 'warn' | 'bad' }> = {
@@ -50,7 +53,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
   const [cDate, setCDate] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
 
   const members = new Map(hh.everyone.map((m) => [m.user_id, m] as const))
 
@@ -199,99 +202,19 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
   const doneCount = rows.filter((r) => r.p.state === 'done').length
   const attention = rows.filter((r) => r.p.state === 'behind' || r.p.state === 'overdue').length
 
-  return (
-    <main className="screen">
-      <div className="row between">
-        <h1 className="title">Metas</h1>
-        <button type="button" className="btn small" onClick={() => setCreating((c) => !c)}>
-          {creating ? 'Cerrar' : 'Nueva meta'}
-        </button>
-      </div>
+  const [selGoal, setSelGoal] = useState<string | null>(null)
+  function closeGoal() {
+    setSelGoal(null)
+    setEditGoal(null)
+    setOpenId(null)
+    setEditC(null)
+    setArchiveId(null)
+    setConfirmId(null)
+    setError(null)
+  }
+  const selRow = rows.find((r) => r.g.id === selGoal)
 
-      <ScopeBar hh={hh} scope={who} onScope={onScope} label="Ver los aportes de" />
-
-      <Intro
-        title="Metas: ahorrar juntos para algo concreto"
-        text="Una meta es algo que quieren pagar con ahorro: un viaje, el ahorro para imprevistos, un electrodoméstico. Cada aporte que anotan acerca la barra al objetivo."
-        steps={[
-          'Toca **Nueva meta**.',
-          'Escribe qué quieren lograr y **cuánto cuesta**.',
-          'Si tienen una fecha límite, agrégala: la app calcula cuánto aportar **por mes**.',
-          'Cada vez que ahorren, abre la meta y toca **Aportar a esta meta**.',
-        ]}
-      />
-
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-
-      {creating && (
-        <form className="card" onSubmit={(e) => void createGoal(e)}>
-          <strong>Nueva meta</strong>
-          <div className="field">
-            <label htmlFor="g-name">1. ¿Qué quieren lograr?</label>
-            <input id="g-name" className="input" required maxLength={60} placeholder="Ej.: Viaje al sur" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="g-target">2. ¿Cuánto necesitan juntar? (CLP)</label>
-            <input
-              id="g-target"
-              className="input"
-              inputMode="numeric"
-              required
-              value={dots(target)}
-              onChange={(e) => setTarget(digitsOnly(e.target.value))}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="g-date">3. ¿Para cuándo? (opcional)</label>
-            <input id="g-date" className="input" type="date" min={todayISO()} value={date} onChange={(e) => setDate(e.target.value)} />
-            <span className="hint">Con una fecha, la app te dice cuánto aportar por mes.</span>
-          </div>
-          <button className="btn" type="submit" disabled={busy}>
-            {busy ? <Spin label="Creando meta…" /> : 'Crear meta'}
-          </button>
-        </form>
-      )}
-
-      {goals.length === 0 && !creating && (
-        <section className="card goal-empty">
-          <strong>Aún no tienen metas</strong>
-          <span className="muted">Creen la primera y empiecen a ahorrar con un objetivo claro.</span>
-          <button type="button" className="btn small" onClick={() => setCreating(true)}>
-            Crear la primera meta
-          </button>
-        </section>
-      )}
-
-      {goals.length > 0 && (
-        <section className="card hero goal-summary" aria-label="Resumen de metas">
-          <div className="hero-top">
-            <Ring pct={totalPct} />
-            <div className="grow">
-              <span className="muted small-text">{person ? `Aportado por ${who === hh.me.user_id ? 'ti' : person.display_name}` : 'Ahorrado en total'}</span>
-              <span className="amount small num">{money(person ? personTotal : totalSaved)}</span>
-              <span className="muted num small-text">
-                {person ? `Entre los dos llevan ${money(totalSaved)} de ${money(totalTarget)}` : `de ${money(totalTarget)} entre ${plural(goals.length, 'meta', 'metas')}`}
-              </span>
-            </div>
-          </div>
-          <div className="stats">
-            <div>
-              <span className="muted small-text">Cumplidas</span>
-              <span className="num strong">{doneCount} de {goals.length}</span>
-            </div>
-            <div>
-              <span className="muted small-text">Necesitan atención</span>
-              <span className={attention > 0 ? 'num strong goal-warn' : 'num strong'}>{attention}</span>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {rows.map(({ g, mine, shown, personSaved, p }) => {
+  const renderGoal = ({ g, mine, shown, personSaved, p }: (typeof rows)[number]) => {
         const st = STATE[p.state]
         const byPerson = hh.everyone
           .map((m) => ({ m, total: mine.filter((c) => c.user_id === m.user_id).reduce((s, c) => s + c.amount, 0) }))
@@ -305,6 +228,9 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
               <span className={`goal-state ${st.tone}`}>{st.label}</span>
               <button type="button" className="icon-btn" aria-label={`Editar meta ${g.name}`} onClick={() => startEditGoal(g)}>
                 <Icon name="edit" size={20} />
+              </button>
+              <button type="button" className="icon-btn" aria-label="Cerrar" onClick={closeGoal}>
+                ✕
               </button>
             </div>
             {editGoal === g.id && (
@@ -457,7 +383,138 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
             )}
           </section>
         )
-      })}
+  }
+
+  return (
+    <main className="screen">
+      <Collapsibles>
+      <div className="row between">
+        <h1 className="title">Metas</h1>
+        <button type="button" className="btn small" onClick={() => setCreating((c) => !c)}>
+          Nueva meta
+        </button>
+      </div>
+
+      <ScopeBar hh={hh} scope={who} onScope={onScope} label="Ver los aportes de" />
+
+
+      {creating && (
+        <Modal label="Nueva meta" onClose={() => setCreating(false)}>
+        <form className="card" onSubmit={(e) => void createGoal(e)}>
+          <strong>Nueva meta</strong>
+          <div className="field">
+            <label htmlFor="g-name">1. ¿Qué quieren lograr?</label>
+            <input id="g-name" className="input" required maxLength={60} placeholder="Ej.: Viaje al sur" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="g-target">2. ¿Cuánto necesitan juntar? (CLP)</label>
+            <input
+              id="g-target"
+              className="input"
+              inputMode="numeric"
+              required
+              value={dots(target)}
+              onChange={(e) => setTarget(digitsOnly(e.target.value))}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="g-date">3. ¿Para cuándo? (opcional)</label>
+            <input id="g-date" className="input" type="date" min={todayISO()} value={date} onChange={(e) => setDate(e.target.value)} />
+            <span className="hint">Con una fecha, la app te dice cuánto aportar por mes.</span>
+          </div>
+          <button className="btn" type="submit" disabled={busy}>
+            {busy ? <Spin label="Creando meta…" /> : 'Crear meta'}
+          </button>
+        </form>
+        </Modal>
+      )}
+
+      {goals.length === 0 && !creating && (
+        <section className="card goal-empty">
+          <strong>Aún no tienen metas</strong>
+          <span className="muted">Creen la primera y empiecen a ahorrar con un objetivo claro.</span>
+          <button type="button" className="btn small" onClick={() => setCreating(true)}>
+            Crear la primera meta
+          </button>
+        </section>
+      )}
+
+      {goals.length > 0 && <SectionHead title="Resumen de tus metas" hint="Cuánto llevan ahorrado entre todas" />}
+
+      {goals.length > 0 && (
+        <section className="card hero goal-summary" aria-label="Resumen de metas">
+          <div className="hero-top">
+            <Ring pct={totalPct} />
+            <div className="grow">
+              <span className="muted small-text">{person ? `Aportado por ${who === hh.me.user_id ? 'ti' : person.display_name}` : 'Ahorrado en total'}</span>
+              <span className="amount small num">{money(person ? personTotal : totalSaved)}</span>
+              <span className="muted num small-text">
+                {person ? `Entre los dos llevan ${money(totalSaved)} de ${money(totalTarget)}` : `de ${money(totalTarget)} entre ${plural(goals.length, 'meta', 'metas')}`}
+              </span>
+            </div>
+          </div>
+          <div className="stats">
+            <div>
+              <span className="muted small-text">Cumplidas</span>
+              <span className="num strong">{doneCount} de {goals.length}</span>
+            </div>
+            <div>
+              <span className="muted small-text">Necesitan atención</span>
+              <span className={attention > 0 ? 'num strong goal-warn' : 'num strong'}>{attention}</span>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {rows.length > 0 && <SectionHead title="Cada meta" hint="Cuánto falta y cuánto aportar al mes" />}
+
+      {rows.length > 0 && (
+        <div className="fixed-grid wide">
+          {rows.map((r) => {
+            const { g, p } = r
+            const st = STATE[p.state]
+            return (
+              <button
+                key={g.id}
+                type="button"
+                className={`fixed-card${p.state === 'done' ? ' paused' : ''}${p.state === 'overdue' || p.state === 'behind' ? ' soon' : ''}`}
+                aria-haspopup="dialog"
+                aria-label={`${g.name}, ${p.pct} % logrado. Toca para ver el detalle`}
+                onClick={() => setSelGoal(g.id)}
+              >
+                <span className="fixed-top">
+                  <span className="grow fixed-name">
+                    <strong>{g.name}</strong>
+                    <span className={`goal-state ${st.tone}`}>{st.label}</span>
+                  </span>
+                  <span className="fixed-amount num">{money(p.saved)}</span>
+                </span>
+                <span className="bar big" aria-hidden="true">
+                  <span style={{ width: `${p.pct}%`, background: p.state === 'overdue' ? 'var(--warn)' : p.state === 'behind' ? 'var(--amber)' : 'var(--accent)' }} />
+                </span>
+                <span className="row between muted small-text">
+                  <span>{p.pct} % de {money(g.target_amount)}</span>
+                  <span>{p.state === 'done' ? 'Alcanzada' : `Falta ${money(p.remaining)}`}</span>
+                </span>
+                <span className="fixed-next">
+                  <span className="fixed-date">
+                    <span className="muted small-text">{g.target_date ? 'Fecha objetivo' : 'Sin fecha límite'}</span>
+                    <strong>{g.target_date ? shortDate(g.target_date) : 'Agrega una fecha'}</strong>
+                  </span>
+                  {p.perMonth && p.state !== 'done' && <span className="pill fixed-when">{money(p.perMonth)}/mes</span>}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {selRow && (
+        <Modal label={`Detalle de ${selRow.g.name}`} onClose={closeGoal}>
+          {renderGoal(selRow)}
+        </Modal>
+      )}
+      </Collapsibles>
     </main>
   )
 }

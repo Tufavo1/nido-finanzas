@@ -29,7 +29,7 @@ export default function ResetPassword({ onDone }: { onDone: () => void }) {
   async function submit(e: FormEvent) {
     e.preventDefault()
     if (strength < 2) {
-      setError('Usa al menos 10 caracteres y que no sea tan obvia.')
+      setError('Usa al menos 10 caracteres, con letras y números, y que no sea tan obvia.')
       return
     }
     if (pw !== again) {

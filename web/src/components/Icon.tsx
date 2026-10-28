@@ -56,6 +56,12 @@ const PATHS = {
       <path d="M12 11v6M12 7.5h.01" />
     </>
   ),
+  help: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.9-1.1 1.8M12 16.5h.01" />
+    </>
+  ),
   chevD: <path d="M6 9l6 6 6-6" />,
   pause: <path d="M9 5v14M15 5v14" />,
   play: <path d="M7 5l12 7-12 7z" />,

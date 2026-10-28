@@ -7,16 +7,25 @@ import { resolveScope, scopeExpenses } from '../lib/scope'
 import type { Scope } from '../lib/scope'
 import Avatar from '../components/Avatar'
 import Icon from '../components/Icon'
-import Intro from '../components/Intro'
+import Collapsibles from '../components/Collapsibles'
+import SectionHead from '../components/SectionHead'
 import { money, todayISO } from '../lib/format'
+import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
 import { computeMetrics } from '../lib/metrics'
 import { groupByDay, whereItWent } from '../lib/moves'
 import { Rich } from '../lib/rich'
 import { dayHeading, digitsOnly, monthName, dots } from '../lib/ui'
 import type { Notify } from '../components/Toast'
+import Modal from '../components/Modal'
 import Spin from '../components/Spin'
 import ExpenseInsights from '../components/ExpenseInsights'
+
+/** 'dom 25' para el filtro por día */
+const shortDay = (iso: string) => {
+  const d = new Date(`${iso}T12:00:00`)
+  return `${d.toLocaleDateString('es-CL', { weekday: 'short' }).replace('.', '')} ${d.getDate()}`
+}
 
 export default function Expenses({
   hh,
@@ -56,8 +65,9 @@ export default function Expenses({
   const [openCat, setOpenCat] = useState<string | null>(null)
   const [catFilter, setCatFilter] = useState<string>('all')
   const [showAll, setShowAll] = useState(false)
+  const [dayFilter, setDayFilter] = useState<string>('all')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
 
   const members = new Map(hh.everyone.map((m) => [m.user_id, m] as const))
   const catName = new Map(data.categories.map((c) => [c.id, c.name] as const))
@@ -82,17 +92,13 @@ export default function Expenses({
   const personStats = person ? householdMetrics.people.find((p) => p.userId === person.user_id) : null
   const delta = metrics.deltaPct
 
-  const visible = catFilter === 'all' ? list : list.filter((e) => e.category_id === catFilter)
-  const groups = groupByDay(visible)
-  const PAGE = 25
-  let budgetLeft = showAll ? Infinity : PAGE
-  const shownGroups = groups
-    .map((g) => {
-      const items = g.items.slice(0, Math.max(0, budgetLeft))
-      budgetLeft -= items.length
-      return { ...g, items }
-    })
-    .filter((g) => g.items.length > 0)
+  const byCat = catFilter === 'all' ? list : list.filter((e) => e.category_id === catFilter)
+  const days = groupByDay(byCat)
+  // Si el día elegido ya no tiene gastos (por ejemplo al cambiar de categoría), se muestra todo el mes
+  const activeDay = dayFilter !== 'all' && days.some((g) => g.date === dayFilter) ? dayFilter : 'all'
+  const visible = activeDay === 'all' ? byCat : byCat.filter((e) => e.spent_on === activeDay)
+  const PAGE = 24
+  const shown = showAll ? visible : visible.slice(0, PAGE)
 
   async function saveBudget(id: string) {
     setBusy(true)
@@ -208,17 +214,134 @@ export default function Expenses({
     await data.refresh()
   }
 
+  const [selExp, setSelExp] = useState<string | null>(null)
+  const selExpRow = selExp ? list.find((e) => e.id === selExp) : undefined
+  function closeExp() {
+    setSelExp(null)
+    setEditExp(null)
+    setConfirmId(null)
+    setError(null)
+  }
+
+  const [selCat, setSelCat] = useState<string | null>(null)
+  const selCatRow = data.categories.find((c) => c.id === selCat)
+  function closeCat() {
+    setSelCat(null)
+    setEditing(null)
+    setArchiveId(null)
+    setOpenCat(null)
+    setError(null)
+  }
+
+  const renderCat = (c: HouseholdData['categories'][number]) => {
+            const s = spent.get(c.id) ?? 0
+            const hasBudget = c.monthly_budget > 0
+            const over = hasBudget && s > c.monthly_budget
+            const pct = hasBudget ? Math.min(100, Math.round((s * 100) / c.monthly_budget)) : 0
+            const share = totalSpent > 0 ? Math.round((s * 100) / totalSpent) : 0
+            const items = openCat === c.id ? whereItWent(list.filter((e) => e.category_id === c.id)) : []
+    return (
+              <div className="stack tight cat-row">
+                <div className="row between">
+                  <strong className="fixed-title">{c.name}</strong>
+                  {editing !== c.id && (
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label={`Editar la categoría ${c.name}`}
+                      onClick={() => {
+                        setEditing(c.id)
+                        setValue(String(c.monthly_budget))
+                        setNameValue(c.name)
+                        setArchiveId(null)
+                      }}
+                    >
+                      <Icon name="edit" size={20} />
+                    </button>
+                  )}
+                  <button type="button" className="icon-btn" aria-label="Cerrar" onClick={closeCat}>
+                    ✕
+                  </button>
+                </div>
+                <div className="row between">
+                  <span className={over ? 'over num strong' : 'num strong'}>{money(s)}</span>
+                  <span className="muted num small-text">{hasBudget ? `de ${money(c.monthly_budget)}` : 'sin tope definido'}</span>
+                </div>
+                {hasBudget && (
+                  <div className="bar" role="img" aria-label={`${c.name}: ${pct} % del presupuesto`}>
+                    <span style={{ width: `${pct}%`, background: over ? 'var(--warn)' : pct >= 80 ? 'var(--amber)' : 'var(--accent)' }} />
+                  </div>
+                )}
+                <span className={over ? 'line-help over' : 'line-help'}>
+                  {hasBudget
+                    ? over
+                      ? `Se pasaron por ${money(s - c.monthly_budget)}.`
+                      : `Les quedan ${money(c.monthly_budget - s)} (${100 - pct} % libre).`
+                    : 'Toca el lápiz para ponerle un tope mensual.'}
+                  {s > 0 && ` · ${share} % de todo lo gastado`}
+                </span>
+                {s > 0 && (
+                  <button type="button" className="link-btn" aria-expanded={openCat === c.id} onClick={() => setOpenCat(openCat === c.id ? null : c.id)}>
+                    {openCat === c.id ? 'Ocultar' : 'Ver en qué se fue'}
+                  </button>
+                )}
+                {openCat === c.id && (
+                  <div className="where">
+                    {items.slice(0, 6).map((it) => (
+                      <div className="row between small-text" key={it.label}>
+                        <span className="ellipsis">
+                          {it.label}
+                          {it.count > 1 && <span className="muted"> · {it.count} veces</span>}
+                        </span>
+                        <span className="num strong">{money(it.total)}</span>
+                      </div>
+                    ))}
+                    {items.length > 6 && <span className="line-help">y {items.length - 6} más en los movimientos.</span>}
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() => {
+                        setCatFilter(c.id)
+                        setShowAll(false)
+                        closeCat()
+                      }}
+                    >
+                      Ver solo estos movimientos ↓
+                    </button>
+                  </div>
+                )}
+                {editing === c.id && (
+                  <div className="stack tight">
+                    <label className="line-help" htmlFor={`cn-${c.id}`}>Nombre de la categoría</label>
+                    <input id={`cn-${c.id}`} className="input" maxLength={40} value={nameValue} onChange={(e) => setNameValue(e.target.value)} />
+                    <label className="line-help" htmlFor={`cb-${c.id}`}>Cuánto quieren gastar al mes en {c.name} (CLP)</label>
+                    <input id={`cb-${c.id}`} className="input" inputMode="numeric" placeholder="Ej. 250000" value={dots(value)} onChange={(e) => setValue(digitsOnly(e.target.value))} />
+                    <div className="row">
+                      <button type="button" className="btn small" disabled={busy} onClick={() => void saveBudget(c.id)}>
+                        {busy ? <Spin label="Guardando…" /> : 'Guardar'}
+                      </button>
+                      <button type="button" className="btn ghost small" onClick={() => setEditing(null)}>
+                        Cancelar
+                      </button>
+                    </div>
+                    <button type="button" className="btn danger small" disabled={busy} onClick={() => void archiveCategory(c.id)}>
+                      {archiveId === c.id ? '¿Seguro? Se conservan sus gastos' : 'Quitar categoría'}
+                    </button>
+                  </div>
+                )}
+              </div>
+    )
+  }
+
   return (
     <main className="screen">
+      <Collapsibles>
       <h1 className="title">Gastos</h1>
 
       <ScopeBar hh={hh} scope={who} onScope={setWho} label="Ver los gastos de" />
 
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
+
+      <SectionHead title="Resumen del mes" hint="Cuánto se gasta y a qué ritmo" />
 
       <section className="card">
         <strong>{person ? (person.user_id === hh.me.user_id ? 'Tus números' : `Números de ${person.display_name}`) : 'Números del hogar'} en {monthName(month)}</strong>
@@ -268,21 +391,19 @@ export default function Expenses({
         )}
       </section>
 
+      <SectionHead title="Análisis y presupuestos" hint="Qué dicen los números y cómo va cada categoría" />
+
       <ExpenseInsights hh={hh} data={data} month={month} who={who} />
 
-      <Intro
-        title="Presupuesto por categoría: un tope de gasto para cada cosa"
-        text="Cada categoría agrupa un tipo de gasto: supermercado, transporte, ocio. Si le pones un tope mensual, la barra te muestra cuánto llevan gastado y cuánto les queda."
-        steps={[
-          'Toca el **lápiz** de una categoría.',
-          'Escribe cuánto quieren gastar **al mes** en ella y guarda.',
-          'Mira la barra: mientras más llena, más cerca del tope. Si se pone roja, ya se pasaron.',
-          'Toca **Ver en qué se fue** para saber qué compras pesaron más.',
-        ]}
-      />
+      <SectionHead title="Presupuesto por categoría" hint="Toca una categoría para ver en qué se fue, ponerle un tope o editarla" />
 
-      <section className="card">
-        <strong>Presupuesto por categoría</strong>
+      <div className="panel-actions">
+        <button type="button" className="btn small" onClick={() => setNewCat(true)}>
+          + Nueva categoría
+        </button>
+      </div>
+
+      <div className="fixed-grid wide">
         {[...data.categories]
           .sort((a, b) => (spent.get(b.id) ?? 0) - (spent.get(a.id) ?? 0))
           .map((c) => {
@@ -291,97 +412,55 @@ export default function Expenses({
             const over = hasBudget && s > c.monthly_budget
             const pct = hasBudget ? Math.min(100, Math.round((s * 100) / c.monthly_budget)) : 0
             const share = totalSpent > 0 ? Math.round((s * 100) / totalSpent) : 0
-            const items = openCat === c.id ? whereItWent(list.filter((e) => e.category_id === c.id)) : []
             return (
-              <div key={c.id} className="stack tight cat-row">
-                <div className="row between">
-                  <strong>{c.name}</strong>
-                  {editing !== c.id && (
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      aria-label={`Editar la categoría ${c.name}`}
-                      onClick={() => {
-                        setEditing(c.id)
-                        setValue(String(c.monthly_budget))
-                        setNameValue(c.name)
-                        setArchiveId(null)
-                      }}
-                    >
-                      <Icon name="edit" size={20} />
-                    </button>
-                  )}
-                </div>
-                <div className="row between">
-                  <span className={over ? 'over num strong' : 'num strong'}>{money(s)}</span>
-                  <span className="muted num small-text">{hasBudget ? `de ${money(c.monthly_budget)}` : 'sin tope definido'}</span>
-                </div>
-                {hasBudget && (
-                  <div className="bar" role="img" aria-label={`${c.name}: ${pct} % del presupuesto`}>
-                    <span style={{ width: `${pct}%`, background: over ? 'var(--warn)' : pct >= 80 ? 'var(--amber)' : 'var(--accent)' }} />
-                  </div>
-                )}
-                <span className={over ? 'line-help over' : 'line-help'}>
-                  {hasBudget
-                    ? over
-                      ? `Se pasaron por ${money(s - c.monthly_budget)}.`
-                      : `Les quedan ${money(c.monthly_budget - s)} (${100 - pct} % libre).`
-                    : 'Toca el lápiz para ponerle un tope mensual.'}
-                  {s > 0 && ` · ${share} % de todo lo gastado`}
+              <button
+                key={c.id}
+                type="button"
+                className={`fixed-card${over ? ' soon' : ''}`}
+                aria-haspopup="dialog"
+                aria-label={`${c.name}, ${money(s)} gastado. Toca para ver el detalle`}
+                onClick={() => setSelCat(c.id)}
+              >
+                <span className="fixed-top">
+                  <span className="grow fixed-name">
+                    <strong>{c.name}</strong>
+                    <span className="muted small-text">{share} % de todo lo gastado</span>
+                  </span>
+                  <span className={over ? 'fixed-amount num over' : 'fixed-amount num'}>{money(s)}</span>
                 </span>
-                {s > 0 && (
-                  <button type="button" className="link-btn" aria-expanded={openCat === c.id} onClick={() => setOpenCat(openCat === c.id ? null : c.id)}>
-                    {openCat === c.id ? 'Ocultar' : 'Ver en qué se fue'}
-                  </button>
+                {hasBudget ? (
+                  <span className="bar" aria-hidden="true">
+                    <span style={{ width: `${pct}%`, background: over ? 'var(--warn)' : pct >= 80 ? 'var(--amber)' : 'var(--accent)' }} />
+                  </span>
+                ) : (
+                  <span className="bar" aria-hidden="true" />
                 )}
-                {openCat === c.id && (
-                  <div className="where">
-                    {items.slice(0, 6).map((it) => (
-                      <div className="row between small-text" key={it.label}>
-                        <span className="ellipsis">
-                          {it.label}
-                          {it.count > 1 && <span className="muted"> · {it.count} veces</span>}
-                        </span>
-                        <span className="num strong">{money(it.total)}</span>
-                      </div>
-                    ))}
-                    {items.length > 6 && <span className="line-help">y {items.length - 6} más en los movimientos.</span>}
-                    <button
-                      type="button"
-                      className="link-btn"
-                      onClick={() => {
-                        setCatFilter(c.id)
-                        setShowAll(false)
-                      }}
-                    >
-                      Ver solo estos movimientos ↓
-                    </button>
-                  </div>
-                )}
-                {editing === c.id && (
-                  <div className="stack tight">
-                    <label className="line-help" htmlFor={`cn-${c.id}`}>Nombre de la categoría</label>
-                    <input id={`cn-${c.id}`} className="input" maxLength={40} value={nameValue} onChange={(e) => setNameValue(e.target.value)} />
-                    <label className="line-help" htmlFor={`cb-${c.id}`}>Cuánto quieren gastar al mes en {c.name} (CLP)</label>
-                    <input id={`cb-${c.id}`} className="input" inputMode="numeric" placeholder="Ej. 250000" value={dots(value)} onChange={(e) => setValue(digitsOnly(e.target.value))} />
-                    <div className="row">
-                      <button type="button" className="btn small" disabled={busy} onClick={() => void saveBudget(c.id)}>
-                        {busy ? <Spin label="Guardando…" /> : 'Guardar'}
-                      </button>
-                      <button type="button" className="btn ghost small" onClick={() => setEditing(null)}>
-                        Cancelar
-                      </button>
-                    </div>
-                    <button type="button" className="btn danger small" disabled={busy} onClick={() => void archiveCategory(c.id)}>
-                      {archiveId === c.id ? '¿Seguro? Se conservan sus gastos' : 'Quitar categoría'}
-                    </button>
-                  </div>
-                )}
-              </div>
+                <span className="fixed-next">
+                  <span className="fixed-date">
+                    <span className="muted small-text">{hasBudget ? 'Tope mensual' : 'Sin tope definido'}</span>
+                    <strong>{hasBudget ? money(c.monthly_budget) : 'Ponle un tope'}</strong>
+                  </span>
+                  {hasBudget && (
+                    <span className={over ? 'pill fixed-when soon' : 'pill fixed-when'}>
+                      {over ? `Se pasaron ${money(s - c.monthly_budget)}` : `Quedan ${money(c.monthly_budget - s)}`}
+                    </span>
+                  )}
+                </span>
+              </button>
             )
           })}
-        {newCat ? (
-          <div className="stack tight">
+      </div>
+
+      {selCatRow && (
+        <Modal label={`Detalle de ${selCatRow.name}`} onClose={closeCat}>
+          <div className="card">{renderCat(selCatRow)}</div>
+        </Modal>
+      )}
+
+      {newCat && (
+        <Modal label="Nueva categoría" onClose={() => setNewCat(false)}>
+          <div className="card stack tight">
+            <strong className="fixed-title">Nueva categoría</strong>
             <label className="line-help" htmlFor="nc-name">Nombre de la nueva categoría</label>
             <input id="nc-name" className="input" maxLength={40} placeholder="Ej. Mascotas, Educación" value={newName} onChange={(e) => setNewName(e.target.value)} />
             <label className="line-help" htmlFor="nc-budget">Tope mensual (opcional)</label>
@@ -395,21 +474,21 @@ export default function Expenses({
               </button>
             </div>
           </div>
-        ) : (
-          <button type="button" className="btn ghost small" onClick={() => setNewCat(true)}>
-            Nueva categoría
-          </button>
-        )}
-      </section>
+        </Modal>
+      )}
 
-      <section className="card">
+      <SectionHead title="Movimientos" hint="Cada gasto anotado, para corregirlo o borrarlo" />
+
+      <section className="card wide">
         <strong>Movimientos de {monthName(month)}</strong>
         <span className="muted small-text">
           {visible.length === 0
             ? 'Sin gastos para mostrar.'
-            : `${visible.length} ${visible.length === 1 ? 'gasto' : 'gastos'} por ${money(visible.reduce((s, e) => s + e.amount, 0))}. Toca uno para corregirlo.`}
+            : `${visible.length} ${visible.length === 1 ? 'gasto' : 'gastos'} por ${money(visible.reduce((s, e) => s + e.amount, 0))}. Toca uno para ver el detalle, corregirlo o borrarlo.`}
         </span>
-        <div className="chips" role="group" aria-label="Filtrar por categoría">
+        <div className="filter-row">
+          <span className="filter-label" id="f-cat">Categoría</span>
+        <div className="chip-strip" role="group" aria-labelledby="f-cat">
           <button type="button" className="chip" aria-pressed={catFilter === 'all'} onClick={() => setCatFilter('all')}>
             Todas
           </button>
@@ -421,115 +500,176 @@ export default function Expenses({
               </button>
             ))}
         </div>
-        <div>
-          {shownGroups.map((g) => (
-            <div key={g.date} className="day-group">
-              <div className="row between day-head">
-                <strong>{dayHeading(g.date)}</strong>
-                <span className="muted num small-text">{money(g.total)}</span>
-              </div>
-              {g.items.map((e) =>
-            editExp === e.id ? (
-              <div className="stack tight item-edit" key={e.id}>
-                <input
-                  className="input"
-                  inputMode="numeric"
-                  value={dots(eAmount)}
-                  onChange={(ev) => setEAmount(digitsOnly(ev.target.value))}
-                  aria-label="Monto"
-                />
-                <input
-                  className="input"
-                  maxLength={120}
-                  value={eNote}
-                  onChange={(ev) => setENote(ev.target.value)}
-                  placeholder="Nota (opcional)"
-                  aria-label="Nota"
-                />
-                <div className="chips" role="group" aria-label="Categoría">
-                  {data.categories.map((c) => (
-                    <button key={c.id} type="button" className="chip" aria-pressed={eCat === c.id} onClick={() => setECat(c.id)}>
-                      {c.name}
-                    </button>
-                  ))}
-                </div>
-                <div className="seg" role="group" aria-label="Quién pagó">
-                  {hh.members.map((m) => (
-                    <button key={m.user_id} type="button" aria-pressed={ePaidBy === m.user_id} onClick={() => setEPaidBy(m.user_id)}>
-                      {m.display_name}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  className="input"
-                  type="date"
-                  max={todayISO()}
-                  value={eDate}
-                  onChange={(ev) => setEDate(ev.target.value)}
-                  aria-label="Fecha del gasto"
-                />
-                <div className="row between">
-                  <span>Gasto compartido</span>
-                  <button
-                    type="button"
-                    className="switch"
-                    role="switch"
-                    aria-checked={eShared}
-                    aria-label="Gasto compartido"
-                    onClick={() => setEShared((v) => !v)}
-                  />
-                </div>
-                <div className="row">
-                  <button type="button" className="btn small" disabled={busy} onClick={() => void saveEdit(e.id)}>
-                    {busy ? <Spin label="Guardando…" /> : 'Guardar'}
-                  </button>
-                  <button type="button" className="btn ghost small" onClick={() => setEditExp(null)}>
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="item" key={e.id}>
-                <Avatar name={members.get(e.paid_by)?.display_name} color={members.get(e.paid_by)?.color} />
-                <button
-                  type="button"
-                  className="item-main grow"
-                  aria-label={`Editar gasto ${e.note || catName.get(e.category_id) || ''}`}
-                  onClick={() => startEdit(e)}
-                >
-                  <div className="ellipsis strong">{e.note || catName.get(e.category_id) || 'Gasto'}</div>
-                  <div className="muted small-text">
-                    {catName.get(e.category_id) ?? 'Sin categoría'} · Pagó {members.get(e.paid_by)?.display_name ?? 'alguien'}
-                  </div>
-                  {person && (e as { fullAmount?: number }).fullAmount !== undefined && (
-                    <div className="muted small-text">{person.user_id === hh.me.user_id ? 'Tu parte' : `Parte de ${person.display_name}`} de un gasto de {money((e as { fullAmount?: number }).fullAmount!)}</div>
-                  )}
-                  <div className="tags">
-                    <span className={e.shared ? 'tag' : 'tag alt'}>{e.shared ? 'Compartido' : 'Personal'}</span>
-                    {e.recurring_id && <span className="tag">Gasto fijo</span>}
-                  </div>
-                </button>
-                <span className="num strong">{money(e.amount)}</span>
-                <button
-                  type="button"
-                  className={confirmId === e.id ? 'icon-btn confirm' : 'icon-btn'}
-                  aria-label={confirmId === e.id ? 'Confirmar borrado' : 'Borrar gasto'}
-                  onClick={() => void remove(e.id)}
-                >
-                  {confirmId === e.id ? <strong>¿Seguro?</strong> : <Icon name="trash" size={20} />}
-                </button>
-              </div>
-            ),
-              )}
-            </div>
-          ))}
         </div>
-        {!showAll && visible.length > PAGE && (
-          <button type="button" className="btn ghost small" onClick={() => setShowAll(true)}>
-            Ver los {visible.length} gastos
-          </button>
+        {days.length > 1 && (
+          <div className="filter-row">
+          <span className="filter-label" id="f-day">Día</span>
+          <div className="chip-strip" role="group" aria-labelledby="f-day">
+            <button type="button" className="chip" aria-pressed={activeDay === 'all'} onClick={() => setDayFilter('all')}>
+              Todo el mes
+            </button>
+            {days.map((g) => (
+              <button key={g.date} type="button" className="chip" aria-pressed={activeDay === g.date} aria-label={`${dayHeading(g.date)}, ${money(g.total)}`} onClick={() => setDayFilter(g.date)}>
+                <span className="cap">{shortDay(g.date)}</span>
+              </button>
+            ))}
+          </div>
+          </div>
         )}
       </section>
+
+      <div className="fixed-grid wide">
+            {shown.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                className="fixed-card"
+                aria-haspopup="dialog"
+                aria-label={`${e.note || catName.get(e.category_id) || 'Gasto'}, ${money(e.amount)}. Toca para ver el detalle`}
+                onClick={() => setSelExp(e.id)}
+              >
+                <span className="fixed-top">
+                  <Avatar name={members.get(e.paid_by)?.display_name} color={members.get(e.paid_by)?.color} size={32} />
+                  <span className="grow fixed-name">
+                    <strong>{e.note || catName.get(e.category_id) || 'Gasto'}</strong>
+                    <span className="muted small-text">
+                      {catName.get(e.category_id) ?? 'Sin categoría'} · Pagó {members.get(e.paid_by)?.display_name ?? 'alguien'}
+                    </span>
+                  </span>
+                  <span className="fixed-amount num">{money(e.amount)}</span>
+                </span>
+                <span className="fixed-next">
+                  <span className="muted small-text">{dayHeading(e.spent_on)}</span>
+                  <span className="tags">
+                    <span className={e.shared ? 'tag' : 'tag alt'}>{e.shared ? 'Compartido' : 'Personal'}</span>
+                    {e.recurring_id && <span className="tag">Gasto fijo</span>}
+                  </span>
+                </span>
+              </button>
+            ))}
+      </div>
+
+      {!showAll && visible.length > PAGE && (
+        <button type="button" className="btn ghost small wide" onClick={() => setShowAll(true)}>
+          Ver los {visible.length} gastos
+        </button>
+      )}
+
+      {selExpRow && (
+        <Modal label={`Detalle de ${selExpRow.note || 'gasto'}`} onClose={closeExp}>
+          <div className="card fixed-sheet">
+            <div className="row between">
+              <span className={selExpRow.shared ? 'tag' : 'tag alt'}>{selExpRow.shared ? 'Compartido' : 'Personal'}</span>
+              <button type="button" className="icon-btn" aria-label="Cerrar" onClick={closeExp}>
+                ✕
+              </button>
+            </div>
+            {editExp === selExpRow.id ? (
+              <>
+                <strong className="fixed-title">Editar gasto</strong>
+                <div className="stack tight">
+                  <input
+                    className="input"
+                    inputMode="numeric"
+                    value={dots(eAmount)}
+                    onChange={(ev) => setEAmount(digitsOnly(ev.target.value))}
+                    aria-label="Monto"
+                  />
+                  <input
+                    className="input"
+                    maxLength={120}
+                    value={eNote}
+                    onChange={(ev) => setENote(ev.target.value)}
+                    placeholder="Nota (opcional)"
+                    aria-label="Nota"
+                  />
+                  <div className="chips" role="group" aria-label="Categoría">
+                    {data.categories.map((c) => (
+                      <button key={c.id} type="button" className="chip" aria-pressed={eCat === c.id} onClick={() => setECat(c.id)}>
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="seg" role="group" aria-label="Quién pagó">
+                    {hh.members.map((m) => (
+                      <button key={m.user_id} type="button" aria-pressed={ePaidBy === m.user_id} onClick={() => setEPaidBy(m.user_id)}>
+                        {m.display_name}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    className="input"
+                    type="date"
+                    max={todayISO()}
+                    value={eDate}
+                    onChange={(ev) => setEDate(ev.target.value)}
+                    aria-label="Fecha del gasto"
+                  />
+                  <div className="row between">
+                    <span>Gasto compartido</span>
+                    <button
+                      type="button"
+                      className="switch"
+                      role="switch"
+                      aria-checked={eShared}
+                      aria-label="Gasto compartido"
+                      onClick={() => setEShared((v) => !v)}
+                    />
+                  </div>
+                  <div className="row">
+                    <button type="button" className="btn small" disabled={busy} onClick={() => void saveEdit(selExpRow.id)}>
+                      {busy ? <Spin label="Guardando…" /> : 'Guardar'}
+                    </button>
+                    <button type="button" className="btn ghost small" onClick={() => setEditExp(null)}>
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+
+              </>
+            ) : (
+              <>
+                <div className="fixed-hero">
+                  <strong className="fixed-title">{selExpRow.note || catName.get(selExpRow.category_id) || 'Gasto'}</strong>
+                  <span className="amount num">{money(selExpRow.amount)}</span>
+                  {person && (selExpRow as { fullAmount?: number }).fullAmount !== undefined && (
+                    <span className="muted small-text">
+                      {person.user_id === hh.me.user_id ? 'Tu parte' : `Parte de ${person.display_name}`} de un gasto de {money((selExpRow as { fullAmount?: number }).fullAmount!)}
+                    </span>
+                  )}
+                </div>
+                <dl className="fixed-facts">
+                  <div>
+                    <dt>Fecha</dt>
+                    <dd>{dayHeading(selExpRow.spent_on)}</dd>
+                  </div>
+                  <div>
+                    <dt>Categoría</dt>
+                    <dd>{catName.get(selExpRow.category_id) ?? 'Sin categoría'}</dd>
+                  </div>
+                  <div>
+                    <dt>Pagó</dt>
+                    <dd>{members.get(selExpRow.paid_by)?.display_name ?? 'Alguien'}</dd>
+                  </div>
+                  <div>
+                    <dt>Tipo</dt>
+                    <dd>{selExpRow.recurring_id ? 'Gasto fijo' : selExpRow.shared ? 'Compartido' : 'Personal'}</dd>
+                  </div>
+                </dl>
+                <div className="fixed-sheet-actions">
+                  <button type="button" className="btn small" onClick={() => startEdit(selExpRow)}>
+                    Editar
+                  </button>
+                  <button type="button" className={confirmId === selExpRow.id ? 'btn danger small' : 'btn ghost small'} onClick={() => void remove(selExpRow.id)}>
+                    {confirmId === selExpRow.id ? 'Toca otra vez para borrar' : 'Borrar'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </Modal>
+      )}
+      </Collapsibles>
     </main>
   )
 }
