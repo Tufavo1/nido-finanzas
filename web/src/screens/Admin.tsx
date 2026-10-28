@@ -3,6 +3,8 @@ import { FREE_LIMITS, adminNotes, adminRates, deleteHouseholds, fetchAdminStats,
 import type { AdminHousehold, AdminStats, AdminStorage } from '../lib/admin'
 import { TABLE_LABEL, fillForecast } from '../lib/storage'
 import { supabase } from '../lib/supabase'
+import { useToastError } from '../lib/useToastError'
+import type { Notify } from '../components/Toast'
 
 const TABS = [
   { key: 'resumen', label: 'Resumen' },
@@ -109,14 +111,13 @@ const dmy = (iso: string) => new Date(iso).toLocaleDateString('es-CL')
 const daysAgo = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000))
 
 /** Todos los hogares (menos el tuyo): se listan solo cuando el administrador lo pide */
-function Cleanup({ onChanged }: { onChanged: () => void }) {
+function Cleanup({ onChanged, onToast }: { onChanged: () => void; onToast: Notify }) {
   const [list, setList] = useState<AdminHousehold[] | null>(null)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [confirm, setConfirm] = useState(false)
   const [kicking, setKicking] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState<string | null>(null)
+  const setError = useToastError(onToast)
 
   async function load() {
     setBusy(true)
@@ -138,9 +139,7 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
     setError(null)
     try {
       const r = await deleteHouseholds([...picked])
-      setDone(
-        `Se borraron ${r.deleted} ${r.deleted === 1 ? 'hogar' : 'hogares'}${r.skipped > 0 ? ` y ${r.skipped} se omitieron por estar en uso` : ''}.`,
-      )
+      onToast(`Hogares borrados\nSe borraron **${r.deleted}** ${r.deleted === 1 ? 'hogar' : 'hogares'}${r.skipped > 0 ? ` y ${r.skipped} se omitieron por estar en uso` : ''}.`, 'info')
       onChanged()
       setList(await fetchEmptyHouseholds())
       setPicked(new Set())
@@ -160,7 +159,7 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
     setError(null)
     try {
       const r = await removeMember(householdId, ref)
-      setDone(r.household_deleted ? 'Era la única persona: se borró el hogar.' : r.removed ? 'Persona sacada del hogar.' : 'Esa persona ya no estaba en el hogar.')
+      onToast(r.household_deleted ? 'Hogar borrado\nEra la única persona.' : r.removed ? 'Persona sacada\nYa no está en el hogar.' : 'Sin cambios\nEsa persona ya no estaba en el hogar.', 'info')
       onChanged()
       setList(await fetchEmptyHouseholds())
       setPicked(new Set())
@@ -174,7 +173,6 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
   }
   const toggle = (id: string) => {
     setConfirm(false)
-    setDone(null)
     setPicked((p) => {
       const n = new Set(p)
       if (n.has(id)) n.delete(id)
@@ -276,24 +274,14 @@ function Cleanup({ onChanged }: { onChanged: () => void }) {
           </button>
         </>
       )}
-      {done && (
-        <p className="notice" role="status">
-          {done}
-        </p>
-      )}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
     </section>
   )
 }
 
-function AdminPanel({ onBack }: { onBack: () => void }) {
+function AdminPanel({ onBack, onToast }: { onBack: () => void; onToast: Notify }) {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [storage, setStorage] = useState<AdminStorage | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
   const [busy, setBusy] = useState(false)
   const [wait, setWait] = useState(0)
   const [tab, setTab] = useState<TabKey>('resumen')
@@ -314,7 +302,7 @@ function AdminPanel({ onBack }: { onBack: () => void }) {
       // Pausa entre consultas para no cargar la base del plan gratuito
       setWait(COOLDOWN_S)
     }
-  }, [])
+  }, [setError])
 
   // Una sola consulta al abrir; después solo cuando tú lo pides
   useEffect(() => {
@@ -358,11 +346,6 @@ function AdminPanel({ onBack }: { onBack: () => void }) {
         ))}
       </div>
 
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
 
       {s && rates && tab === 'resumen' && (
         <>
@@ -508,18 +491,18 @@ function AdminPanel({ onBack }: { onBack: () => void }) {
         </>
       )}
 
-      {s && tab === 'hogares' && <Cleanup onChanged={() => void load()} />}
+      {s && tab === 'hogares' && <Cleanup onChanged={() => void load()} onToast={onToast} />}
     </main>
   )
 }
 
 /** El panel exige un segundo factor (TOTP): si la sesión aún no lo verificó, se pide el código antes de mostrarlo */
-function MfaStep({ onBack, onVerified }: { onBack: () => void; onVerified: () => void }) {
+function MfaStep({ onBack, onVerified, onToast }: { onBack: () => void; onVerified: () => void; onToast: Notify }) {
   const [factorId, setFactorId] = useState<string | null>(null)
   const [enroll, setEnroll] = useState<{ id: string; qr: string; secret: string } | null>(null)
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -599,20 +582,15 @@ function MfaStep({ onBack, onVerified }: { onBack: () => void; onVerified: () =>
             </button>
           </form>
         )}
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
       </section>
     </main>
   )
 }
 
-export default function Admin({ onBack }: { onBack: () => void }) {
+export default function Admin({ onBack, onToast }: { onBack: () => void; onToast: Notify }) {
   const { status, refresh } = useAdminStatus()
-  if (status === 'ok') return <AdminPanel onBack={onBack} />
-  if (status === 'needs_mfa') return <MfaStep onBack={onBack} onVerified={refresh} />
+  if (status === 'ok') return <AdminPanel onBack={onBack} onToast={onToast} />
+  if (status === 'needs_mfa') return <MfaStep onBack={onBack} onVerified={refresh} onToast={onToast} />
   return (
     <main className="screen center-y">
       <p className="muted">Cargando…</p>

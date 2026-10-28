@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Household } from '../App'
+import SectionHead from '../components/SectionHead'
 import type { Expense, HouseholdData } from '../lib/data'
 import AlertsCard from '../components/AlertsCard'
 import SavingsCheck from '../components/SavingsCheck'
@@ -221,6 +222,8 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
         {deltaText && <span className="muted small-text">{deltaText}</span>}
       </section>
 
+      <SectionHead title="Cómo va el mes" hint="Tu ritmo de gasto, comparado con otros meses y días" />
+
       {viewExpenses.length > 0 && (
         <MonthCurveCard
           expenses={viewExpenses}
@@ -293,6 +296,10 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
         </section>
       )}
 
+      {(salaryCheck || (data.salary && data.financeReady && (view === 'all' || view === hh.me.user_id))) && (
+        <SectionHead title="Tu sueldo y tu ahorro" hint="Lo que te queda de verdad después de gastos, deudas y ahorro" />
+      )}
+
       {salaryCheck && (
         <section className={`card verdict ${salaryCheck.level}`}>
           <div className="row between">
@@ -329,6 +336,8 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
       {data.salary && data.financeReady && (view === 'all' || view === hh.me.user_id) && (
         <SavingsCheck hh={hh} data={data} month={month} onToast={onToast} onGoals={() => onGo('goals')} />
       )}
+
+      <SectionHead title={view === 'all' ? 'Cuentas entre ustedes' : 'Tu costo real'} hint="Quién pagó qué y cuánto le toca a cada uno" />
 
       {view === 'all' ? (
         <section className="card">
@@ -371,6 +380,8 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
           </section>
         )
       )}
+
+      <SectionHead title="Día a día" hint="Calendario, categorías y últimos movimientos" />
 
       <section className="card">
         <div className="row between">

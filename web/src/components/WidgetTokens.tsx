@@ -1,3 +1,5 @@
+import { useToastError } from '../lib/useToastError'
+import type { Notify } from './Toast'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import Icon from './Icon'
@@ -9,14 +11,13 @@ interface TokenRow {
   created_at: string
 }
 
-export default function WidgetTokens() {
+export default function WidgetTokens({ onToast }: { onToast: Notify }) {
   const [rows, setRows] = useState<TokenRow[]>([])
   const [label, setLabel] = useState('')
   const [fresh, setFresh] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
 
   const load = useCallback(async () => {
     const { data, error: err } = await supabase
@@ -28,7 +29,7 @@ export default function WidgetTokens() {
       return
     }
     setRows(data ?? [])
-  }, [])
+  }, [setError])
 
   useEffect(() => {
     void load()
@@ -46,7 +47,7 @@ export default function WidgetTokens() {
       return
     }
     setFresh(data)
-    setCopied(false)
+    onToast('Widget creado\nCopia el token ahora: **no se vuelve a mostrar**.')
     setLabel('')
     await load()
   }
@@ -54,7 +55,7 @@ export default function WidgetTokens() {
   async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text)
-      setCopied(true)
+      onToast('Token copiado\nPégalo en tu widget.')
     } catch {
       setError('No se pudo copiar. Selecciona el texto y cópialo a mano.')
     }
@@ -72,6 +73,7 @@ export default function WidgetTokens() {
       setError('No se pudo revocar el widget')
       return
     }
+    onToast('Widget revocado\nEse token **ya no funciona**.', 'info')
     await load()
   }
 
@@ -83,11 +85,6 @@ export default function WidgetTokens() {
         Si pierdes un teléfono, revoca su token.
       </span>
 
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
 
       {fresh && (
         <div className="stack tight">
@@ -95,7 +92,7 @@ export default function WidgetTokens() {
           <div className="token-box">{fresh}</div>
           <div className="row">
             <button type="button" className="btn small" onClick={() => void copy(fresh)}>
-              {copied ? 'Copiado' : 'Copiar token'}
+              Copiar token
             </button>
             <button type="button" className="btn ghost small" onClick={() => setFresh(null)}>
               Ya lo guardé

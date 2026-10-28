@@ -1,28 +1,23 @@
 import { useState } from 'react'
 import { BUILD_DATE, COMMIT, TAGLINE, VERSION, checkForUpdate, copyright } from '../lib/about'
 import Logo from './Logo'
+import type { Notify } from './Toast'
 
 const fmtDate = new Intl.DateTimeFormat('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
 
 /** Acerca de Contigo: versión, derechos y un gracias. */
-export default function AboutCard() {
+export default function AboutCard({ onToast }: { onToast: Notify }) {
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
 
   async function update() {
     setBusy(true)
-    setMsg(null)
     try {
       const r = await checkForUpdate()
-      setMsg(
-        r === 'updating'
-          ? 'Hay una versión nueva. La estoy instalando; la app se recargará sola.'
-          : r === 'up-to-date'
-            ? 'Ya tienes la última versión.'
-            : 'Este navegador no permite buscar actualizaciones. Recarga la página para tener la última.',
-      )
+      if (r === 'updating') onToast('Hay una versión nueva\nLa estoy instalando; la app se **recargará** sola.', 'info')
+      else if (r === 'up-to-date') onToast('Estás al día\nYa tienes la **última versión**.')
+      else onToast('No se pudo buscar\nEste navegador no lo permite. Recarga la página para tener la última.', 'warn')
     } catch {
-      setMsg('No se pudo comprobar. Revisa tu conexión e inténtalo de nuevo.')
+      onToast('No se pudo comprobar\nRevisa tu conexión e inténtalo de nuevo.', 'error')
     }
     setBusy(false)
   }
@@ -57,11 +52,6 @@ export default function AboutCard() {
       <button type="button" className="btn ghost small" disabled={busy} onClick={() => void update()}>
         {busy ? 'Buscando…' : 'Buscar actualizaciones'}
       </button>
-      {msg && (
-        <p className="notice" role="status">
-          {msg}
-        </p>
-      )}
 
       <p className="about-thanks">
         <strong>Gracias por usar Contigo.</strong> Hecho con cariño para que cuidar la plata sea cosa de a dos… o de a uno.

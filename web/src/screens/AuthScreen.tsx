@@ -33,7 +33,7 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
       return
     }
     if (mode === 'register' && strength < 2) {
-      setMsg({ text: 'Usa una contraseña de al menos 10 caracteres y no tan obvia.', error: true })
+      setMsg({ text: 'Usa una contraseña de al menos 10 caracteres, con letras y números, y no tan obvia.', error: true })
       return
     }
     setBusy(true)

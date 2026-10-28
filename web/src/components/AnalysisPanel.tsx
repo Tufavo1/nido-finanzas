@@ -1,19 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 import type { Household } from '../App'
+import Collapsibles from './Collapsibles'
+import SectionHead from './SectionHead'
 import type { HouseholdData } from '../lib/data'
-import { buildAnalysis } from '../lib/analysis'
-import type { Analysis, HistExpense } from '../lib/analysis'
-import { buildNumbers } from '../lib/numbers'
-import { buildUpcoming } from '../lib/upcoming'
-import { splitOf } from '../lib/split'
+import { useAnalysisBuild } from '../lib/useAnalysisBuild'
+import type { Analysis } from '../lib/analysis'
 import UpcomingCard from './UpcomingCard'
-import { buildPlan } from '../lib/advisor'
 import type { Plan } from '../lib/advisor'
-import { analyzeDebts } from '../lib/debtAnalysis'
 import type { Numbers } from '../lib/numbers'
 import type { Level } from '../lib/finance'
 import { money } from '../lib/format'
-import { fetchHistory } from '../lib/history'
 import { monthName } from '../lib/ui'
 import { SLICE_COLORS, levelColor } from '../lib/chartColors'
 import { Bars, Donut, Gauge } from './Charts'
@@ -340,82 +336,7 @@ function PlanCard({ plan }: { plan: Plan }) {
 
 /** Tu análisis personal: en qué se va tu plata, cómo vas y qué mejorar. Se calcula solo. */
 export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
-  const [hist, setHist] = useState<HistExpense[] | null>(null)
-  const [failed, setFailed] = useState(false)
-  const [attempt, setAttempt] = useState(0)
-  const monthId = `${month.getFullYear()}-${month.getMonth()}`
-  const householdId = hh.household.id
-
-  // Se vuelve a calcular al cambiar de mes o cuando llega un gasto nuevo
-  useEffect(() => {
-    let off = false
-    fetchHistory(householdId, new Date(month.getFullYear(), month.getMonth(), 1))
-      .then((rows) => {
-        if (off) return
-        setFailed(false)
-        setHist(rows)
-      })
-      .catch(() => {
-        if (!off) setFailed(true)
-      })
-    return () => {
-      off = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [householdId, monthId, data.expenses, attempt])
-
-  const split = useMemo(() => splitOf(hh.members), [hh.members])
-  const built = useMemo(() => {
-    if (hist === null) return null
-    const input = {
-      meId: hh.me.user_id,
-      memberCount: split,
-      goals: data.goals,
-      month,
-      history: hist,
-      categories: data.categories,
-      salary: data.salary,
-      incomes: data.incomes,
-      debts: data.debts,
-      debtPayments: data.debtPayments,
-      contributions: data.contributions,
-      recurring: data.recurring,
-    }
-    const analysis = buildAnalysis(input)
-    const numbers = buildNumbers(input, analysis)
-    // Los pagos que vienen solo tienen sentido para el mes en curso
-    const now = new Date()
-    const current = month.getFullYear() === now.getFullYear() && month.getMonth() === now.getMonth()
-    const upcoming = current
-      ? buildUpcoming({
-          now,
-          meId: hh.me.user_id,
-          split,
-          recurring: data.recurring,
-          debts: data.debts,
-          debtPayments: data.debtPayments,
-          salary: data.salary,
-          free: numbers.flow?.free ?? null,
-          variableDaily: (numbers.fixedVar?.variable ?? analysis.cost) / Math.max(now.getDate(), 1),
-        })
-      : null
-    const plan =
-      upcoming && analysis.income > 0
-        ? buildPlan({
-            now,
-            endOfMonth: upcoming.endOfMonth,
-            variableDaily: upcoming.variableDaily,
-            income: analysis.income,
-            cushion: numbers.cushion,
-            debtInsights: analyzeDebts(data.debts, data.debtPayments, now),
-            debts: data.debts,
-            debtPayments: data.debtPayments,
-            categories: analysis.slices.filter((x) => x.id !== 'otras').map((x) => ({ name: x.name, amount: x.amount })),
-          })
-        : null
-    return { a: analysis, n: numbers, u: upcoming, plan }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hist, hh.me.user_id, split, monthId, data.goals, data.categories, data.salary, data.incomes, data.debts, data.debtPayments, data.contributions, data.recurring])
+  const { built, failed, retry } = useAnalysisBuild(hh, data, month)
   const a = built?.a ?? null
   const n = built?.n ?? null
   const up = built?.u ?? null
@@ -427,7 +348,7 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
       <section className="card">
         <strong>No se pudo calcular tu análisis</strong>
         <span className="muted">Revisa tu conexión e inténtalo de nuevo.</span>
-        <button type="button" className="btn small" onClick={() => setAttempt((n) => n + 1)}>
+        <button type="button" className="btn small" onClick={retry}>
           Reintentar
         </button>
       </section>
@@ -459,7 +380,7 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
   const total = a.slices.reduce((s, x) => s + x.amount, 0)
 
   return (
-    <>
+    <Collapsibles>
       <section className="card hero" aria-label="Tu panorama">
         <div className="row between">
           <strong>Tu panorama</strong>
@@ -514,6 +435,8 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
         )}
       </section>
 
+      <SectionHead title="Este mes en números" hint="Lo que entra, lo que sale y lo que sobra" />
+
       {a.savings && (
         <section className="card" aria-label="Cuánto tendrías ahorrado">
           <strong>Si sigues así, ahorrarías</strong>
@@ -537,6 +460,8 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
       {up && <UpcomingCard u={up} />}
 
       {plan && <PlanCard plan={plan} />}
+
+      <SectionHead title="En qué se va tu plata" hint="Categorías, cambios frente al mes pasado y gastos fijos" />
 
       {a.slices.length > 0 && (
         <section className="card" aria-label="En qué se va tu plata">
@@ -568,6 +493,8 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
 
       {n.fixedVar && <FixedVarCard f={n.fixedVar} />}
 
+      <SectionHead title="Tu historial" hint="Cómo vienes en los últimos meses y cómo repartes lo que ganas" />
+
       <section className="card" aria-label="Tus últimos meses">
         <strong>Tus últimos 6 meses</strong>
         <Bars months={a.months} avg={a.avgPrev} />
@@ -592,9 +519,13 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
         </section>
       )}
 
+      {(n.debts || n.cushion) && <SectionHead title="Deudas y colchón" hint="Cuánto debes y cuánto tienes para imprevistos" />}
+
       {n.debts && <DebtsCard d={n.debts} />}
 
       {n.cushion && <CushionCard c={n.cushion} />}
+
+      <SectionHead title="Tu plan" hint="Qué conviene cambiar para llegar mejor a fin de mes" />
 
       <section className="card" aria-label="Qué puedes mejorar">
         <div className="row between">
@@ -620,6 +551,6 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
         </div>
         <span className="muted small-text">Calculado automáticamente con tus datos. Son orientaciones, no asesoría financiera.</span>
       </section>
-    </>
+    </Collapsibles>
   )
 }

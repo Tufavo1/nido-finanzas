@@ -6,22 +6,30 @@ interface Props {
   title: string
   text: string
   steps: string[]
+  /** Para controlarlo desde fuera (índice de la pestaña Ayuda) */
+  open?: boolean
+  onToggle?: () => void
+  anchor?: string
+  /** Texto bajo el título cuando está cerrado */
+  hint?: string
 }
 
 /** Ayuda de una pestaña de Finanzas, Gastos o Metas: un desplegable con para qué sirve y cómo se usa. */
-export default function Intro({ title, text, steps }: Props) {
+export default function Intro({ title, text, steps, open: openProp, onToggle, anchor, hint }: Props) {
   // Siempre parte cerrada: es ayuda, no estorba
-  const [open, setOpen] = useState(false)
-  const id = `help-${title.replace(/\W+/g, '-').toLowerCase()}`
+  const [openOwn, setOpenOwn] = useState(false)
+  const open = openProp ?? openOwn
+  const toggle = onToggle ?? (() => setOpenOwn((o) => !o))
+  const id = anchor ?? `help-${title.replace(/\W+/g, '-').toLowerCase()}`
   return (
-    <section className={open ? 'card explain help open' : 'card explain help'}>
-      <button type="button" className="help-head" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
+    <section id={anchor} className={open ? 'card explain help open' : 'card explain help'}>
+      <button type="button" className="help-head" aria-expanded={open} aria-controls={id} onClick={toggle}>
         <span className="help-mark" aria-hidden="true">
           <Icon name="info" size={18} />
         </span>
         <span className="help-title">
           <strong>{title}</strong>
-          <span className="muted small-text">{open ? 'Toca para ocultar la ayuda' : 'Toca para ver cómo se usa'}</span>
+          <span className="muted small-text">{open ? 'Toca para ocultar' : (hint ?? 'Toca para ver cómo se usa')}</span>
         </span>
         <span className="set-chev" aria-hidden="true">
           <Icon name="chevD" size={20} />

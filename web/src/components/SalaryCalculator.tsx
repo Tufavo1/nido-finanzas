@@ -1,3 +1,4 @@
+import Spin from './Spin'
 import { useState } from 'react'
 import { AFPS, CL, calcularLiquido } from '../lib/chile'
 import type { AfpId, Contrato } from '../lib/chile'
@@ -10,12 +11,20 @@ const CONTRATOS: { key: Contrato; label: string }[] = [
   { key: 'honorarios', label: 'Honorarios' },
 ]
 
-/** De sueldo bruto a líquido con los descuentos de Chile. Solo calcula: guardar el sueldo lo hace el formulario de arriba. */
-export default function SalaryCalculator({ onUse }: { onUse: (liquido: number) => void }) {
+/** De sueldo bruto a líquido con los descuentos de Chile. Calcula y, al tocar «Usar», entrega el líquido a quien la usa para guardarlo como sueldo. */
+export default function SalaryCalculator({ onUse, busy = false }: { onUse: (liquido: number) => void | boolean | Promise<boolean | void>; busy?: boolean }) {
   const [open, setOpen] = useState(false)
   const [bruto, setBruto] = useState('')
   const [contrato, setContrato] = useState<Contrato>('indefinido')
   const [afp, setAfp] = useState<AfpId>('uno')
+
+  async function use(liquido: number) {
+    if ((await onUse(liquido)) === false) return
+    setBruto('')
+    setContrato('indefinido')
+    setAfp('uno')
+    setOpen(false)
+  }
 
   if (!open) {
     return (
@@ -93,8 +102,8 @@ export default function SalaryCalculator({ onUse }: { onUse: (liquido: number) =
           {contrato === 'honorarios' && (
             <span className="muted small-text">La retención se declara en abril: según tus gastos y cotizaciones puedes recuperar parte o tener que pagar más.</span>
           )}
-          <button type="button" className="btn small" onClick={() => onUse(r.liquido)}>
-            Usar {money(r.liquido)} como mi sueldo
+          <button type="button" className="btn small" disabled={busy} onClick={() => void use(r.liquido)}>
+            {busy ? <Spin label="Guardando sueldo…" /> : `Usar ${money(r.liquido)} como mi sueldo`}
           </button>
         </div>
       )}

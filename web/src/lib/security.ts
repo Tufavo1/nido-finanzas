@@ -39,6 +39,6 @@ export function friendlyError(message: string): string {
   if (m.includes('full') || m.includes('complete')) return 'Ese hogar ya está completo.'
   if (m.includes('rate') || m.includes('too many')) return 'Demasiados intentos. Espera un momento y vuelve a probar.'
   if (m.includes('network') || m.includes('fetch')) return 'Sin conexión. Revisa tu internet e intenta de nuevo.'
-  if (m.includes('weak') || m.includes('password')) return 'Esa contraseña es muy débil. Usa al menos 10 caracteres.'
+  if (m.includes('weak') || m.includes('password')) return 'Esa contraseña es muy débil. Usa al menos 10 caracteres, con letras y números.'
   return 'Algo salió mal. Intenta de nuevo.'
 }

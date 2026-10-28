@@ -3,6 +3,7 @@ import { currentPushState, disablePush, enablePush, sendTest } from '../lib/push
 import type { PushState } from '../lib/push'
 import { setSmartNotify, smartNotifyEnabled } from '../lib/smartNotify'
 import Spin from './Spin'
+import type { Notify } from './Toast'
 
 const permission = () => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission)
 
@@ -19,12 +20,11 @@ function Row({ label, hint, on, disabled, busy, onToggle }: { label: string; hin
 }
 
 /** Dos interruptores: los avisos de tu pareja y los de la app. «Enviar prueba» solo lo ve el administrador. */
-export default function PushToggle({ isAdmin = false }: { isAdmin?: boolean }) {
+export default function PushToggle({ isAdmin = false, onToast }: { isAdmin?: boolean; onToast: Notify }) {
   const [state, setState] = useState<PushState | null>(null)
   const [smart, setSmart] = useState(smartNotifyEnabled)
   const [perm, setPerm] = useState(permission)
   const [busy, setBusy] = useState<'partner' | 'app' | 'test' | null>(null)
-  const [msg, setMsg] = useState<{ text: string; error: boolean } | null>(null)
 
   useEffect(() => {
     void currentPushState().then(setState)
@@ -32,11 +32,10 @@ export default function PushToggle({ isAdmin = false }: { isAdmin?: boolean }) {
 
   async function run(which: 'partner' | 'app' | 'test', fn: () => Promise<void>) {
     setBusy(which)
-    setMsg(null)
     try {
       await fn()
     } catch (e) {
-      setMsg({ text: e instanceof Error ? e.message : 'Algo salió mal', error: true })
+      onToast(e instanceof Error ? e.message : 'Algo salió mal', 'error')
     }
     setBusy(null)
     setState(await currentPushState())
@@ -91,17 +90,13 @@ export default function PushToggle({ isAdmin = false }: { isAdmin?: boolean }) {
           onClick={() =>
             void run('test', async () => {
               const n = await sendTest()
-              setMsg(n > 0 ? { text: 'Aviso de prueba enviado.', error: false } : { text: 'No se envió ningún aviso. Revisa los registros de la función.', error: true })
+              if (n > 0) onToast('Aviso de prueba enviado\nDebería llegarte en unos segundos.')
+              else onToast('No se envió ningún aviso\nRevisa los registros de la función.', 'error')
             })
           }
         >
           {busy === 'test' ? <Spin label="Enviando…" /> : 'Enviar prueba'}
         </button>
-      )}
-      {msg && (
-        <p className={msg.error ? 'error' : 'notice'} role="alert">
-          {msg.text}
-        </p>
       )}
     </section>
   )

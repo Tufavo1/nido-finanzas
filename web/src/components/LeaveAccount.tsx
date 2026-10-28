@@ -1,3 +1,5 @@
+import { useToastError } from '../lib/useToastError'
+import type { Notify } from './Toast'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Household } from '../App'
@@ -7,11 +9,11 @@ import { supabase } from '../lib/supabase'
 type Action = 'leave' | 'delete'
 
 /** Salir del hogar o borrar la cuenta. Siempre pide la contraseña. */
-export default function LeaveAccount({ hh, reload }: { hh: Household; reload: () => Promise<void> }) {
+export default function LeaveAccount({ hh, reload, onToast }: { hh: Household; reload: () => Promise<void>; onToast: Notify }) {
   const [action, setAction] = useState<Action | null>(null)
   const [pw, setPw] = useState('')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const setError = useToastError(onToast)
   const partner = hh.members.find((m) => m.user_id !== hh.me.user_id)
 
   const explain: Record<Action, string> = partner
@@ -37,6 +39,7 @@ export default function LeaveAccount({ hh, reload }: { hh: Household; reload: ()
         // La cuenta ya no existe: solo queda limpiar este dispositivo
         await supabase.auth.signOut({ scope: 'local' })
       } else {
+        onToast(partner ? 'Saliste del hogar\nYa no ves sus datos.' : 'Hogar borrado\nSe eliminaron todos sus datos.', 'info')
         await reload()
       }
     } catch (err) {
@@ -67,11 +70,6 @@ export default function LeaveAccount({ hh, reload }: { hh: Household; reload: ()
             <input id="danger-pw" className="input" type="password" autoComplete="current-password" required
               value={pw} onChange={(e) => setPw(e.target.value)} />
           </div>
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
           <div className="row">
             <button type="submit" className="btn danger small grow" disabled={busy || !pw}>
               {busy

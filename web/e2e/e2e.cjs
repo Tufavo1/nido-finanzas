@@ -31,7 +31,7 @@ async function newPage(browser, name, userAgent) {
   await ctx.addInitScript(() => {
     const get = Storage.prototype.getItem
     Storage.prototype.getItem = function (k) {
-      return String(k).startsWith('nido-tour-v1:') ? '1' : get.call(this, k)
+      return /^nido-(tour-v1|news-[^:]*):/.test(String(k)) ? '1' : get.call(this, k)
     }
   })
   const page = await ctx.newPage()
@@ -145,8 +145,9 @@ async function addExpense(page, digits, note) {
     assert(await about.getByText(/© 2026(–\d{4})? Dinovance\. Todos los derechos reservados\./).isVisible(), 'muestra el copyright de Dinovance')
     assert(await about.getByText('Gracias por usar Contigo.').isVisible(), 'da las gracias')
     await about.getByRole('button', { name: 'Buscar actualizaciones' }).click()
-    await about.getByRole('status').waitFor({ timeout: 10000 })
-    assert(true, 'el botón de actualizaciones responde')
+    // El resultado sale como aviso, igual que el resto de las acciones
+    await ana.locator('.toast').waitFor({ timeout: 10000 })
+    assert(true, 'el botón de actualizaciones responde con un aviso')
     const iphone = await newPage(browser, 'iphone', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1')
     await login(iphone, mail('ana'))
     await iphone.getByRole('button', { name: 'Instalar ahora' }).click()
