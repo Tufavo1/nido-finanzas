@@ -1,38 +1,30 @@
 import ScreenHelp from '../components/ScreenHelp'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { createPortal } from 'react-dom'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import AnalysisPanel from '../components/AnalysisPanel'
 import IncomesCard from '../components/IncomesCard'
+import Icon from '../components/Icon'
 import Modal from '../components/Modal'
-import Collapsibles from '../components/Collapsibles'
 import SectionHead from '../components/SectionHead'
 import RecurringPanel from '../components/RecurringPanel'
 import SalaryCalculator from '../components/SalaryCalculator'
-import DebtSimulator from '../components/DebtSimulator'
-import { monthKey as monthKeyOf, myShare } from '../lib/analysis'
 import SavingsCheck from '../components/SavingsCheck'
-import { savedInMonth } from '../lib/goals'
 import { isCustomSplit, percentOf, splitOf } from '../lib/split'
 import ScopeBar from '../components/ScopeBar'
 import { resolveScope, scopeDebts, scopeDebtShares } from '../lib/scope'
 import type { Scope } from '../lib/scope'
-import { monthlyFixedTotal, pendingFixedThisMonth } from '../lib/upcoming'
-import { analyzeSalary, monthIncome, monthsToPayoff, myDebtShare, summarizeDebts, typicalMonth } from '../lib/finance'
-import type { DebtView, Finding } from '../lib/finance'
+import { monthIncome, monthsToPayoff, summarizeDebts } from '../lib/finance'
+import type { DebtView } from '../lib/finance'
 import { money, todayISO } from '../lib/format'
 import { computeMetrics } from '../lib/metrics'
 import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
-import { Rich } from '../lib/rich'
-import { daysUntil, digitsOnly, inDays, longDate, memberColor, monthName, nextOccurrence, dots } from '../lib/ui'
+import { daysUntil, digitsOnly, inDays, longDate, monthName, nextOccurrence, dots } from '../lib/ui'
 import type { Notify } from '../components/Toast'
 import type { MoneySection } from '../lib/engine'
 import Spin from '../components/Spin'
-import DebtInsights from '../components/DebtInsights'
-import BankRates from '../components/BankRates'
 import DebtGuidedForm from '../components/DebtGuidedForm'
 
 interface Props {
@@ -54,27 +46,6 @@ const KINDS = [
   { key: 'otro', label: 'Otra', help: 'Cualquier otra plata que se deba.' },
 ] as const
 
-const MARK = { ok: '✓', warn: '!', bad: '✕' } as const
-const LEVEL_WORD = { ok: 'Bien', warn: 'Ojo', bad: 'Mal' } as const
-
-function Findings({ list }: { list: Finding[] }) {
-  return (
-    <div className="stack tight">
-      {list.map((f, i) => (
-        <div className={`find ${f.level}`} key={i}>
-          <span className="find-mark" aria-label={LEVEL_WORD[f.level]}>
-            {MARK[f.level]}
-          </span>
-          <div>
-            <div className="strong"><Rich text={f.title} /></div>
-            <div className="muted small-text"><Rich text={f.detail} /></div>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function Meter({ pct, level }: { pct: number; level: 'ok' | 'warn' | 'bad' }) {
   const color = level === 'ok' ? 'var(--accent)' : level === 'warn' ? 'var(--amber)' : 'var(--warn)'
   return (
@@ -87,20 +58,12 @@ function Meter({ pct, level }: { pct: number; level: 'ok' | 'warn' | 'bad' }) {
 /* ------------------------------ Sueldo ------------------------------ */
 function SalaryPanel({ hh, data, month, onToast }: Props) {
   const { salary } = data
-  const [editing, setEditing] = useState(!salary)
+  const [editing, setEditing] = useState(false)
+  const [viewing, setViewing] = useState(false)
   const [amount, setAmount] = useState(salary ? String(salary.amount) : '')
   const [payDay, setPayDay] = useState(salary ? String(salary.pay_day) : '1')
   const [busy, setBusy] = useState(false)
   const setError = useToastError(onToast)
-
-  const metrics = useMemo(
-    () => computeMetrics(data.expenses, data.prevExpenses, data.categories, hh.members, month),
-    [data.expenses, data.prevExpenses, data.categories, hh.members, month],
-  )
-  const me = metrics.people.find((p) => p.userId === hh.me.user_id)
-  const split = useMemo(() => splitOf(hh.members), [hh.members])
-  const commitments = myDebtShare(data.debts, data.debtPayments, hh.me.user_id, split)
-  const isCurrent = month.getFullYear() === new Date().getFullYear() && month.getMonth() === new Date().getMonth()
 
   /** Guarda el sueldo y el día de pago; devuelve si se pudo */
   async function persist(n: number, d: number, ok: string): Promise<boolean> {
@@ -152,243 +115,143 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
     )
   }
 
-  const a = salary
-    ? analyzeSalary({
-        income: monthIncome(salary, data.incomes),
-        spent: me?.trueCost ?? 0,
-        commitments,
-        month,
-        pendingFixed: pendingFixedThisMonth(data.recurring, hh.me.user_id, split),
-        fixedBooked: data.expenses.reduce((s, e) => (e.recurring_id ? s + myShare(e, hh.me.user_id, split) : s), 0),
-        saved: savedInMonth(data.contributions, hh.me.user_id, monthKeyOf(month)),
-      })
-    : null
-
-  // Un mes completo con todos los fijos y las cuotas, para que el número no dependa de cuándo se creó cada cosa
-  const typical =
-    a && salary && isCurrent
-      ? typicalMonth({
-          income: a.income,
-          monthlyFixed: monthlyFixedTotal(data.recurring, hh.me.user_id, split),
-          commitments,
-          spent: a.spent,
-          fixedBooked: data.expenses.reduce((t, e) => (e.recurring_id ? t + myShare(e, hh.me.user_id, split) : t), 0),
-          pendingFixed: a.pendingFixed,
-          month,
-        })
-      : null
-
   return (
-    <Collapsibles>
+    <>
       <SectionHead title="Tu sueldo" hint="Lo que te depositan cada mes" />
 
-      <section className="card">
-        <div className="row between">
-          <strong>Tu sueldo mensual</strong>
-          <span className="pill">🔒 Solo tú lo ves</span>
-        </div>
-        {!editing && salary ? (
-          <>
-            <span className="amount num">{money(salary.amount)}</span>
-            <span className="muted small-text">Te pagan el día {salary.pay_day} de cada mes.</span>
-            <button type="button" className="btn ghost small" onClick={() => setEditing(true)}>
-              Cambiar mi sueldo o mi día de pago
-            </button>
-          </>
-        ) : (
-          <form className="stack tight" onSubmit={(e) => void save(e)}>
-            <span className="muted small-text">
-              {hh.members.length > 1
-                ? 'Es un dato privado: tu pareja no ve ni el monto ni los resultados de esta pantalla.'
-                : 'Es un dato privado: solo lo ves tú.'}
+      <div className="fixed-grid wide">
+        <button
+          type="button"
+          className="fixed-card"
+          aria-haspopup="dialog"
+          aria-label={salary ? `Tu sueldo, ${money(salary.amount)}. Toca para ver el detalle` : 'Agregar mi sueldo'}
+          onClick={() => (salary ? setViewing(true) : setEditing(true))}
+        >
+          <span className="fixed-top">
+            <span className="grow fixed-name">
+              <strong>Tu sueldo mensual</strong>
+              <span className="muted small-text">🔒 Solo tú lo ves</span>
             </span>
-            <div className="field">
-              <label htmlFor="salary">Sueldo líquido mensual</label>
-              <span className="line-help">Lo que te depositan, ya sin descuentos de AFP, salud ni impuestos. No incluyas bonos ocasionales.</span>
-              <input
-                id="salary" autoComplete="off"
-                className="input"
-                inputMode="numeric"
-                placeholder="Ej. 1500000"
-                value={dots(amount)}
-                onChange={(e) => setAmount(digitsOnly(e.target.value))}
-              />
-              {amount && <span className="hint num">Son unos {money(Math.round(Number(amount) / 30))} por día.</span>}
-            </div>
-            <div className="field">
-              <label htmlFor="payday">Día del mes en que te pagan</label>
-              <div className="chips" role="group" aria-label="Días de pago comunes">
-                {[1, 5, 10, 15, 25, 30].map((n) => (
-                  <button key={n} type="button" className="chip" aria-pressed={payDay === String(n)} onClick={() => setPayDay(String(n))}>
-                    Día {n}
-                  </button>
-                ))}
+            {salary && <span className="fixed-amount num">{money(salary.amount)}</span>}
+          </span>
+          <span className="fixed-next">
+            <span className="fixed-date">
+              <span className="muted small-text">{salary ? 'Te pagan' : 'Sin sueldo anotado'}</span>
+              <strong>{salary ? `El día ${salary.pay_day} de cada mes` : 'Agrega tu sueldo'}</strong>
+            </span>
+          </span>
+          <span className="card-cta" aria-hidden="true">
+            {salary ? 'Toca para ver el detalle' : 'Toca para agregarlo'} <Icon name="chevR" size={16} />
+          </span>
+        </button>
+      </div>
+
+      {viewing && salary && (
+        <Modal label="Detalle de tu sueldo" onClose={() => setViewing(false)}>
+          <div className="card cat-sheet">
+            <div className="stack cat-detail">
+              <div className="row between">
+                <strong className="cat-title">Tu sueldo</strong>
+                <button type="button" className="btn ghost small" onClick={() => setViewing(false)}>
+                  Cerrar
+                </button>
               </div>
-              <span className="line-help">Elige uno o escribe otro número del 1 al 31.</span>
-              {Number(payDay) >= 1 && Number(payDay) <= 31 && (
-                <span className="hint">
-                  Tu próximo pago: {longDate(nextOccurrence(Number(payDay)))} ({inDays(daysUntil(nextOccurrence(Number(payDay))))}).
-                </span>
-              )}
-              <input
-                id="payday"
-                className="input"
-                inputMode="numeric"
-                value={payDay}
-                onChange={(e) => setPayDay(e.target.value.replace(/\D/g, '').slice(0, 2))}
-              />
+              <div className="stack tight">
+                <span className="muted">Te depositan cada mes</span>
+                <span className="cat-big num">{money(salary.amount)}</span>
+                <span className="muted">🔒 {hh.members.length > 1 ? 'Tu pareja no ve este dato.' : 'Solo lo ves tú.'}</span>
+              </div>
+              <div className="tiles">
+                <div className="tile">
+                  <span className="muted small-text">Día de pago</span>
+                  <span className="amount-sm num">El {salary.pay_day}</span>
+                </div>
+                <div className="tile">
+                  <span className="muted small-text">Próximo pago</span>
+                  <span className="amount-sm">{inDays(daysUntil(nextOccurrence(salary.pay_day)))}</span>
+                  <span className="line-help">{longDate(nextOccurrence(salary.pay_day))}</span>
+                </div>
+                <div className="tile">
+                  <span className="muted small-text">Equivale a</span>
+                  <span className="amount-sm num">{money(Math.round(salary.amount / 30))}</span>
+                  <span className="line-help">por día</span>
+                </div>
+                {data.incomes.length > 0 && (
+                  <div className="tile">
+                    <span className="muted small-text">Con ingresos extra</span>
+                    <span className="amount-sm num">{money(monthIncome(salary, data.incomes))}</span>
+                    <span className="line-help">este mes</span>
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setViewing(false)
+                  setEditing(true)
+                }}
+              >
+                Editar información
+              </button>
             </div>
-            <div className="row">
-              <button className="btn small" type="submit" disabled={busy}>
+          </div>
+        </Modal>
+      )}
+
+      {editing && (
+        <Modal label="Editar sueldo" onClose={() => setEditing(false)}>
+          <div className="card cat-sheet">
+            <form className="stack cat-detail" onSubmit={(e) => void save(e)}>
+              <div className="row between">
+                <strong className="cat-title">{salary ? 'Editar información' : 'Agregar mi sueldo'}</strong>
+                <button type="button" className="btn ghost small" onClick={() => setEditing(false)}>
+                  Cerrar
+                </button>
+              </div>
+              <span className="muted">🔒 {hh.members.length > 1 ? 'Tu pareja no ve este dato.' : 'Solo lo ves tú.'}</span>
+              <div className="field">
+                <label htmlFor="salary">Sueldo líquido mensual</label>
+                <span className="line-help">Lo que te depositan, sin bonos ocasionales</span>
+                <input
+                  id="salary" autoComplete="off"
+                  className="input"
+                  inputMode="numeric"
+                  placeholder="Ej. 1500000"
+                  value={dots(amount)}
+                  onChange={(e) => setAmount(digitsOnly(e.target.value))}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="payday">¿Qué día del mes te pagan?</label>
+                <select id="payday" className="input" value={payDay} onChange={(e) => setPayDay(e.target.value)}>
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      Día {n}
+                    </option>
+                  ))}
+                </select>
+                {Number(payDay) >= 1 && Number(payDay) <= 31 && (
+                  <span className="hint">Próximo pago: {longDate(nextOccurrence(Number(payDay)))} ({inDays(daysUntil(nextOccurrence(Number(payDay))))})</span>
+                )}
+              </div>
+              <button className="btn" type="submit" disabled={busy}>
                 {busy ? <Spin label="Guardando sueldo…" /> : 'Guardar mi sueldo'}
               </button>
-              {salary && (
-                <button type="button" className="btn ghost small" onClick={() => setEditing(false)}>
-                  Cancelar
-                </button>
-              )}
-            </div>
-          </form>
-        )}
-      </section>
+            </form>
+          </div>
+        </Modal>
+      )}
 
       <SalaryCalculator onUse={applyCalculated} busy={busy} />
 
-      {a && salary && (
+      {salary && (
         <>
-          <SectionHead title="Cómo te queda el mes" hint="Tu sueldo frente a gastos, deudas y ahorro" />
+          <SectionHead title="Tu ahorro" hint="Lo que apartas de tu sueldo este mes" />
           <SavingsCheck hh={hh} data={data} month={month} onToast={onToast} />
-          <section className={`card verdict ${a.level}`}>
-            <span className="muted small-text">
-              Tu situación en {monthName(month)} {month.getFullYear()}
-            </span>
-            <span className="level-word">{a.level === 'ok' ? 'Vas bien' : a.level === 'warn' ? 'Ten cuidado' : 'Atención'}</span>
-            <strong className="verdict-title">{a.headline}</strong>
-            <div className="stack tight">
-              {data.incomes.length > 0 && (
-                <div className="row between">
-                  <span className="muted">Ingresos del mes (sueldo + extras)</span>
-                  <span className="num">{money(a.income)}</span>
-                </div>
-              )}
-              <div className="row between">
-                <span className="muted">Lo que has gastado</span>
-                <span className="num">
-                  {money(a.spent)} · {a.spentPct} %
-                </span>
-              </div>
-              <span className="line-help">Tus gastos personales más tu parte de los compartidos.</span>
-              <Meter pct={a.spentPct} level={a.spentPct > 90 ? 'bad' : a.spentPct > 70 ? 'warn' : 'ok'} />
-              {a.commitments > 0 && (
-                <>
-                  <div className="row between">
-                    <span className="muted">Cuotas de deudas</span>
-                    <span className="num">
-                      {money(a.commitments)} · {a.debtPct} %
-                    </span>
-                  </div>
-                  <span className="line-help">Lo que te toca pagar este mes por tus deudas.</span>
-                  <Meter pct={a.debtPct} level={a.debtPct > 40 ? 'bad' : a.debtPct > 30 ? 'warn' : 'ok'} />
-                </>
-              )}
-              {a.saved > 0 && (
-                <>
-                  <div className="row between">
-                    <span className="muted">Ahorro que apartaste</span>
-                    <span className="num">
-                      {money(a.saved)} · {a.income > 0 ? Math.round((a.saved * 100) / a.income) : 0} %
-                    </span>
-                  </div>
-                  <span className="line-help">Lo que guardaste en tus metas este mes. Sale de tu sueldo igual que un gasto.</span>
-                  <Meter pct={a.income > 0 ? Math.round((a.saved * 100) / a.income) : 0} level="ok" />
-                </>
-              )}
-              <div className="row between">
-                <strong>Hoy te sobra</strong>
-                <strong className={a.free < 0 ? 'over num' : 'num'}>{money(a.free)}</strong>
-              </div>
-              {a.free < 0 && <span className="line-help">Número negativo: ya gastaste más de lo que entró.</span>}
-              {isCurrent && a.pendingFixed > 0 && (
-                <>
-                  <div className="row between">
-                    <span className="muted">Gastos fijos que aún vencen</span>
-                    <span className="num">− {money(a.pendingFixed)}</span>
-                  </div>
-                  <span className="line-help">Son pagos que todavía no salen este mes (arriendo, suscripciones…), pero ya están comprometidos.</span>
-                  <div className="row between">
-                    <strong>Libre de verdad</strong>
-                    <strong className={a.realFree < 0 ? 'over num' : 'num'}>{money(a.realFree)}</strong>
-                  </div>
-                  <span className="line-help">Esto es lo único que puedes gastar sin dejar un pago sin cubrir.</span>
-                </>
-              )}
-              {a.projectedFree !== null && (
-                <div className="row between">
-                  <span className="muted">Te sobraría a fin de mes</span>
-                  <span className={a.projectedFree < 0 ? 'over num' : 'num'}>{money(a.projectedFree)}</span>
-                </div>
-              )}
-              {isCurrent && a.safeDaily !== null && (
-                <div className="row between">
-                  <span className="muted">Puedes gastar cada día</span>
-                  <span className="num">{money(a.safeDaily)}</span>
-                </div>
-              )}
-              {isCurrent && a.safeDaily !== null && (
-                <span className="line-help">Si gastas hasta esto por día, llegas a fin de mes sin problemas.</span>
-              )}
-            </div>
-          </section>
-
-          {typical && (typical.fixed > 0 || typical.commitments > 0) && (
-            <section className={`card verdict ${typical.left < 0 ? 'bad' : 'ok'}`}>
-              <strong>Cómo es un mes completo</strong>
-              <span className="muted small-text">
-                Con todos tus gastos fijos y tus deudas, y con lo que gastas día a día, esto es lo que te queda cada mes.
-              </span>
-              <div className="stack tight">
-                <div className="row between">
-                  <span className="muted">Ganas</span>
-                  <span className="num">{money(typical.income)}</span>
-                </div>
-                <div className="row between">
-                  <span className="muted">Gastos fijos de cada mes</span>
-                  <span className="num">− {money(typical.fixed)}</span>
-                </div>
-                <div className="row between">
-                  <span className="muted">Cuotas de deudas</span>
-                  <span className="num">− {money(typical.commitments)}</span>
-                </div>
-                <div className="row between">
-                  <span className="muted">Gastos del día a día</span>
-                  <span className="num">− {money(typical.variable)}</span>
-                </div>
-                <span className="line-help">Es lo que llevas gastado este mes sin contar los fijos, calculado para el mes completo.</span>
-                <div className="row between">
-                  <strong>Te queda en un mes normal</strong>
-                  <strong className={typical.left < 0 ? 'over num' : 'num'}>{money(typical.left)}</strong>
-                </div>
-                {typical.left < 0 && (
-                  <span className="line-help">Con tus fijos y tus deudas, un mes normal te deja en rojo. Conviene bajar algún gasto o subir los ingresos.</span>
-                )}
-                {typical.unbookedFixed > 0 && (
-                  <span className="hint">
-                    Este mes todavía no se anotaron {money(typical.unbookedFixed)} de tus gastos fijos, porque los creaste después de su día de pago. Por eso no están en lo que has gastado ni en lo que te sobra hoy. Si ya los pagaste, anótalos como un gasto normal.
-                  </span>
-                )}
-              </div>
-            </section>
-          )}
-
-          {a.findings.length > 0 && (
-            <section className="card">
-              <strong>Qué significa esto para ti</strong>
-              <Findings list={a.findings} />
-            </section>
-          )}
         </>
       )}
-    </Collapsibles>
+    </>
   )
 }
 
@@ -418,16 +281,6 @@ function DebtCard({
   const [busy, setBusy] = useState(false)
   const setError = useToastError(onToast)
   const myPays = data.debtPayments.filter((p) => p.debt_id === d.id)
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      setOpen(false)
-      setEditing(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open])
   const owner = d.owner_id ? hh.everyone.find((m) => m.user_id === d.owner_id) : null
 
   async function pay(e: FormEvent) {
@@ -548,21 +401,8 @@ function DebtCard({
         <span>Pagado {v.progressPct} %</span>
         <span>{done ? 'Saldada 🎉' : v.months === null ? 'Sin fecha de término' : `Faltan ~${v.months} ${v.months === 1 ? 'mes' : 'meses'}`}</span>
       </span>
-      <span className="fixed-next">
-        {nextDue && dueLeft !== null ? (
-          <>
-            <span className="fixed-date">
-              <span className="muted small-text">Próximo vencimiento</span>
-              <strong>{nextDue.getDate()} de {longDate(nextDue).split(' de ')[1]}</strong>
-            </span>
-            <span className={dueLeft <= 3 ? 'pill fixed-when soon' : 'pill fixed-when'}>{inDays(dueLeft)}</span>
-          </>
-        ) : (
-          <span className="fixed-date">
-            <span className="muted small-text">Cuota mensual</span>
-            <strong>{d.monthly_payment > 0 ? money(d.monthly_payment) : 'Sin definir'}</strong>
-          </span>
-        )}
+      <span className="card-cta" aria-hidden="true">
+        Toca para ver el detalle <Icon name="chevR" size={16} />
       </span>
     </button>
   )
@@ -571,165 +411,157 @@ function DebtCard({
     return (
       <>
         {card}
-        {createPortal(
-          <div className="sheet-back" role="presentation" onClick={close}>
-            <div className="sheet" onClick={(e) => e.stopPropagation()}>
-              <DebtForm hh={hh} data={data} existing={d} onClose={() => setEditing(false)} onToast={onToast} />
-            </div>
-          </div>,
-          document.body,
-        )}
+        <Modal label={`Editar ${d.name}`} onClose={close}>
+          <DebtForm hh={hh} data={data} existing={d} onClose={() => setEditing(false)} onToast={onToast} />
+        </Modal>
       </>
     )
   return (
     <>
-    {card}
-    {createPortal(
-    <div className="sheet-back" role="presentation" onClick={close}>
-    <section className="sheet card fixed-sheet" role="dialog" aria-modal="true" aria-label={`Detalle de ${d.name}`} onClick={(e) => e.stopPropagation()}>
-      <div className="row between">
-        <div className="grow">
-          <strong className="fixed-title">{d.name}</strong>
-          <div className="muted small-text">
-            {KINDS.find((k) => k.key === d.kind)?.label ?? 'Otra'} ·{' '}
-            {owner ? (
-              <>
-                <span className="dot inline" style={{ background: memberColor(owner) }} /> {owner.display_name}
-              </>
-            ) : (
-              'De los dos'
-            )}
-            {d.due_day ? ` · vence el ${d.due_day}` : ''}
-          </div>
-        </div>
-        <button type="button" className="icon-btn" aria-label="Cerrar" onClick={close}>
-          ✕
-        </button>
-      </div>
+      {card}
+      <Modal label={`Detalle de ${d.name}`} onClose={close}>
+        <div className="card cat-sheet">
+          <div className="stack cat-detail">
+            <div className="row between">
+              <span className="pill">{kindLabel} · {owner ? owner.display_name : 'De los dos'}</span>
+              <button type="button" className="btn ghost small" onClick={close}>
+                Cerrar
+              </button>
+            </div>
 
-      <div className="owe">
-        <span className="muted small-text">{done ? 'Ya no se debe nada' : 'Todavía falta pagar'}</span>
-        <span className="amount num small">{money(v.remaining)}</span>
-        <span className="muted small-text num">La deuda era de {money(d.original_amount)}</span>
-        {v.accrued > 0 && !done && (
-          <span className="muted small-text num">Incluye {money(v.accrued)} de interés que se fue sumando mes a mes desde que la anotaron.</span>
-        )}
-      </div>
-      <Meter pct={v.progressPct} level="ok" />
-      <div className="row between muted small-text">
-        <span>Llevan pagado el {v.progressPct} %</span>
-        <span>
-          {done
-            ? 'Saldada 🎉'
-            : v.months === null
-              ? 'Sin fecha de término'
-              : `Faltan ~${v.months} ${v.months === 1 ? 'mes' : 'meses'}`}
-        </span>
-      </div>
-      <div className="row between muted small-text">
-        <span>Cuota mensual: {d.monthly_payment > 0 ? money(d.monthly_payment) : 'sin definir'}</span>
-        <span>{d.monthly_rate > 0 ? `Interés: ${d.monthly_rate} % al mes` : 'Sin interés'}</span>
-      </div>
-      {!done && <DebtSimulator remaining={v.remaining} payment={d.monthly_payment} ratePct={d.monthly_rate} />}
-      {!done && d.monthly_payment > 0 && (
-        <span className={v.paidThisMonth >= d.monthly_payment ? 'notice' : 'muted small-text'}>
-          {v.paidThisMonth >= d.monthly_payment
-            ? 'La cuota de este mes ya está pagada ✓'
-            : `Este mes han pagado ${money(v.paidThisMonth)} de la cuota de ${money(d.monthly_payment)}`}
-        </span>
-      )}
-      {myPays.length > 0 && (
-        <button type="button" className="link-btn" onClick={() => setShowPays((x) => !x)}>
-          {showPays ? 'Ocultar los pagos' : `Ver los pagos anotados (${myPays.length})`}
-        </button>
-      )}
-      {showPays && (
-        <div>
-          {myPays.map((p) =>
-            editPay === p.id ? (
-              <div className="stack tight item-edit" key={p.id}>
-                <input className="input" inputMode="numeric" value={dots(pAmt)} onChange={(e) => setPAmt(digitsOnly(e.target.value))} aria-label="Monto del pago" />
-                <input className="input" type="date" max={todayISO()} value={pDate} onChange={(e) => setPDate(e.target.value)} aria-label="Fecha del pago" />
-                <div className="row">
-                  <button type="button" className="btn small" disabled={busy} onClick={() => void savePayment(p.id)}>
-                    {busy ? <Spin label="Guardando pago…" /> : 'Guardar'}
-                  </button>
-                  <button type="button" className="btn ghost small" onClick={() => setEditPay(null)}>
-                    Cancelar
-                  </button>
+            <div className="stack tight">
+              <strong className="cat-title">{d.name}</strong>
+              <span className="muted">{done ? 'Ya no se debe nada' : 'Todavía falta pagar'}</span>
+              <span className="cat-big num">{money(v.remaining)}</span>
+              <span className="muted">La deuda era de {money(d.original_amount)}</span>
+            </div>
+
+            <div className="stack tight">
+              <div className="bar cat-bar" role="img" aria-label={`${v.progressPct} % pagado`}>
+                <span style={{ width: `${Math.min(100, v.progressPct)}%`, background: 'var(--accent)' }} />
+              </div>
+              <span className="muted small-text">{v.progressPct} % pagado</span>
+            </div>
+
+            <div className="tiles">
+              <div className="tile">
+                <span className="muted small-text">Cuota al mes</span>
+                <span className="amount-sm num">{d.monthly_payment > 0 ? money(d.monthly_payment) : 'Sin definir'}</span>
+              </div>
+              <div className="tile">
+                <span className="muted small-text">Interés</span>
+                <span className="amount-sm num">{d.monthly_rate > 0 ? `${d.monthly_rate} % al mes` : 'Sin interés'}</span>
+              </div>
+              <div className="tile">
+                <span className="muted small-text">Terminan de pagar</span>
+                <span className="amount-sm">{done ? 'Saldada 🎉' : v.months === null ? 'Sin fecha' : `En ~${v.months} ${v.months === 1 ? 'mes' : 'meses'}`}</span>
+              </div>
+              <div className="tile">
+                <span className="muted small-text">Vence</span>
+                <span className="amount-sm">{d.due_day ? `El día ${d.due_day}` : 'Sin día'}</span>
+                {nextDue && dueLeft !== null && <span className="line-help">{inDays(dueLeft)}</span>}
+              </div>
+            </div>
+
+            {!done && d.monthly_payment > 0 && (
+              <p className={v.paidThisMonth >= d.monthly_payment ? 'cat-verdict' : 'muted'}>
+                {v.paidThisMonth >= d.monthly_payment
+                  ? 'La cuota de este mes ya está pagada ✓'
+                  : `Este mes han pagado ${money(v.paidThisMonth)} de ${money(d.monthly_payment)}`}
+              </p>
+            )}
+
+            {paying ? (
+              <form className="stack cat-edit" onSubmit={(e) => void pay(e)}>
+                <div className="field">
+                  <label htmlFor={`pay-${d.id}`}>¿Cuánto pagaste?</label>
+                  <input
+                    id={`pay-${d.id}`}
+                    className="input"
+                    inputMode="numeric"
+                    value={dots(value)}
+                    onChange={(e) => setValue(digitsOnly(e.target.value))}
+                  />
+                  <span className="hint">Solo anota el pago en la app; no mueve plata de tu banco.</span>
                 </div>
-              </div>
+                <button className="btn" type="submit" disabled={busy}>
+                  {busy ? <Spin label="Registrando pago…" /> : 'Guardar el pago'}
+                </button>
+                <button type="button" className="btn ghost" onClick={() => setPaying(false)}>
+                  Cancelar
+                </button>
+              </form>
             ) : (
-              <div className="item" key={p.id}>
-                <button
-                  type="button"
-                  className="item-main grow muted small-text"
-                  aria-label="Corregir pago"
-                  onClick={() => {
-                    setEditPay(p.id)
-                    setPAmt(String(p.amount))
-                    setPDate(p.paid_on)
-                  }}
-                >
-                  {hh.everyone.find((m) => m.user_id === p.paid_by)?.display_name ?? ''} · {p.paid_on.slice(8, 10)}/{p.paid_on.slice(5, 7)} · toca para corregir
+              <div className="stack tight">
+                {done ? (
+                  <button type="button" className="btn" onClick={() => void archive()}>
+                    Guardar en el archivo (ya está pagada)
+                  </button>
+                ) : (
+                  <button type="button" className="btn" onClick={() => setPaying(true)}>
+                    Anotar un pago
+                  </button>
+                )}
+                <button type="button" className="btn ghost" onClick={() => setEditing(true)}>
+                  Editar información
                 </button>
-                <span className="num">{money(p.amount)}</span>
-                <button
-                  type="button"
-                  className={payConfirm === p.id ? 'txt-btn warn' : 'txt-btn'}
-                  aria-label={payConfirm === p.id ? 'Confirmar borrado del pago' : 'Borrar pago'}
-                  onClick={() => void deletePayment(p.id)}
-                >
-                  {payConfirm === p.id ? '¿Seguro?' : 'Borrar'}
+                <button type="button" className={confirm ? 'btn danger' : 'btn ghost'} onClick={() => void removeDebt()}>
+                  {confirm ? 'Toca otra vez para borrar' : 'Borrar deuda'}
                 </button>
               </div>
-            ),
-          )}
+            )}
+
+            {myPays.length > 0 && (
+              <div className="stack tight cat-edit">
+                <button type="button" className="link-btn" aria-expanded={showPays} onClick={() => setShowPays((x) => !x)}>
+                  {showPays ? 'Ocultar los pagos' : `Ver los pagos anotados (${myPays.length})`}
+                </button>
+                {showPays &&
+                  myPays.map((p) =>
+                    editPay === p.id ? (
+                      <div className="stack tight item-edit" key={p.id}>
+                        <input className="input" inputMode="numeric" value={dots(pAmt)} onChange={(e) => setPAmt(digitsOnly(e.target.value))} aria-label="Monto del pago" />
+                        <input className="input" type="date" max={todayISO()} value={pDate} onChange={(e) => setPDate(e.target.value)} aria-label="Fecha del pago" />
+                        <div className="row">
+                          <button type="button" className="btn small" disabled={busy} onClick={() => void savePayment(p.id)}>
+                            {busy ? <Spin label="Guardando pago…" /> : 'Guardar'}
+                          </button>
+                          <button type="button" className="btn ghost small" onClick={() => setEditPay(null)}>
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="item" key={p.id}>
+                        <button
+                          type="button"
+                          className="item-main grow muted small-text"
+                          aria-label="Corregir pago"
+                          onClick={() => {
+                            setEditPay(p.id)
+                            setPAmt(String(p.amount))
+                            setPDate(p.paid_on)
+                          }}
+                        >
+                          {hh.everyone.find((m) => m.user_id === p.paid_by)?.display_name ?? ''} · {p.paid_on.slice(8, 10)}/{p.paid_on.slice(5, 7)} · toca para corregir
+                        </button>
+                        <span className="num">{money(p.amount)}</span>
+                        <button
+                          type="button"
+                          className={payConfirm === p.id ? 'txt-btn warn' : 'txt-btn'}
+                          aria-label={payConfirm === p.id ? 'Confirmar borrado del pago' : 'Borrar pago'}
+                          onClick={() => void deletePayment(p.id)}
+                        >
+                          {payConfirm === p.id ? '¿Seguro?' : 'Borrar'}
+                        </button>
+                      </div>
+                    ),
+                  )}
+              </div>
+            )}
+          </div>
         </div>
-      )}
-      {paying ? (
-        <form className="stack tight" onSubmit={(e) => void pay(e)}>
-          <div className="field">
-            <label htmlFor={`pay-${d.id}`}>¿Cuánto pagaste?</label>
-            <input
-              id={`pay-${d.id}`}
-              className="input"
-              inputMode="numeric"
-              value={dots(value)}
-              onChange={(e) => setValue(digitsOnly(e.target.value))}
-            />
-            <span className="hint">Esto solo anota el pago en la app; no mueve plata de tu banco.</span>
-          </div>
-          <div className="row">
-            <button className="btn small" type="submit" disabled={busy}>
-              {busy ? <Spin label="Registrando pago…" /> : 'Guardar el pago'}
-            </button>
-            <button type="button" className="btn ghost small" onClick={() => setPaying(false)}>
-              Cancelar
-            </button>
-          </div>
-        </form>
-      ) : done ? (
-        <button type="button" className="btn ghost small" onClick={() => void archive()}>
-          Guardar en el archivo (ya está pagada)
-        </button>
-      ) : (
-        <button type="button" className="btn small" onClick={() => setPaying(true)}>
-          Anotar un pago
-        </button>
-      )}
-      <div className="fixed-actions">
-        <button type="button" className="txt-btn" onClick={() => setEditing(true)}>
-          Editar
-        </button>
-        <button type="button" className={confirm ? 'txt-btn warn' : 'txt-btn'} onClick={() => void removeDebt()}>
-          {confirm ? 'Toca otra vez para borrar' : 'Borrar'}
-        </button>
-      </div>
-    </section>
-    </div>,
-    document.body,
-    )}
+      </Modal>
     </>
   )
 }
@@ -790,84 +622,77 @@ function DebtEditForm({
     await data.refresh()
   }
 
+  const payoff =
+    Number(fee) > 0 && Number(total) > 0 ? monthsToPayoff(Number(total), Number(fee), Number(rate.replace(',', '.') || '0') || 0) : undefined
+
   return (
-    <form className="card" onSubmit={(e) => void submit(e)}>
-      <strong>{existing ? 'Editar deuda' : 'Agregar una deuda'}</strong>
-      <div className="field">
-        <label htmlFor="d-name">1. Nombre de la deuda</label>
-        <span className="line-help">Escribe algo que la reconozcas al verla: el banco, la tienda o la persona.</span>
-        <input id="d-name" className="input" maxLength={60} placeholder="Ej. Tarjeta Banco Estado, Crédito del auto, Préstamo de mamá" value={name} onChange={(e) => setName(e.target.value)} />
-      </div>
-      <div className="field">
-        <span id="d-kind" className="strong">2. ¿Qué tipo de deuda es?</span>
-        <div className="chips" role="group" aria-labelledby="d-kind">
-          {KINDS.map((k) => (
-            <button key={k.key} type="button" className="chip" aria-pressed={kind === k.key} onClick={() => setKind(k.key)}>
-              {k.label}
-            </button>
-          ))}
-        </div>
-        <span className="line-help">{KINDS.find((k) => k.key === kind)?.help}</span>
-      </div>
-      <div className="field">
-        <span id="d-owner" className="strong">3. ¿Quién la debe?</span>
-        <div className="seg" role="group" aria-labelledby="d-owner">
-          <button type="button" aria-pressed={owner === ''} onClick={() => setOwner('')}>
-            Los dos
+    <div className="card cat-sheet">
+      <form className="stack cat-detail" onSubmit={(e) => void submit(e)}>
+        <div className="row between">
+          <strong className="cat-title">Editar información</strong>
+          <button className="btn ghost small" type="button" onClick={onClose}>
+            Cerrar
           </button>
-          {hh.members.map((m) => (
-            <button key={m.user_id} type="button" aria-pressed={owner === m.user_id} onClick={() => setOwner(m.user_id)}>
-              {m.user_id === hh.me.user_id ? 'Yo' : m.display_name}
-            </button>
-          ))}
         </div>
-        <span className="line-help">
-          {owner === ''
-            ? 'Las cuotas se reparten por igual entre los dos.'
-            : owner === hh.me.user_id
-              ? 'La cuota cuenta solo en tus cálculos.'
-              : 'La cuota cuenta solo en los cálculos de esa persona.'}
-        </span>
-      </div>
-      <div className="field">
-        <label htmlFor="d-total">{existing ? '4. Monto total de la deuda' : '4. Saldo: lo que se debe hoy'}</label>
-        <span className="line-help">Lo que falta pagar ahora, no lo que pidieron al principio. En una tarjeta, el monto total facturado.</span>
-        <input id="d-total" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800000" value={dots(total)} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
-      </div>
-      <div className="field">
-        <label htmlFor="d-fee">5. Cuota mensual (opcional)</label>
-        <span className="line-help">Lo que pagan cada mes por esta deuda. Con ella calculamos en cuántos meses terminan.</span>
-        <input id="d-fee" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 65000" value={dots(fee)} onChange={(e) => setFee(digitsOnly(e.target.value))} />
-        {Number(fee) > 0 && Number(total) > 0 && (
-          <span className="hint">
-            {(() => {
-              const m = monthsToPayoff(Number(total), Number(fee), Number(rate.replace(',', '.') || '0') || 0)
-              return m === null
-                ? 'Con esa cuota y ese interés la deuda no baja: conviene subir la cuota.'
-                : `Pagando ${money(Number(fee))} al mes terminarían en ~${m} ${m === 1 ? 'mes' : 'meses'}.`
-            })()}
-          </span>
+        <div className="field">
+          <label htmlFor="d-name">Nombre</label>
+          <input id="d-name" className="input" maxLength={60} placeholder="Ej. Tarjeta Banco Estado" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="field">
+          <label htmlFor="d-kind">Tipo de deuda</label>
+          <select id="d-kind" className="input" value={kind} onChange={(e) => setKind(e.target.value as (typeof KINDS)[number]['key'])}>
+            {KINDS.map((k) => (
+              <option key={k.key} value={k.key}>
+                {k.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {hh.members.length > 1 && (
+          <div className="field">
+            <span id="d-owner" className="strong">¿Quién la debe?</span>
+            <div className="seg" role="group" aria-labelledby="d-owner">
+              <button type="button" aria-pressed={owner === ''} onClick={() => setOwner('')}>
+                Los dos
+              </button>
+              {hh.members.map((m) => (
+                <button key={m.user_id} type="button" aria-pressed={owner === m.user_id} onClick={() => setOwner(m.user_id)}>
+                  {m.user_id === hh.me.user_id ? 'Yo' : m.display_name}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
-      </div>
-      <div className="field">
-        <label htmlFor="d-rate">6. Interés mensual en % (opcional)</label>
-        <span className="line-help">Aparece en el contrato o en la cartola como tasa mensual. Si no cobra interés, déjalo vacío.</span>
-        <input id="d-rate" autoComplete="off" className="input" inputMode="decimal" placeholder="Ej. 2,5" value={rate} onChange={(e) => setRate(e.target.value.replace(/[^\d.,]/g, '').slice(0, 5))} />
-      </div>
-      <div className="field">
-        <label htmlFor="d-due">7. Día de vencimiento (opcional)</label>
-        <span className="line-help">El día del mes en que hay que pagar la cuota. Te avisamos cuando se acerque.</span>
-        <input id="d-due" className="input" inputMode="numeric" value={due} onChange={(e) => setDue(e.target.value.replace(/\D/g, '').slice(0, 2))} />
-      </div>
-      <div className="row">
-        <button className="btn small" type="submit" disabled={busy}>
-          {busy ? <Spin label="Guardando deuda…" /> : 'Guardar deuda'}
+        <div className="field">
+          <label htmlFor="d-total">Lo que falta pagar (CLP)</label>
+          <input id="d-total" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800000" value={dots(total)} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
+        </div>
+        <div className="field">
+          <label htmlFor="d-fee">Cuota al mes (CLP)</label>
+          <input id="d-fee" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 65000" value={dots(fee)} onChange={(e) => setFee(digitsOnly(e.target.value))} />
+          {payoff === null && <span className="hint">Con esa cuota la deuda no baja: conviene subirla.</span>}
+          {typeof payoff === 'number' && <span className="hint">Terminarían de pagar en ~{payoff} {payoff === 1 ? 'mes' : 'meses'}.</span>}
+        </div>
+        <div className="field">
+          <label htmlFor="d-rate">Interés al mes (%)</label>
+          <input id="d-rate" autoComplete="off" className="input" inputMode="decimal" placeholder="Ej. 2,5 (vacío si no cobra)" value={rate} onChange={(e) => setRate(e.target.value.replace(/[^\d.,]/g, '').slice(0, 5))} />
+        </div>
+        <div className="field">
+          <label htmlFor="d-due">¿Qué día vence la cuota?</label>
+          <select id="d-due" className="input" value={due} onChange={(e) => setDue(e.target.value)}>
+            <option value="">Sin día</option>
+            {Array.from({ length: 31 }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>
+                Día {n}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button className="btn" type="submit" disabled={busy}>
+          {busy ? <Spin label="Guardando deuda…" /> : 'Guardar cambios'}
         </button>
-        <button className="btn ghost small" type="button" onClick={onClose}>
-          Cancelar
-        </button>
-      </div>
-    </form>
+      </form>
+    </div>
   )
 }
 
@@ -1000,6 +825,7 @@ function SplitSetting({ hh, data, split, custom, onToast }: Pick<Props, 'hh' | '
 
 function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
   const [adding, setAdding] = useState(false)
+  const [showAll, setShowAll] = useState(false)
   const who = resolveScope(scope, hh.members)
   const debts = scopeDebts(data.debts, who)
   const real = summarizeDebts(debts, data.debtPayments)
@@ -1009,83 +835,75 @@ function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
   const empty = debts.length === 0
   const person = hh.members.find((m) => m.user_id === who)
 
+  const PAGE = 2
+  const views = real.views
+  const shown = showAll ? views : views.slice(0, PAGE)
+
   return (
-    <Collapsibles>
-      {!adding && (
-        <div className="panel-actions">
-          <button type="button" className="btn small" onClick={() => setAdding(true)}>
-            + Agregar una deuda
-          </button>
-        </div>
-      )}
-      {adding && (
-        <Modal label="Agregar una deuda" onClose={() => setAdding(false)}>
-          <DebtForm hh={hh} data={data} onClose={() => setAdding(false)} onToast={onToast} defaultOwner={who === 'all' ? '' : who} />
-        </Modal>
-      )}
-
-      {!empty && <SectionHead title="Lo que dice el análisis" hint="Lo más importante de tus deudas, de un vistazo" />}
-
-      <DebtInsights debts={mine.debts} payments={mine.payments} part="findings" />
-
-      {empty ? null : (
-        <section className="card wide">
-          <strong>Cómo van con sus deudas</strong>
-          <Findings list={s.findings} />
-        </section>
-      )}
-
-      <SectionHead title="Resumen de deudas" hint="Cuánto falta y cuándo terminan de pagar" />
+    <>
+      <SectionHead
+        title={who === 'all' ? 'Deudas del hogar' : who === hh.me.user_id ? 'Tus deudas' : `Deudas de ${person?.display_name ?? 'tu pareja'}`}
+        hint="Cuánto falta pagar y cuándo terminan"
+      />
 
       {who === 'all' && <BetweenUs hh={hh} data={data} month={month} onToast={onToast} />}
 
       {s.remaining > 0 && (
         <section className="card">
-          <strong>{who === 'all' ? 'Resumen de lo que se debe' : who === hh.me.user_id ? 'Resumen de lo que te toca pagar' : `Resumen de lo que le toca pagar a ${person?.display_name ?? 'tu pareja'}`}</strong>
-          <span className="muted small-text">Falta pagar en total</span>
-          <span className="amount num">{money(s.remaining)}</span>
-          <div className="row between">
-            <span className="muted small-text">Cuotas al mes: {money(s.monthly)}</span>
-            <span className="muted small-text">Intereses: ~{money(s.interest)}</span>
+          <span className="muted">Falta pagar en total</span>
+          <span className="cat-big num">{money(s.remaining)}</span>
+          <div className="tiles">
+            <div className="tile">
+              <span className="muted small-text">Cuotas al mes</span>
+              <span className="amount-sm num">{money(s.monthly)}</span>
+            </div>
+            <div className="tile">
+              <span className="muted small-text">Intereses</span>
+              <span className="amount-sm num">~{money(s.interest)}</span>
+            </div>
           </div>
           {s.freeInMonths !== null && s.freeInMonths > 0 && (
             <span className="muted small-text">
-              Si siguen pagando las cuotas de ahora, terminan de pagar todo en ~{s.freeInMonths}{' '}
-              {s.freeInMonths === 1 ? 'mes' : 'meses'}.
+              Terminan de pagar todo en ~{s.freeInMonths} {s.freeInMonths === 1 ? 'mes' : 'meses'}
             </span>
           )}
         </section>
       )}
 
-      <DebtInsights debts={mine.debts} payments={mine.payments} />
-
       {empty && (
         <section className="card wide">
           <strong>{person && data.debts.length > 0 ? `${who === hh.me.user_id ? 'No tienes' : `${person.display_name} no tiene`} deudas anotadas` : 'Todavía no hay deudas anotadas'}</strong>
           <span className="muted">
-            {person && data.debts.length > 0
-              ? 'Aquí se muestran las deudas de esta persona y las que son de los dos. Cambia a Hogar para ver todas.'
-              : 'Si no deben nada, no hagas nada. Si tienen una tarjeta, un crédito o un préstamo, agrégalo para llevar el control.'}
+            {person && data.debts.length > 0 ? 'Cambia a Hogar para ver todas.' : 'Si tienen una tarjeta, un crédito o un préstamo, agrégalo para llevar el control.'}
           </span>
         </section>
       )}
 
-      {real.views.length > 0 && (
+      {views.length > 0 && (
         <>
-          <SectionHead title="Tus deudas" hint="Toca una para ver todo, anotar un pago, editarla o borrarla" />
+          <SectionHead title="Cada deuda" hint="Toca una para ver todo, anotar un pago, editarla o borrarla" />
           <div className="fixed-grid wide">
-            {real.views.map((v) => (
+            {shown.map((v) => (
               <DebtCard key={v.debt.id} v={v} hh={hh} data={data} onToast={onToast} />
             ))}
           </div>
+          {views.length > PAGE && (
+            <button type="button" className="btn ghost small wide" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
+              {showAll ? 'Ver menos deudas' : `Ver más (${views.length - PAGE} deudas más)`}
+            </button>
+          )}
         </>
       )}
 
-      <SectionHead title="Cómo pagar menos interés" hint="Tasas de bancos para comparar" />
-
-      <BankRates debts={debts} payments={data.debtPayments} />
-
-    </Collapsibles>
+      <button type="button" className="btn small wide" onClick={() => setAdding(true)}>
+        Agregar deuda
+      </button>
+      {adding && (
+        <Modal label="Agregar una deuda" onClose={() => setAdding(false)}>
+          <DebtForm hh={hh} data={data} onClose={() => setAdding(false)} onToast={onToast} defaultOwner={who === 'all' ? '' : who} />
+        </Modal>
+      )}
+    </>
   )
 }
 
@@ -1148,15 +966,24 @@ export default function Money(props: Props) {
               Deudas
             </button>
           </div>
-          {tab === 'analysis' && (privateNotice ?? <AnalysisPanel {...props} onGoSalary={() => setTab('salary')} />)}
-          {tab === 'salary' &&
+          {tab === 'analysis' &&
             (privateNotice ?? (
+              <AnalysisPanel {...props} onGoSalary={() => setTab('salary')} />
+            ))}
+          {tab === 'salary' &&
+            (who === 'all' ? (
+              <section className="card">
+                <strong>El sueldo es personal</strong>
+                <span className="muted">Cada uno ve solo el suyo. Cambia a «Yo» para ver y editar tu sueldo.</span>
+                <button type="button" className="btn small wide" onClick={() => props.onScope(props.hh.me.user_id)}>
+                  Ver mi sueldo
+                </button>
+              </section>
+            ) : privateNotice ?? (
               <>
                 <SalaryPanel {...props} />
-                <Collapsibles openFirst={false}>
-                  <SectionHead title="Ingresos extra" hint="Bonos, ventas o trabajos aparte" />
-                  <IncomesCard {...props} />
-                </Collapsibles>
+                <SectionHead title="Ingresos extra" hint="Bonos, ventas o trabajos aparte" />
+                <IncomesCard {...props} />
               </>
             ))}
           {tab === 'fixed' && <RecurringPanel {...props} />}

@@ -1,9 +1,9 @@
 import ScreenHelp from '../components/ScreenHelp'
 import { useEffect, useMemo, useState } from 'react'
 import type { Household } from '../App'
+import Modal from '../components/Modal'
 import SectionHead from '../components/SectionHead'
 import type { Expense, HouseholdData } from '../lib/data'
-import AlertsCard from '../components/AlertsCard'
 import SavingsCheck from '../components/SavingsCheck'
 import ScopeBar from '../components/ScopeBar'
 import { scopeExpenses } from '../lib/scope'
@@ -21,10 +21,11 @@ import { compact, monthGrid } from '../lib/calendar'
 import { daysLeftInMonth, money } from '../lib/format'
 import { analyzeSalary, myDebtShare } from '../lib/finance'
 import { monthKey as monthKeyOf, myShare } from '../lib/analysis'
+import { dayExpenses, deltaText, latestExpenses, monthStatus } from '../lib/homeSummary'
 import { pendingFixedThisMonth } from '../lib/upcoming'
 import { computeMetrics } from '../lib/metrics'
-import type { Alert, AlertTab, MoneySection } from '../lib/engine'
-import { memberColor, monthName, shortDate } from '../lib/ui'
+import type { AlertTab, MoneySection } from '../lib/engine'
+import { monthName, shortDate } from '../lib/ui'
 
 interface Props {
   hh: Household
@@ -32,9 +33,7 @@ interface Props {
   month: Date
   isCurrent: boolean
   onMonth: (delta: number) => void
-  alerts: Alert[]
   onGo: (tab: AlertTab, section?: MoneySection) => void
-  onSnooze: (id: string, days: number) => void
   onSettings: () => void
   onToast: Notify
   scope: Scope
@@ -52,8 +51,10 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
   )
 }
 
-export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo, onSnooze, onSettings, onToast, scope, onScope }: Props) {
+export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSettings, onToast, scope, onScope }: Props) {
   const [day, setDay] = useState<number | null>(null)
+  const [graphs, setGraphs] = useState(false)
+  const [settle, setSettle] = useState(false)
 
   const members = hh.members
   const split = useMemo(() => splitOf(members), [members])
@@ -106,21 +107,9 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
 
   const budget = data.categories.reduce((s, c) => s + c.monthly_budget, 0)
   const left = budget - all.total
-  const denom = Math.max(budget, all.total, 1)
 
-  const d = sub.deltaPct
-  const deltaText =
-    d === null
-      ? null
-      : d === 0
-        ? 'Igual que el mes pasado'
-        : `${Math.abs(d)} % ${d > 0 ? 'más' : 'menos'} que el mes pasado${isCurrent ? ' a esta fecha' : ''}`
-
-  let status = 'Define presupuestos en la pestaña Gastos.'
-  if (budget > 0) {
-    if (left >= 0) status = isCurrent ? `Quedan ${money(left)} · ${daysLeftInMonth()} días` : `Sobraron ${money(left)}`
-    else status = `Se pasaron por ${money(-left)}`
-  }
+  const deltaLine = deltaText(sub.deltaPct, isCurrent)
+  const status = monthStatus({ budget, total: all.total, isCurrent, daysLeft: daysLeftInMonth() })
 
   let settleText = 'Aún no hay gastos compartidos'
   if (all.shared > 0) {
@@ -138,8 +127,26 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
   const today = isCurrent ? new Date().getDate() : -1
 
   const cats = sub.byCategory.filter((c) => c.spent > 0 || (view === 'all' && c.budget > 0)).slice(0, 6)
-  const shown =
-    day === null ? viewExpenses.slice(0, 5) : viewExpenses.filter((e) => Number(e.spent_on.slice(8, 10)) === day)
+  const latest = latestExpenses(viewExpenses)
+  const dayList = dayExpenses(viewExpenses, day)
+  const heroLabel = view === 'all' ? 'Gastado en el mes' : view === hh.me.user_id ? 'Te corresponde en el mes' : `Le corresponde a ${byId.get(view)?.display_name ?? ''}`
+
+  function renderExpense(e: Expense) {
+    return (
+      <div className="item" key={e.id}>
+        <Avatar name={byId.get(e.paid_by)?.display_name} color={byId.get(e.paid_by)?.color} />
+        <div className="grow">
+          <div className="ellipsis">{e.note || catName.get(e.category_id) || 'Gasto'}</div>
+          <div className="muted small-text">
+            {catName.get(e.category_id) ?? 'Sin categoría'} · {shortDate(e.spent_on)}
+            {e.shared ? '' : ' · personal'}
+            {e.recurring_id ? ' · fijo' : ''}
+          </div>
+        </div>
+        <span className="num">{money(e.amount)}</span>
+      </div>
+    )
+  }
 
   function change(delta: number) {
     setDay(null)
@@ -162,8 +169,6 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
         </div>
       </div>
 
-      <AlertsCard alerts={alerts} onGo={onGo} onSnooze={onSnooze} />
-
       <div className="row between">
         <button type="button" className="icon-btn" aria-label="Mes anterior" onClick={() => change(-1)}>
           <Icon name="chevL" />
@@ -178,29 +183,21 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
 
       <ScopeBar hh={hh} scope={view} onScope={onScope} label="Ver gastos de" />
 
+      {/* 1. Lo primero: cuánto se gastó */}
       <section className="card hero">
-        <div className="hero-top">
-          <div className="grow">
-            <span className="muted">{view === 'all' ? 'Gastado en el mes' : view === hh.me.user_id ? 'Te corresponde en el mes' : `Le corresponde a ${byId.get(view)?.display_name ?? ''}`}</span>
-            <span className="amount num">{money(sub.total)}</span>
-            {view === 'all' && <span className={budget > 0 && left < 0 ? 'over' : 'muted'}>{status}</span>}
-          </div>
-          {view === 'all' && budget > 0 && members.length < 2 && <Ring pct={Math.min(100, Math.round((all.total * 100) / budget))} />}
-        </div>
-        {view === 'all' && two && <Venn people={two} />}
-        {view === 'all' && !two && (
-          <div className="bar big" aria-hidden="true">
-            {members.map((m) => (
-              <span
-                key={m.user_id}
-                style={{
-                  width: `${((all.people.find((p) => p.userId === m.user_id)?.paid ?? 0) * 100) / denom}%`,
-                  background: memberColor(m),
-                }}
-              />
-            ))}
-          </div>
+        <span className="muted">{heroLabel}</span>
+        <span className="amount num">{money(sub.total)}</span>
+        {view === 'all' && budget > 0 && (
+          <>
+            <div className="meter" aria-hidden="true">
+              <span style={{ width: `${Math.min(100, (all.total * 100) / budget)}%`, background: left < 0 ? 'var(--warn)' : all.pace === 'bien' ? 'var(--accent)' : 'var(--amber)' }} />
+              <i style={{ left: `${Math.round(all.monthProgress * 100)}%` }} />
+            </div>
+            <span className={left < 0 ? 'over strong' : 'strong'}>{status}</span>
+          </>
         )}
+        {view === 'all' && budget === 0 && <span className="muted">{status}</span>}
+        {deltaLine && <span className="muted small-text">{deltaLine}</span>}
         <div className="stats">
           <div>
             <span className="muted small-text">Compartido</span>
@@ -210,280 +207,237 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
             <span className="muted small-text">Personal</span>
             <span className="num strong">{money(sub.personal)}</span>
           </div>
-          <div>
-            <span className="muted small-text">Promedio por día</span>
-            <span className="num strong">{money(sub.avgPerDay)}</span>
-          </div>
-          {sub.projection !== null && (
-            <div>
-              <span className="muted small-text">Proyección</span>
-              <span className="num strong">{money(sub.projection)}</span>
-            </div>
-          )}
         </div>
-        {deltaText && <span className="muted small-text">{deltaText}</span>}
       </section>
-
-      <SectionHead title="Cómo va el mes" hint="Tu ritmo de gasto, comparado con otros meses y días" />
-
-      {viewExpenses.length > 0 && (
-        <MonthCurveCard
-          expenses={viewExpenses}
-          prevExpenses={viewPrev}
-          budget={view === 'all' ? budget : 0}
-          month={month}
-          isCurrent={isCurrent}
-        />
-      )}
 
       {data.expenses.length === 0 && (
         <section className="card empty">
           <Logo size={44} animate />
           <strong>Este mes aún no hay gastos</strong>
-          <span className="muted">Registra el primero con el botón + de abajo y aquí aparecerá el resumen de los dos.</span>
+          <span className="muted">Registra el primero con el botón + de abajo.</span>
         </section>
       )}
 
-      <SixMonthsCard hh={hh} data={data} month={month} who={view} />
-
-      <WeekdayCard expenses={viewExpenses} />
-
-      {sub.total > 0 && (
-        <section className="card">
-          <strong>Resumen</strong>
-          {budget > 0 && (
-            <div className="stack tight">
-              <span className={all.pace === 'pasado' ? 'over' : 'muted'}>
-                {all.pace === 'bien' && 'Van a buen ritmo: el gasto va acorde al avance del mes.'}
-                {all.pace === 'atento' && 'Ojo: llevan gastado más de lo que corresponde a esta fecha.'}
-                {all.pace === 'pasado' && 'Superaron el presupuesto total del mes.'}
-              </span>
-              <div className="meter" aria-hidden="true">
-                <span
-                  style={{
-                    width: `${Math.min(100, (all.total * 100) / budget)}%`,
-                    background: all.pace === 'bien' ? 'var(--accent)' : 'var(--warn)',
-                  }}
-                />
-                <i style={{ left: `${Math.round(all.monthProgress * 100)}%` }} />
-              </div>
-              <span className="muted small-text">La marca vertical indica cuánto del mes ya pasó.</span>
-            </div>
-          )}
-          {sub.topDay && (
-            <div className="insight">
-              <span className="muted">Día de más gasto:</span>
-              <span className="num">
-                {sub.topDay.day} de {monthName(month)} · {money(sub.topDay.amount)}
-              </span>
-            </div>
-          )}
-          {sub.byCategory[0] && sub.byCategory[0].spent > 0 && (
-            <div className="insight">
-              <span className="muted">Categoría principal:</span>
-              <span>
-                {sub.byCategory[0].name} ({Math.round((sub.byCategory[0].spent * 100) / sub.total)} %)
-              </span>
-            </div>
-          )}
-          {sub.biggest && (
-            <div className="insight">
-              <span className="muted">Gasto más grande:</span>
-              <span className="num">
-                {money(sub.biggest.amount)}
-                {sub.biggest.note ? ` · ${sub.biggest.note}` : ''}
-              </span>
-            </div>
-          )}
-        </section>
-      )}
-
-      {(salaryCheck || (data.salary && data.financeReady && (view === 'all' || view === hh.me.user_id))) && (
-        <SectionHead title="Tu sueldo y tu ahorro" hint="Lo que te queda de verdad después de gastos, deudas y ahorro" />
-      )}
-
+      {/* 2. Tu sueldo: solo para ti */}
       {salaryCheck && (
-        <section className={`card verdict ${salaryCheck.level}`}>
-          <div className="row between">
-            <strong>Tu sueldo</strong>
-            <span className="pill">🔒 Solo tú</span>
-          </div>
-          <strong className="verdict-title">{salaryCheck.headline}</strong>
-          <div className="row between">
-            <span className="muted">{salaryCheck.pendingFixed > 0 ? 'Libre de verdad' : 'Te queda'}</span>
-            <span className={salaryCheck.realFree < 0 ? 'over num' : 'num'}>{money(salaryCheck.realFree)}</span>
-          </div>
-          {salaryCheck.saved > 0 && (
-            <span className="muted small-text">Ya apartaste {money(salaryCheck.saved)} para ahorrar: está descontado de lo que te queda.</span>
-          )}
-          {salaryCheck.pendingFixed > 0 && (
-            <span className="muted small-text">
-              Hoy tienes {money(salaryCheck.free)}, pero aún vencen {money(salaryCheck.pendingFixed)} en gastos fijos este mes.
+        <button type="button" className={salaryCheck.level === 'ok' ? 'fixed-card' : 'fixed-card soon'} onClick={() => onGo('money', 'salary')}>
+          <span className="fixed-top">
+            <span className="grow fixed-name">
+              <strong>{salaryCheck.headline}</strong>
+              <span className="muted small-text">{salaryCheck.pendingFixed > 0 ? 'Libre de verdad' : 'Te queda del sueldo'}</span>
             </span>
-          )}
-          <div className="bar" aria-hidden="true">
-            <span
-              style={{
-                width: `${Math.min(100, salaryCheck.spentPct + salaryCheck.debtPct + (salaryCheck.income > 0 ? Math.round((salaryCheck.saved * 100) / salaryCheck.income) : 0))}%`,
-                background: salaryCheck.level === 'ok' ? 'var(--accent)' : salaryCheck.level === 'warn' ? 'var(--amber)' : 'var(--warn)',
-              }}
-            />
-          </div>
-          <span className="muted small-text">
-            Gastos {salaryCheck.spentPct} % + cuotas {salaryCheck.debtPct} %{salaryCheck.saved > 0 ? ` + ahorro ${salaryCheck.income > 0 ? Math.round((salaryCheck.saved * 100) / salaryCheck.income) : 0} %` : ''} de tu sueldo. Detalle en la pestaña Finanzas.
+            <span className={salaryCheck.realFree < 0 ? 'over num strong' : 'num strong'}>{money(salaryCheck.realFree)}</span>
           </span>
-        </section>
+          <span className="card-cta" aria-hidden="true">
+            🔒 Solo tú · Toca para ver el detalle <Icon name="chevR" size={16} />
+          </span>
+        </button>
       )}
 
       {data.salary && data.financeReady && (view === 'all' || view === hh.me.user_id) && (
         <SavingsCheck hh={hh} data={data} month={month} onToast={onToast} onGoals={() => onGo('goals')} />
       )}
 
-      <SectionHead title={view === 'all' ? 'Cuentas entre ustedes' : 'Tu costo real'} hint="Quién pagó qué y cuánto le toca a cada uno" />
-
-      {view === 'all' ? (
-        <section className="card">
-          <strong>Entre ustedes</strong>
-          <span className="settle">{settleText}</span>
-          <div>
-            {all.people.map((p) => (
-              <div className="item" key={p.userId}>
-                <Avatar name={p.name} color={p.color} />
-                <div className="grow">
-                  <div>{p.name}</div>
-                  <div className="muted small-text">
-                    Pagó compartido {money(p.paidShared)} · le tocaba {money(p.fairShare)}
-                  </div>
-                </div>
-                <span className="num">{money(p.trueCost)}</span>
-              </div>
-            ))}
-          </div>
-          <span className="muted small-text">
-            El número de la derecha es el costo real de cada uno: sus gastos personales más su parte de lo compartido.
+      {/* 3. Entre ustedes */}
+      {view === 'all' && members.length > 1 && (
+        <button type="button" className="fixed-card" onClick={() => setSettle(true)}>
+          <span className="fixed-top">
+            <span className="grow fixed-name">
+              <span className="muted small-text">Cuentas entre ustedes</span>
+              <strong className="settle">{settleText}</strong>
+            </span>
           </span>
-        </section>
-      ) : (
-        person && (
-          <section className="card">
-            <strong>Costo real de {person.name}</strong>
-            <Line label="Pagó en total" value={money(person.paid)} />
-            <Line label="De eso, compartido" value={money(person.paidShared)} />
-            <Line label="De eso, personal" value={money(person.paidPersonal)} />
-            <Line label="Su parte de lo compartido" value={money(person.fairShare)} />
-            <Line label="Costo real" value={money(person.trueCost)} strong />
-            <span className={person.balance < 0 ? 'over' : 'muted'}>
-              {person.balance > 0
-                ? `Le deben ${money(person.balance)}`
-                : person.balance < 0
-                  ? `Debe ${money(-person.balance)}`
-                  : 'Está a mano'}
-            </span>
-          </section>
-        )
+          <span className="card-cta" aria-hidden="true">
+            Toca para ver el detalle <Icon name="chevR" size={16} />
+          </span>
+        </button>
       )}
-
-      <SectionHead title="Día a día" hint="Calendario, categorías y últimos movimientos" />
-
-      <section className="card">
-        <div className="row between">
-          <strong>Calendario</strong>
-          {day !== null && (
-            <button type="button" className="link-btn" onClick={() => setDay(null)}>
-              Ver todo el mes
-            </button>
-          )}
-        </div>
-        <div className="cal">
-          {DOW.map((l, i) => (
-            <span key={i} className="cal-dow" aria-hidden="true">
-              {l}
+      {view !== 'all' && person && (
+        <button type="button" className="fixed-card" onClick={() => setSettle(true)}>
+          <span className="fixed-top">
+            <span className="grow fixed-name">
+              <span className="muted small-text">{view === hh.me.user_id ? 'Tu costo real' : `Costo real de ${person.name}`}</span>
+              <strong className="settle">{money(person.trueCost)}</strong>
             </span>
-          ))}
-          {cells.map((c, i) => {
-            if (c === null) return <span key={i} />
-            const amt = sub.daily.get(c) ?? 0
-            return (
-              <button
-                key={i}
-                type="button"
-                className={c === today ? 'cal-day today' : 'cal-day'}
-                aria-pressed={day === c}
-                aria-label={`Día ${c}: ${money(amt)}`}
-                style={
-                  amt > 0
-                    ? { background: `color-mix(in srgb, var(--accent) ${Math.round((amt / maxDay) * 60)}%, var(--surface-2))` }
-                    : undefined
-                }
-                onClick={() => setDay(day === c ? null : c)}
-              >
-                <span>{c}</span>
-                {amt > 0 && <small>{compact(amt)}</small>}
-              </button>
-            )
-          })}
-        </div>
-      </section>
-
-      {cats.length > 0 && (
-        <section className="card">
-          <strong>Por categoría</strong>
-          {cats.map((c) => {
-            const useBudget = view === 'all' && c.budget > 0
-            const pct = useBudget ? Math.min(100, (c.spent * 100) / c.budget) : sub.total > 0 ? (c.spent * 100) / sub.total : 0
-            const over = useBudget && c.spent > c.budget
-            return (
-              <div className="stack tight" key={c.id}>
-                <div className="row between">
-                  <span>{c.name}</span>
-                  <span className="num muted">
-                    <span className={over ? 'over' : ''}>{money(c.spent)}</span>
-                    {useBudget ? ` / ${money(c.budget)}` : ''}
-                  </span>
-                </div>
-                <div className="bar" aria-hidden="true">
-                  <span style={{ width: `${pct}%`, background: over ? 'var(--warn)' : 'var(--accent)' }} />
-                </div>
-              </div>
-            )
-          })}
-        </section>
+          </span>
+          <span className="card-cta" aria-hidden="true">
+            Toca para ver el detalle <Icon name="chevR" size={16} />
+          </span>
+        </button>
       )}
-
-      {view === 'all' && goal && (
-        <section className="card">
-          <div className="row">
-            <Ring pct={goalPct} />
-            <div className="grow">
-              <strong>{goal.name}</strong>
-              <div className="muted num">
-                {money(saved)} de {money(goal.target_amount)}
+      {settle && (
+        <Modal label="Cuentas" onClose={() => setSettle(false)}>
+          <div className="card cat-sheet">
+            <div className="stack cat-detail">
+              <div className="row between">
+                <strong className="cat-title">{view === 'all' ? 'Entre ustedes' : `Costo real de ${person?.name ?? ''}`}</strong>
+                <button type="button" className="btn ghost small" onClick={() => setSettle(false)}>
+                  Cerrar
+                </button>
               </div>
+              {view === 'all' ? (
+                <>
+                  <strong className="cat-big">{settleText}</strong>
+                  <div>
+                    {all.people.map((p) => (
+                      <div className="item" key={p.userId}>
+                        <Avatar name={p.name} color={p.color} />
+                        <div className="grow">
+                          <div>{p.name}</div>
+                          <div className="muted small-text">
+                            Pagó compartido {money(p.paidShared)} · le tocaba {money(p.fairShare)}
+                          </div>
+                        </div>
+                        <span className="num">{money(p.trueCost)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <span className="muted small-text">El número de la derecha es lo que le cuesta a cada uno: sus gastos personales más su parte de lo compartido.</span>
+                </>
+              ) : (
+                person && (
+                  <div className="stack tight">
+                    <Line label="Pagó en total" value={money(person.paid)} />
+                    <Line label="De eso, compartido" value={money(person.paidShared)} />
+                    <Line label="De eso, personal" value={money(person.paidPersonal)} />
+                    <Line label="Su parte de lo compartido" value={money(person.fairShare)} />
+                    <Line label="Costo real" value={money(person.trueCost)} strong />
+                    <span className={person.balance < 0 ? 'over' : 'muted'}>
+                      {person.balance > 0 ? `Le deben ${money(person.balance)}` : person.balance < 0 ? `Debe ${money(-person.balance)}` : 'Está a mano'}
+                    </span>
+                  </div>
+                )
+              )}
             </div>
           </div>
-        </section>
+        </Modal>
       )}
 
+      {/* 4. Meta */}
+      {view === 'all' && goal && (
+        <button type="button" className="fixed-card" onClick={() => onGo('goals')}>
+          <span className="fixed-top">
+            <Ring pct={goalPct} />
+            <span className="grow fixed-name">
+              <strong>{goal.name}</strong>
+              <span className="muted num">
+                {money(saved)} de {money(goal.target_amount)}
+              </span>
+            </span>
+          </span>
+          <span className="card-cta" aria-hidden="true">
+            Toca para ver tus metas <Icon name="chevR" size={16} />
+          </span>
+        </button>
+      )}
+
+      {/* 5. Últimos gastos */}
+      <SectionHead title="Últimos gastos" hint={view === 'all' ? 'Lo último que anotaron' : 'Lo último que te corresponde'} />
       <section className="card">
-        <strong>{day === null ? 'Últimos movimientos' : `Movimientos del ${day} de ${monthName(month)}`}</strong>
-        {shown.length === 0 && <span className="muted">Sin movimientos.</span>}
-        <div>
-          {shown.map((e) => (
-            <div className="item" key={e.id}>
-              <Avatar name={byId.get(e.paid_by)?.display_name} color={byId.get(e.paid_by)?.color} />
-              <div className="grow">
-                <div className="ellipsis">{e.note || catName.get(e.category_id) || 'Gasto'}</div>
-                <div className="muted small-text">
-                  {catName.get(e.category_id) ?? 'Sin categoría'} · {shortDate(e.spent_on)}
-                  {e.shared ? '' : ' · personal'}
-                  {e.recurring_id ? ' · fijo' : ''}
-                </div>
-              </div>
-              <span className="num">{money(e.amount)}</span>
-            </div>
-          ))}
-        </div>
+        {latest.length === 0 && <span className="muted">Todavía no hay gastos este mes.</span>}
+        <div>{latest.map(renderExpense)}</div>
+        <button type="button" className="btn ghost wide" onClick={() => onGo('expenses')}>
+          Ver todo el historial
+        </button>
       </section>
+
+      {/* 6. Gráficos: lo que menos se usa, al final */}
+      {viewExpenses.length > 0 && (
+        <>
+          <SectionHead title="Gráficos" hint="Para mirar con calma: ritmo, días y categorías" />
+
+          {!graphs ? (
+            <button type="button" className="btn ghost wide" onClick={() => setGraphs(true)}>
+              Ver gráficos
+            </button>
+          ) : (
+            <>
+              <MonthCurveCard expenses={viewExpenses} prevExpenses={viewPrev} budget={view === 'all' ? budget : 0} month={month} isCurrent={isCurrent} />
+              <SixMonthsCard hh={hh} data={data} month={month} who={view} />
+              <WeekdayCard expenses={viewExpenses} />
+
+              <section className="card">
+                <div className="row between">
+                  <strong>Calendario</strong>
+                  {day !== null && (
+                    <button type="button" className="link-btn" onClick={() => setDay(null)}>
+                      Quitar día
+                    </button>
+                  )}
+                </div>
+                <div className="cal">
+                  {DOW.map((l, i) => (
+                    <span key={i} className="cal-dow" aria-hidden="true">
+                      {l}
+                    </span>
+                  ))}
+                  {cells.map((c, i) => {
+                    if (c === null) return <span key={i} />
+                    const amt = sub.daily.get(c) ?? 0
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        className={c === today ? 'cal-day today' : 'cal-day'}
+                        aria-pressed={day === c}
+                        aria-label={`Día ${c}: ${money(amt)}`}
+                        style={amt > 0 ? { background: `color-mix(in srgb, var(--accent) ${Math.round((amt / maxDay) * 60)}%, var(--surface-2))` } : undefined}
+                        onClick={() => setDay(day === c ? null : c)}
+                      >
+                        <span>{c}</span>
+                        {amt > 0 && <small>{compact(amt)}</small>}
+                      </button>
+                    )
+                  })}
+                </div>
+                {day !== null && (
+                  <>
+                    <strong>Gastos del {day} de {monthName(month)}</strong>
+                    {dayList.length === 0 && <span className="muted">Ese día no hubo gastos.</span>}
+                    <div>{dayList.map(renderExpense)}</div>
+                  </>
+                )}
+              </section>
+
+              {cats.length > 0 && (
+                <section className="card">
+                  <strong>Por categoría</strong>
+                  {cats.map((c) => {
+                    const useBudget = view === 'all' && c.budget > 0
+                    const pct = useBudget ? Math.min(100, (c.spent * 100) / c.budget) : sub.total > 0 ? (c.spent * 100) / sub.total : 0
+                    const over = useBudget && c.spent > c.budget
+                    return (
+                      <div className="stack tight" key={c.id}>
+                        <div className="row between">
+                          <span>{c.name}</span>
+                          <span className="num muted">
+                            <span className={over ? 'over' : ''}>{money(c.spent)}</span>
+                            {useBudget ? ` / ${money(c.budget)}` : ''}
+                          </span>
+                        </div>
+                        <div className="bar" aria-hidden="true">
+                          <span style={{ width: `${pct}%`, background: over ? 'var(--warn)' : 'var(--accent)' }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </section>
+              )}
+
+              {view === 'all' && two && (
+                <section className="card">
+                  <strong>Quién pagó más</strong>
+                  <Venn people={two} />
+                </section>
+              )}
+
+              <button type="button" className="btn ghost wide" onClick={() => setGraphs(false)}>
+                Ocultar gráficos
+              </button>
+            </>
+          )}
+        </>
+      )}
     </main>
   )
 }

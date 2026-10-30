@@ -23,7 +23,27 @@ export type Database = {
           }
         },"public": {
           Tables: {
-            "categories": {
+            "ai_insights": {
+                  Row: {
+                    "created_at": string,"household_id": string,"id": string,"modelo": string,"perfil": Json,"periodo": string,"resultado": Json,"tipo": string,"user_id": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"household_id": string,"id"?: string,"modelo": string,"perfil": Json,"periodo": string,"resultado": Json,"tipo": string,"user_id"?: string | null
+                  }
+                  Update: {
+                    "created_at"?: string,"household_id"?: string,"id"?: string,"modelo"?: string,"perfil"?: Json,"periodo"?: string,"resultado"?: Json,"tipo"?: string,"user_id"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "ai_insights_household_id_fkey"
+      columns: ["household_id"]
+isOneToOne: false
+      referencedRelation: "households"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"categories": {
                   Row: {
                     "archived": boolean,"household_id": string,"id": string,"monthly_budget": number,"name": string,"position": number
                   }

@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { createPortal } from 'react-dom'
 import type { Household } from '../App'
 import type { HouseholdData, Recurring } from '../lib/data'
 import { money } from '../lib/format'
@@ -9,15 +8,12 @@ import { supabase } from '../lib/supabase'
 import { daysUntil, digitsOnly, inDays, longDate, nextOccurrence, dots } from '../lib/ui'
 import { resolveScope, scopeRecurring } from '../lib/scope'
 import { splitOf } from '../lib/split'
-import { analyzeFixed } from '../lib/fixedInsights'
-import { monthIncome } from '../lib/finance'
 import type { Scope } from '../lib/scope'
 import Avatar from './Avatar'
 import Modal from './Modal'
-import Collapsibles from './Collapsibles'
+import Icon from './Icon'
 import SectionHead from './SectionHead'
 import type { Notify } from './Toast'
-import FindingList from './FindingList'
 import Spin from './Spin'
 
 interface Props {
@@ -59,6 +55,8 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
   const [shared, setShared] = useState(true)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [showAll, setShowAll] = useState(false)
+  const [custom, setCustom] = useState(false)
   const setError = useToastError(onToast)
   // Gasto elegido para ver su detalle y, si se quiere, editarlo
   const [selId, setSelId] = useState<string | null>(null)
@@ -75,17 +73,6 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
   const people = new Map(hh.everyone.map((m) => [m.user_id, m] as const))
   const active = list.filter((r) => r.active)
   const monthly = active.reduce((s, r) => s + r.amount, 0)
-  // El sueldo es mío: solo se compara con mi parte (vista «Yo»), no con el total del hogar ni con lo de mi pareja
-  const mine = who === hh.me.user_id
-  const findings = analyzeFixed(
-    active.map((r) => ({
-      note: r.note,
-      amount: r.amount,
-      category: data.categories.find((c) => c.id === r.category_id)?.name ?? 'Sin categoría',
-      left: daysUntil(nextOccurrence(r.day_of_month)),
-    })),
-    mine ? monthIncome(data.salary, data.incomes) : null,
-  )
 
   async function run(task: () => PromiseLike<{ error: unknown }>, ok?: string) {
     setBusy(true)
@@ -137,6 +124,7 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
     )
     if (saved) {
       setNote('')
+      setCustom(false)
       setAmount('')
       setOpen(false)
     }
@@ -151,13 +139,6 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
     setEditing(false)
     setConfirmId(null)
   }
-
-  useEffect(() => {
-    if (!selId) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closeDetail()
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [selId])
 
   function select(r: Recurring) {
     setSelId(r.id)
@@ -217,261 +198,286 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
     void run(() => supabase.from('recurring_expenses').delete().eq('id', r.id), 'Gasto fijo eliminado\nYa no se anotará más.')
   }
 
+  const sorted = [...list].sort((x, y) => daysUntil(nextOccurrence(x.day_of_month)) - daysUntil(nextOccurrence(y.day_of_month)))
+  const PAGE = 2
+  const shown = showAll ? sorted : sorted.slice(0, PAGE)
+  const dayOptions = Array.from({ length: 31 }, (_, i) => i + 1)
+
   return (
-    <Collapsibles>
-        <div className="panel-actions">
-          <button type="button" className="btn small" onClick={() => setOpen(true)}>
-            + Agregar un gasto fijo
-          </button>
-        </div>
-      {open && (
-        <Modal label="Agregar un gasto fijo" onClose={() => setOpen(false)}>
-        <form className="card" onSubmit={(e) => void add(e)}>
-          <strong>Agregar un gasto fijo</strong>
-          <div className="field">
-            <label htmlFor="rec-note">1. ¿Qué pagas? Elige uno o escríbelo</label>
-            <div className="chips" role="group" aria-label="Gastos fijos comunes">
-              {IDEAS.map((i) => (
-                <button key={i.name} type="button" className="chip" aria-pressed={note === i.name} onClick={() => pickIdea(i)}>
-                  {i.name}
-                </button>
-              ))}
-            </div>
-            {idea && <span className="line-help">{idea.hint}</span>}
-            <input id="rec-note" className="input" maxLength={120} placeholder="Ej. Arriendo depto, Plan de celular de Ana"
-              value={note} onChange={(e) => setNote(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="rec-amount">2. Monto mensual (CLP)</label>
-            <span className="line-help">Lo que pagas cada mes. Si varía, pon un promedio.</span>
-            <input id="rec-amount" autoComplete="off" className="input" inputMode="numeric" placeholder={idea ? `Ej. ${idea.example}` : 'Ej. 350000'} value={dots(amount)}
-              onChange={(e) => setAmount(digitsOnly(e.target.value))} />
-            {amount && <span className="hint num">Son {money(Number(amount))} al mes, {money(Number(amount) * 12)} al año.</span>}
-          </div>
-          <div className="field">
-            <label htmlFor="rec-day">3. Día del mes en que se paga</label>
-            <div className="chips" role="group" aria-label="Días comunes">
-              {[1, 5, 10, 15, 20, 25, 30].map((n) => (
-                <button key={n} type="button" className="chip" aria-pressed={day === String(n)} onClick={() => setDay(String(n))}>
-                  Día {n}
-                </button>
-              ))}
-            </div>
-            <span className="line-help">Elige uno o escribe otro número del 1 al 31.</span>
-            <input id="rec-day" className="input" inputMode="numeric" value={day}
-              onChange={(e) => setDay(e.target.value.replace(/\D/g, '').slice(0, 2))} />
-          </div>
-          <div className="field">
-            <span id="rec-cat" className="strong">4. Categoría: ¿en qué grupo lo cuentas?</span>
-            <span className="line-help">Así aparece en tu presupuesto por categoría en la pestaña Gastos.</span>
-            <div className="chips" role="group" aria-labelledby="rec-cat">
-              {data.categories.map((c) => (
-                <button key={c.id} type="button" className="chip" aria-pressed={catId === c.id} onClick={() => setCatId(c.id)}>
-                  {c.name}
-                </button>
-              ))}
-            </div>
-          </div>
-          {!solo && (
-            <>
-              <div className="field">
-                <span id="rec-who" className="strong">5. ¿Quién lo paga?</span>
-                <div className="seg" role="group" aria-labelledby="rec-who">
-                  {hh.members.map((m) => (
-                    <button key={m.user_id} type="button" aria-pressed={paidBy === m.user_id} onClick={() => setPaidBy(m.user_id)}>
-                      {m.user_id === hh.me.user_id ? 'Yo' : m.display_name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="field">
-                <div className="row between">
-                  <span id="rec-shared" className="strong">6. ¿Se divide entre los dos?</span>
-                  <button type="button" className="switch" role="switch" aria-checked={shared} aria-labelledby="rec-shared"
-                    onClick={() => setShared((s) => !s)} />
-                </div>
-                <span className="line-help">
-                  {shared
-                    ? 'Sí: a cada uno le toca su parte (por defecto la mitad). Si lo paga uno solo, el otro le debe su parte.'
-                    : 'No: es un gasto solo de quien lo paga.'}
-                </span>
-              </div>
-            </>
-          )}
-          <span className="hint">
-            {Number(day) > 0 && Number(day) < new Date().getDate()
-              ? 'Ese día ya pasó este mes: se anotará desde el próximo mes. Si ya lo pagaste, anótalo como un gasto normal.'
-              : 'Se anotará solo cada mes en ese día. Si el mes no tiene ese día, se usa el último.'}
-          </span>
-          <div className="row">
-            <button className="btn small" type="submit" disabled={busy}>
-              {busy ? <Spin label="Guardando gasto fijo…" /> : 'Guardar gasto fijo'}
-            </button>
-            <button type="button" className="btn ghost small" onClick={() => setOpen(false)}>
-              Cancelar
-            </button>
-          </div>
-        </form>
-        </Modal>
-      )}
-
-      {active.length > 0 && <SectionHead title="Cuánto pagan cada mes" hint="El total de lo que se repite solo" />}
-
+    <>
       {active.length > 0 && (
-        <section className="card">
-          <span className="muted">{person ? `${who === hh.me.user_id ? 'Tú pagas' : `${person.display_name} paga`} cada mes` : 'Entre todos, cada mes pagan'}</span>
-          <span className="amount num">{money(monthly)}</span>
-        </section>
+        <>
+          <SectionHead
+            title={person ? (who === hh.me.user_id ? 'Tus gastos fijos' : `Gastos fijos de ${person.display_name}`) : 'Gastos fijos del hogar'}
+            hint="Lo que se paga solo cada mes"
+          />
+          <section className="card">
+            <span className="muted">{person ? `${who === hh.me.user_id ? 'Tú pagas' : `${person.display_name} paga`} cada mes` : 'Entre todos, cada mes pagan'}</span>
+            <span className="cat-big num">{money(monthly)}</span>
+          </section>
+        </>
       )}
-
-      {findings.length > 0 && (
-        <section className="card" aria-label="Análisis de los gastos fijos">
-          <strong>Lo que dice el análisis</strong>
-          <FindingList list={findings} />
-          <span className="muted small-text">Se calcula con tus gastos fijos y tu sueldo. Son orientaciones, no asesoría financiera.</span>
-        </section>
-      )}
-
 
       {person && list.length === 0 && data.recurring.length > 0 && (
         <section className="card">
           <strong>{who === hh.me.user_id ? 'No tienes' : `${person.display_name} no tiene`} gastos fijos a su nombre</strong>
-          <span className="muted">Cambia a Hogar para ver todos los gastos fijos.</span>
+          <span className="muted">Cambia a Hogar para ver todos.</span>
         </section>
       )}
 
       {list.length > 0 && (
         <>
-          <SectionHead title="Detalle de cada gasto fijo" hint="Toca uno para ver todo, editarlo, pausarlo o borrarlo" />
+          <SectionHead title="Cada gasto fijo" hint="Toca uno para ver todo, editarlo, pausarlo o borrarlo" />
           <div className="fixed-grid wide">
-            {[...list]
-              .sort((x, y) => daysUntil(nextOccurrence(x.day_of_month)) - daysUntil(nextOccurrence(y.day_of_month)))
-              .map((r) => {
-                const next = nextOccurrence(r.day_of_month)
-                const left = daysUntil(next)
-                const who2 = people.get(r.paid_by)
-                return (
-                  <button
-                    key={r.id}
-                    type="button"
-                    className={`fixed-card${r.active ? '' : ' paused'}${left <= 3 && r.active ? ' soon' : ''}`}
-                    aria-haspopup="dialog"
-                    aria-label={`${r.note}, ${money(r.amount)} al mes. Toca para ver el detalle`}
-                    onClick={() => select(r)}
-                  >
-                    <span className="fixed-top">
-                      {!solo && <Avatar name={who2?.display_name} color={who2?.color} size={32} />}
-                      <span className="grow fixed-name">
-                        <strong>{r.note}</strong>
-                        <span className="muted small-text">{catName.get(r.category_id) ?? 'Sin categoría'}</span>
+            {shown.map((r) => {
+              const next = nextOccurrence(r.day_of_month)
+              const left = daysUntil(next)
+              const who2 = people.get(r.paid_by)
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  className={`fixed-card${r.active ? '' : ' paused'}${left <= 3 && r.active ? ' soon' : ''}`}
+                  aria-haspopup="dialog"
+                  aria-label={`${r.note}, ${money(r.amount)} al mes. Toca para ver el detalle`}
+                  onClick={() => select(r)}
+                >
+                  <span className="fixed-top">
+                    <Avatar name={who2?.display_name} color={who2?.color} size={32} />
+                    <span className="grow fixed-name">
+                      <strong>{r.note}</strong>
+                      <span className="muted small-text">
+                        {catName.get(r.category_id) ?? 'Sin categoría'} · Pagó {who2?.display_name ?? 'alguien'}
                       </span>
-                      <span className="fixed-amount num">{money(r.amount)}</span>
                     </span>
-                    <span className="fixed-next">
-                      {r.active ? (
-                        <>
-                          <span className="fixed-date">
-                            <span className="muted small-text">Próximo pago</span>
-                            <strong>{next.getDate()} de {longDate(next).split(' de ')[1]}</strong>
-                          </span>
-                          <span className={left <= 3 ? 'pill fixed-when soon' : 'pill fixed-when'}>{inDays(left)}</span>
-                        </>
-                      ) : (
-                        <span className="pill">En pausa</span>
-                      )}
+                    <span className="fixed-amount num">{money(r.amount)}</span>
+                  </span>
+                  <span className="fixed-next">
+                    <span className="muted small-text">
+                      {r.active ? `Próximo pago: ${next.getDate()} de ${longDate(next).split(' de ')[1]} · ${inDays(left)}` : 'En pausa'}
                     </span>
-                  </button>
-                )
-              })}
+                    <span className="tags">
+                      <span className={r.shared ? 'tag' : 'tag alt'}>{r.shared ? 'Compartido' : 'Personal'}</span>
+                    </span>
+                  </span>
+                  <span className="card-cta" aria-hidden="true">
+                    Toca para ver el detalle <Icon name="chevR" size={16} />
+                  </span>
+                </button>
+              )
+            })}
           </div>
+          {sorted.length > PAGE && (
+            <button type="button" className="btn ghost small wide" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
+              {showAll ? 'Ver menos gastos fijos' : `Ver más (${sorted.length - PAGE} gastos fijos más)`}
+            </button>
+          )}
         </>
       )}
 
-      {selected && (
-        createPortal(
-        <div className="sheet-back" role="presentation" onClick={closeDetail}>
-          <div className="sheet card fixed-sheet" role="dialog" aria-modal="true" aria-label={`Detalle de ${selected.note}`} onClick={(e) => e.stopPropagation()}>
-            <div className="row between">
-              <span className="pill">{selected.active ? 'Se anota solo cada mes' : 'En pausa'}</span>
-              <button type="button" className="icon-btn" aria-label="Cerrar" onClick={closeDetail}>
-                ✕
-              </button>
-            </div>
-            {!editing ? (
-              <>
-                <div className="fixed-hero">
-                  <strong className="fixed-title">{selected.note}</strong>
-                  <span className="amount num">{money(selectedView?.fullAmount ?? selected.amount)}</span>
-                  <span className="muted small-text">{money((selectedView?.fullAmount ?? selected.amount) * 12)} al año</span>
+      <button type="button" className="btn small wide" onClick={() => setOpen(true)}>
+        Agregar gasto fijo
+      </button>
+
+      {open && (
+        <Modal label="Agregar gasto fijo" onClose={() => setOpen(false)}>
+          <div className="card cat-sheet">
+            <form className="stack cat-detail" onSubmit={(e) => void add(e)}>
+              <div className="row between">
+                <strong className="cat-title">Agregar gasto fijo</strong>
+                <button type="button" className="btn ghost small" onClick={() => setOpen(false)}>
+                  Cerrar
+                </button>
+              </div>
+              <div className="field">
+                <label htmlFor="rec-kind">¿Qué pagas?</label>
+                <select
+                  id="rec-kind"
+                  className="input"
+                  value={custom ? '__otro' : (idea?.name ?? '')}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    if (v === '__otro') {
+                      setCustom(true)
+                      setNote('')
+                      return
+                    }
+                    setCustom(false)
+                    const i = IDEAS.find((x) => x.name === v)
+                    if (i) pickIdea(i)
+                    else setNote('')
+                  }}
+                >
+                  <option value="">Elige uno…</option>
+                  {IDEAS.map((i) => (
+                    <option key={i.name} value={i.name}>
+                      {i.name}
+                    </option>
+                  ))}
+                  <option value="__otro">Otro (lo escribo yo)</option>
+                </select>
+              </div>
+              {custom && (
+                <div className="field">
+                  <label htmlFor="rec-note">¿Cómo se llama?</label>
+                  <input id="rec-note" className="input" maxLength={120} placeholder="Ej. Arriendo depto, Plan de celular de Ana"
+                    value={note} onChange={(e) => setNote(e.target.value)} />
                 </div>
-                <dl className="fixed-facts">
-                  <div>
-                    <dt>Próximo pago</dt>
-                    <dd>{selected.active ? `${longDate(nextOccurrence(selected.day_of_month))} (${inDays(daysUntil(nextOccurrence(selected.day_of_month)))})` : 'Pausado'}</dd>
+              )}
+              <div className="field">
+                <label htmlFor="rec-amount">Monto al mes (CLP)</label>
+                <input id="rec-amount" autoComplete="off" className="input" inputMode="numeric" placeholder={idea ? `Ej. ${idea.example}` : 'Ej. 350000'} value={dots(amount)}
+                  onChange={(e) => setAmount(digitsOnly(e.target.value))} />
+                {amount && <span className="hint num">{money(Number(amount) * 12)} al año</span>}
+              </div>
+              <div className="field">
+                <label htmlFor="rec-day">¿Qué día del mes se paga?</label>
+                <select id="rec-day" className="input" value={day} onChange={(e) => setDay(e.target.value)}>
+                  {dayOptions.map((n) => (
+                    <option key={n} value={n}>
+                      Día {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="rec-cat">Categoría</label>
+                <select id="rec-cat" className="input" value={catId} onChange={(e) => setCatId(e.target.value)}>
+                  {data.categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {!solo && (
+                <>
+                  <div className="field">
+                    <span id="rec-who" className="strong">¿Quién lo paga?</span>
+                    <div className="seg" role="group" aria-labelledby="rec-who">
+                      {hh.members.map((m) => (
+                        <button key={m.user_id} type="button" aria-pressed={paidBy === m.user_id} onClick={() => setPaidBy(m.user_id)}>
+                          {m.user_id === hh.me.user_id ? 'Yo' : m.display_name}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div>
-                    <dt>Se repite</dt>
-                    <dd>Todos los meses el día {selected.day_of_month}</dd>
-                  </div>
-                  <div>
-                    <dt>Categoría</dt>
-                    <dd>{catName.get(selected.category_id) ?? 'Sin categoría'}</dd>
-                  </div>
-                  {!solo && (
-                    <>
-                      <div>
-                        <dt>Lo paga</dt>
-                        <dd>{people.get(selected.paid_by)?.display_name ?? 'Alguien'}</dd>
-                      </div>
-                      <div>
-                        <dt>División</dt>
-                        <dd>
-                          {selected.shared ? 'Se divide entre los dos' : 'Es solo de esa persona'}
-                          {person && selectedView?.fullAmount !== undefined ? ` · ${who === hh.me.user_id ? 'tu parte' : 'su parte'} ${money(selectedView.amount)}` : ''}
-                        </dd>
-                      </div>
-                    </>
-                  )}
-                </dl>
-                <div className="fixed-sheet-actions">
-                  <button type="button" className="btn small" onClick={() => startEdit(selected)}>
-                    Editar
+                </>
+              )}
+              <div className="field">
+                <span id="rec-shared" className="strong">¿Es compartido o personal?</span>
+                <div className="seg" role="group" aria-labelledby="rec-shared">
+                  <button type="button" aria-pressed={solo || !shared} onClick={() => setShared(false)}>
+                    Personal
                   </button>
-                  <button type="button" className="btn ghost small" disabled={busy} onClick={() => toggle(selected)}>
-                    {selected.active ? 'Pausar' : 'Volver a activar'}
-                  </button>
-                  <button type="button" className={confirmId === selected.id ? 'btn danger small' : 'btn ghost small'} onClick={() => remove(selected)}>
-                    {confirmId === selected.id ? 'Toca otra vez para borrar' : 'Borrar'}
+                  <button type="button" aria-pressed={!solo && shared} disabled={solo} onClick={() => setShared(true)}>
+                    Compartido
                   </button>
                 </div>
                 <span className="line-help">
-                  <strong>Pausar</strong> detiene el gasto sin perder sus datos. Si borras uno que ya se anotó este mes, no vuelve a aparecer.
+                  {solo
+                    ? 'Compartido se activa cuando tu pareja se une al hogar.'
+                    : shared
+                      ? 'Se divide entre los dos: a cada uno le toca su parte.'
+                      : 'Es solo de quien lo paga.'}
                 </span>
-              </>
+              </div>
+              <button className="btn" type="submit" disabled={busy}>
+                {busy ? <Spin label="Guardando gasto fijo…" /> : 'Guardar gasto fijo'}
+              </button>
+            </form>
+          </div>
+        </Modal>
+      )}
+
+      {selected && (
+        <Modal label={`Detalle de ${selected.note}`} onClose={closeDetail}>
+          <div className="card cat-sheet">
+            {!editing ? (
+              <div className="stack cat-detail">
+                <div className="row between">
+                  <span className="pill">{selected.active ? 'Se anota solo cada mes' : 'En pausa'}</span>
+                  <button type="button" className="btn ghost small" onClick={closeDetail}>
+                    Cerrar
+                  </button>
+                </div>
+                <div className="stack tight">
+                  <strong className="cat-title">{selected.note}</strong>
+                  <span className="cat-big num">{money(selectedView?.fullAmount ?? selected.amount)}</span>
+                  <span className="muted">al mes · {money((selectedView?.fullAmount ?? selected.amount) * 12)} al año</span>
+                </div>
+                <div className="tiles">
+                  <div className="tile">
+                    <span className="muted small-text">Próximo pago</span>
+                    <span className="amount-sm">{selected.active ? inDays(daysUntil(nextOccurrence(selected.day_of_month))) : 'Pausado'}</span>
+                    {selected.active && <span className="line-help">{longDate(nextOccurrence(selected.day_of_month))}</span>}
+                  </div>
+                  <div className="tile">
+                    <span className="muted small-text">Se paga</span>
+                    <span className="amount-sm">El día {selected.day_of_month}</span>
+                  </div>
+                  <div className="tile">
+                    <span className="muted small-text">Categoría</span>
+                    <span className="amount-sm">{catName.get(selected.category_id) ?? 'Sin categoría'}</span>
+                  </div>
+                  {!solo && (
+                    <div className="tile">
+                      <span className="muted small-text">Lo paga</span>
+                      <span className="amount-sm">{people.get(selected.paid_by)?.display_name ?? 'Alguien'}</span>
+                      <span className="line-help">
+                        {selected.shared ? 'Se divide entre los dos' : 'Solo de esa persona'}
+                        {person && selectedView?.fullAmount !== undefined ? ` · ${who === hh.me.user_id ? 'tu parte' : 'su parte'} ${money(selectedView.amount)}` : ''}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="stack tight">
+                  <button type="button" className="btn" onClick={() => startEdit(selected)}>
+                    Editar información
+                  </button>
+                  <button type="button" className="btn ghost" disabled={busy} onClick={() => toggle(selected)}>
+                    {selected.active ? 'Pausar gasto fijo' : 'Volver a activar'}
+                  </button>
+                  <button type="button" className={confirmId === selected.id ? 'btn danger' : 'btn ghost'} onClick={() => remove(selected)}>
+                    {confirmId === selected.id ? 'Toca otra vez para borrar' : 'Borrar gasto fijo'}
+                  </button>
+                </div>
+              </div>
             ) : (
-              <form className="stack" onSubmit={(e) => void saveEdit(e, selected)}>
-                <strong className="fixed-title">Editar gasto fijo</strong>
+              <form className="stack cat-detail" onSubmit={(e) => void saveEdit(e, selected)}>
+                <div className="row between">
+                  <strong className="cat-title">Editar información</strong>
+                  <button type="button" className="btn ghost small" onClick={() => setEditing(false)}>
+                    Cerrar
+                  </button>
+                </div>
                 <div className="field">
                   <label htmlFor="ed-note">¿Qué pagas?</label>
                   <input id="ed-note" className="input" maxLength={120} value={eNote} onChange={(e) => setENote(e.target.value)} />
                 </div>
                 <div className="field">
-                  <label htmlFor="ed-amount">Monto mensual (CLP)</label>
+                  <label htmlFor="ed-amount">Monto al mes (CLP)</label>
                   <input id="ed-amount" className="input" inputMode="numeric" autoComplete="off" value={dots(eAmount)} onChange={(e) => setEAmount(digitsOnly(e.target.value))} />
                 </div>
                 <div className="field">
-                  <label htmlFor="ed-day">Día del mes en que se paga</label>
-                  <input id="ed-day" className="input" inputMode="numeric" value={eDay} onChange={(e) => setEDay(e.target.value.replace(/\D/g, '').slice(0, 2))} />
+                  <label htmlFor="ed-day">¿Qué día del mes se paga?</label>
+                  <select id="ed-day" className="input" value={eDay} onChange={(e) => setEDay(e.target.value)}>
+                    {dayOptions.map((n) => (
+                      <option key={n} value={n}>
+                        Día {n}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="field">
-                  <span id="ed-cat" className="strong">Categoría</span>
-                  <div className="chips" role="group" aria-labelledby="ed-cat">
+                  <label htmlFor="ed-cat">Categoría</label>
+                  <select id="ed-cat" className="input" value={eCat} onChange={(e) => setECat(e.target.value)}>
                     {data.categories.map((c) => (
-                      <button key={c.id} type="button" className="chip" aria-pressed={eCat === c.id} onClick={() => setECat(c.id)}>
+                      <option key={c.id} value={c.id}>
                         {c.name}
-                      </button>
+                      </option>
                     ))}
-                  </div>
+                  </select>
                 </div>
                 {!solo && (
                   <>
@@ -485,27 +491,34 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
                         ))}
                       </div>
                     </div>
-                    <div className="row between">
-                      <span id="ed-shared" className="strong">¿Se divide entre los dos?</span>
-                      <button type="button" className="switch" role="switch" aria-checked={eShared} aria-labelledby="ed-shared" onClick={() => setEShared((v) => !v)} />
-                    </div>
                   </>
                 )}
-                <div className="row">
-                  <button className="btn small" type="submit" disabled={busy}>
-                    {busy ? <Spin label="Guardando…" /> : 'Guardar cambios'}
-                  </button>
-                  <button type="button" className="btn ghost small" onClick={() => setEditing(false)}>
-                    Cancelar
-                  </button>
+                <div className="field">
+                  <span id="ed-shared" className="strong">¿Es compartido o personal?</span>
+                  <div className="seg" role="group" aria-labelledby="ed-shared">
+                    <button type="button" aria-pressed={solo || !eShared} onClick={() => setEShared(false)}>
+                      Personal
+                    </button>
+                    <button type="button" aria-pressed={!solo && eShared} disabled={solo} onClick={() => setEShared(true)}>
+                      Compartido
+                    </button>
+                  </div>
+                  <span className="line-help">
+                    {solo
+                      ? 'Compartido se activa cuando tu pareja se une al hogar.'
+                      : eShared
+                        ? 'Se divide entre los dos: a cada uno le toca su parte.'
+                        : 'Es solo de quien lo paga.'}
+                  </span>
                 </div>
+                <button className="btn" type="submit" disabled={busy}>
+                  {busy ? <Spin label="Guardando…" /> : 'Guardar cambios'}
+                </button>
               </form>
             )}
           </div>
-        </div>,
-        document.body,
-      )
+        </Modal>
       )}
-    </Collapsibles>
+    </>
   )
 }

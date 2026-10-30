@@ -117,7 +117,7 @@ export default function Security({
 
         <SettingsItem {...item} id="news" icon="info" title="Novedades" summary="Lo que cambió en la app" open={open === 'news'}>
           <section className="card">
-            <span className="muted">Un repaso rápido de las mejoras nuevas: tarjetas, perfil, privacidad con tu pareja y más.</span>
+            <span className="muted">Un repaso rápido de lo nuevo: pantallas más simples, registrar con nota y los gráficos al final de Inicio.</span>
             <button type="button" className="btn ghost small" onClick={() => window.dispatchEvent(new Event(NEWS_EVENT))}>
               Ver las novedades
             </button>

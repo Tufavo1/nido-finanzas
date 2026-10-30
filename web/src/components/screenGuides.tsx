@@ -54,11 +54,6 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
         art: badge('home'),
       },
       {
-        title: 'Avisos para ti',
-        text: 'Arriba aparecen los **avisos**: una cuenta por vencer, un gasto que subió o una meta atrasada. Cada aviso tiene un **botón para ir a resolverlo**, y puedes **posponerlo** si no es el momento.',
-        art: badge('bell'),
-      },
-      {
         title: 'Cambia de mes',
         text: 'Con las **flechas** junto al nombre del mes ves los meses anteriores. Los gráficos muestran **en qué se fue la plata** y cómo se compara con el mes pasado.',
         art: bars,
@@ -85,13 +80,13 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
         art: bars,
       },
       {
-        title: 'Tope por categoría',
-        text: 'Toca una categoría y luego el **lápiz** para escribir cuánto quieren gastar **al mes** en ella. La barra se va llenando; si se pone **roja**, ya se pasaron.',
+        title: 'Límite por categoría',
+        text: 'Toca una categoría y luego **Editar información** para escribir cuánto quieren gastar **al mes** en ella. La barra se va llenando; si se pone **roja**, ya se pasaron.',
         art: bars,
       },
       {
         title: 'Corregir o borrar un gasto',
-        text: 'En **Movimientos** pueden filtrar por **categoría o por día**. Toca un gasto para **corregirlo o borrarlo** si se equivocaron.',
+        text: 'En el **Historial de gastos** pueden filtrar por **categoría o por día**. Toca un gasto para **corregirlo o borrarlo** si se equivocaron.',
         art: badge('edit'),
       },
       scope,
@@ -112,7 +107,7 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
       },
       {
         title: 'Sueldo',
-        text: 'Escribe lo que te **depositan al mes** (el líquido) y el **día** en que llega. Si solo sabes el bruto, usa **Calcular mi sueldo líquido**. Solo tú lo ves.',
+        text: 'Escribe lo que te **depositan al mes** (el líquido) y el **día** en que llega. Si solo sabes el bruto, toca **¿Solo sabes tu sueldo bruto?**. Solo tú lo ves.',
         art: badge('wallet'),
       },
       {
@@ -153,7 +148,7 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
       },
       {
         title: '4. Monto y guardar',
-        text: 'Toque los **números** para escribir el monto y luego **Guardar**. En **Más** puede cambiar quién pagó, la fecha o agregar una nota.',
+        text: 'Toque los **números** para escribir el monto y luego **Guardar**. Cuéntenos **de qué es el gasto** (obligatorio). En **Más** puede cambiar quién pagó o la fecha.',
         art: plus,
       },
     ],
@@ -168,7 +163,7 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
       },
       {
         title: 'Crear una meta',
-        text: 'Toque **Nueva meta**, póngale un nombre, cuánto quieren juntar y para cuándo. La app calcula **cuánto aportar al mes**.',
+        text: 'Toque **Agregar meta**, póngale un nombre, cuánto quieren juntar y para cuándo. La app calcula **cuánto aportar al mes**.',
         art: plus,
       },
       {

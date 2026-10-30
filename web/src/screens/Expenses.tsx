@@ -8,25 +8,18 @@ import { resolveScope, scopeExpenses } from '../lib/scope'
 import type { Scope } from '../lib/scope'
 import Avatar from '../components/Avatar'
 import Icon from '../components/Icon'
-import Collapsibles from '../components/Collapsibles'
 import SectionHead from '../components/SectionHead'
 import { money, todayISO } from '../lib/format'
 import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
 import { computeMetrics } from '../lib/metrics'
-import { groupByDay, whereItWent } from '../lib/moves'
+import { whereItWent } from '../lib/moves'
 import { Rich } from '../lib/rich'
 import { dayHeading, digitsOnly, monthName, dots } from '../lib/ui'
 import type { Notify } from '../components/Toast'
 import Modal from '../components/Modal'
 import Spin from '../components/Spin'
-import ExpenseInsights from '../components/ExpenseInsights'
-
-/** 'dom 25' para el filtro por día */
-const shortDay = (iso: string) => {
-  const d = new Date(`${iso}T12:00:00`)
-  return `${d.toLocaleDateString('es-CL', { weekday: 'short' }).replace('.', '')} ${d.getDate()}`
-}
+import { useDesktop } from '../lib/useDesktop'
 
 export default function Expenses({
   hh,
@@ -43,6 +36,8 @@ export default function Expenses({
   scope: Scope
   onScope: (s: Scope) => void
 }) {
+  // En el celular, solo lo esencial; en el computador, todos los análisis
+  const desktop = useDesktop()
   const who = resolveScope(scope, hh.members)
   const setWho = (w: Scope) => {
     onScope(w)
@@ -63,9 +58,9 @@ export default function Expenses({
   const [newCat, setNewCat] = useState(false)
   const [newName, setNewName] = useState('')
   const [newBudget, setNewBudget] = useState('')
-  const [openCat, setOpenCat] = useState<string | null>(null)
   const [catFilter, setCatFilter] = useState<string>('all')
   const [showAll, setShowAll] = useState(false)
+  const [showAllCats, setShowAllCats] = useState(false)
   const [dayFilter, setDayFilter] = useState<string>('all')
   const [busy, setBusy] = useState(false)
   const setError = useToastError(onToast)
@@ -77,6 +72,9 @@ export default function Expenses({
   const list = useMemo(() => scopeExpenses(data.expenses, who, split), [data.expenses, who, split])
   const householdMetrics = useMemo(() => computeMetrics(data.expenses, data.prevExpenses, data.categories, hh.members, month), [data.expenses, data.prevExpenses, data.categories, hh.members, month])
   const person = who === 'all' ? null : members.get(who)
+  const isMe = person?.user_id === hh.me.user_id
+  /** Conjuga según lo que se mira: tú, otra persona o el hogar */
+  const verb = (tu: string, el: string, ellos: string) => (isMe ? tu : person ? el : ellos)
 
   const spent = new Map<string, number>()
   for (const e of list) spent.set(e.category_id, (spent.get(e.category_id) ?? 0) + e.amount)
@@ -94,11 +92,13 @@ export default function Expenses({
   const delta = metrics.deltaPct
 
   const byCat = catFilter === 'all' ? list : list.filter((e) => e.category_id === catFilter)
-  const days = groupByDay(byCat)
-  // Si el día elegido ya no tiene gastos (por ejemplo al cambiar de categoría), se muestra todo el mes
-  const activeDay = dayFilter !== 'all' && days.some((g) => g.date === dayFilter) ? dayFilter : 'all'
+  // La fecha buscada solo vale dentro del mes que se está mirando
+  const monthPrefix = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`
+  const activeDay = dayFilter.startsWith(monthPrefix) ? dayFilter : 'all'
   const visible = activeDay === 'all' ? byCat : byCat.filter((e) => e.spent_on === activeDay)
-  const PAGE = 24
+  const PAGE = 2
+  const CAT_PAGE = 2
+  const sortedCats = [...data.categories].sort((a, b) => (spent.get(b.id) ?? 0) - (spent.get(a.id) ?? 0))
   const shown = showAll ? visible : visible.slice(0, PAGE)
 
   async function saveBudget(id: string) {
@@ -110,11 +110,11 @@ export default function Expenses({
       .eq('id', id)
     setBusy(false)
     if (err) {
-      setError('No se pudo guardar el presupuesto')
+      setError('No se pudo guardar el límite')
       return
     }
     setEditing(null)
-    onToast('Categoría actualizada\nEl nuevo **presupuesto** ya está en uso.')
+    onToast('Categoría actualizada\nEl nuevo **límite** ya está en uso.')
     await data.refresh()
   }
 
@@ -230,113 +230,146 @@ export default function Expenses({
     setSelCat(null)
     setEditing(null)
     setArchiveId(null)
-    setOpenCat(null)
     setError(null)
   }
 
   const renderCat = (c: HouseholdData['categories'][number]) => {
-            const s = spent.get(c.id) ?? 0
-            const hasBudget = c.monthly_budget > 0
-            const over = hasBudget && s > c.monthly_budget
-            const pct = hasBudget ? Math.min(100, Math.round((s * 100) / c.monthly_budget)) : 0
-            const share = totalSpent > 0 ? Math.round((s * 100) / totalSpent) : 0
-            const items = openCat === c.id ? whereItWent(list.filter((e) => e.category_id === c.id)) : []
+    const s = spent.get(c.id) ?? 0
+    const hasBudget = c.monthly_budget > 0
+    const over = hasBudget && s > c.monthly_budget
+    const pct = hasBudget ? Math.min(100, Math.round((s * 100) / c.monthly_budget)) : 0
+    const share = totalSpent > 0 ? Math.round((s * 100) / totalSpent) : 0
+    const catList = list.filter((e) => e.category_id === c.id)
+    const items = whereItWent(catList)
+    const biggest = catList.reduce<(typeof catList)[number] | null>((m, e) => (m === null || e.amount > m.amount ? e : m), null)
+    const color = over ? 'var(--warn)' : pct >= 80 ? 'var(--amber)' : 'var(--accent)'
+    const verdict = !hasBudget
+      ? 'Todavía no tiene límite. Edita la información para ponerle uno.'
+      : over
+        ? `Se pasaron por ${money(s - c.monthly_budget)}. Conviene gastar menos en esta categoría lo que queda del mes.`
+        : pct >= 80
+          ? `Casi llegan al límite: les quedan ${money(c.monthly_budget - s)}.`
+          : `Van bien: les quedan ${money(c.monthly_budget - s)} para el resto del mes.`
     return (
-              <div className="stack tight cat-row">
-                <div className="row between">
-                  <strong className="fixed-title">{c.name}</strong>
-                  {editing !== c.id && (
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      aria-label={`Editar la categoría ${c.name}`}
-                      onClick={() => {
-                        setEditing(c.id)
-                        setValue(String(c.monthly_budget))
-                        setNameValue(c.name)
-                        setArchiveId(null)
-                      }}
-                    >
-                      <Icon name="edit" size={20} />
-                    </button>
-                  )}
-                  <button type="button" className="icon-btn" aria-label="Cerrar" onClick={closeCat}>
-                    ✕
-                  </button>
+      <div className="stack cat-detail">
+        <div className="row between">
+          <strong className="cat-title">{c.name}</strong>
+          <button type="button" className="btn ghost small" onClick={closeCat}>
+            Cerrar
+          </button>
+        </div>
+
+        <div className="stack tight">
+          <span className="muted">Llevan gastado este mes</span>
+          <span className={over ? 'cat-big num over' : 'cat-big num'}>{money(s)}</span>
+          <span className="muted">{hasBudget ? `de un límite de ${money(c.monthly_budget)}` : 'Sin límite definido'}</span>
+        </div>
+
+        {hasBudget && (
+          <div className="stack tight">
+            <div className="bar cat-bar" role="img" aria-label={`${c.name}: ${pct} % del límite`}>
+              <span style={{ width: `${pct}%`, background: color }} />
+            </div>
+            <span className="muted small-text">{pct} % del límite usado</span>
+          </div>
+        )}
+
+        <p className={over ? 'cat-verdict over' : 'cat-verdict'}>{verdict}</p>
+
+        <div className="tiles">
+          <div className="tile">
+            <span className="muted small-text">Del total gastado</span>
+            <span className="amount-sm num">{share} %</span>
+          </div>
+          <div className="tile">
+            <span className="muted small-text">Cantidad de gastos</span>
+            <span className="amount-sm num">{catList.length}</span>
+          </div>
+          <div className="tile">
+            <span className="muted small-text">Promedio por gasto</span>
+            <span className="amount-sm num">{catList.length > 0 ? money(Math.round(s / catList.length)) : '—'}</span>
+          </div>
+          <div className="tile">
+            <span className="muted small-text">Gasto más grande</span>
+            <span className="amount-sm num">{biggest ? money(biggest.amount) : '—'}</span>
+            {biggest?.note && <span className="line-help ellipsis">{biggest.note}</span>}
+          </div>
+        </div>
+
+        <div className="stack tight">
+          <strong>En qué se fue</strong>
+          {items.length === 0 ? (
+            <span className="muted">Todavía no hay gastos en esta categoría este mes.</span>
+          ) : (
+            <div className="where">
+              {items.slice(0, 8).map((it) => (
+                <div className="row between" key={it.label}>
+                  <span className="ellipsis">
+                    {it.label}
+                    {it.count > 1 && <span className="muted"> · {it.count} veces</span>}
+                  </span>
+                  <span className="num strong">{money(it.total)}</span>
                 </div>
-                <div className="row between">
-                  <span className={over ? 'over num strong' : 'num strong'}>{money(s)}</span>
-                  <span className="muted num small-text">{hasBudget ? `de ${money(c.monthly_budget)}` : 'sin tope definido'}</span>
-                </div>
-                {hasBudget && (
-                  <div className="bar" role="img" aria-label={`${c.name}: ${pct} % del presupuesto`}>
-                    <span style={{ width: `${pct}%`, background: over ? 'var(--warn)' : pct >= 80 ? 'var(--amber)' : 'var(--accent)' }} />
-                  </div>
-                )}
-                <span className={over ? 'line-help over' : 'line-help'}>
-                  {hasBudget
-                    ? over
-                      ? `Se pasaron por ${money(s - c.monthly_budget)}.`
-                      : `Les quedan ${money(c.monthly_budget - s)} (${100 - pct} % libre).`
-                    : 'Toca el lápiz para ponerle un tope mensual.'}
-                  {s > 0 && ` · ${share} % de todo lo gastado`}
-                </span>
-                {s > 0 && (
-                  <button type="button" className="link-btn" aria-expanded={openCat === c.id} onClick={() => setOpenCat(openCat === c.id ? null : c.id)}>
-                    {openCat === c.id ? 'Ocultar' : 'Ver en qué se fue'}
-                  </button>
-                )}
-                {openCat === c.id && (
-                  <div className="where">
-                    {items.slice(0, 6).map((it) => (
-                      <div className="row between small-text" key={it.label}>
-                        <span className="ellipsis">
-                          {it.label}
-                          {it.count > 1 && <span className="muted"> · {it.count} veces</span>}
-                        </span>
-                        <span className="num strong">{money(it.total)}</span>
-                      </div>
-                    ))}
-                    {items.length > 6 && <span className="line-help">y {items.length - 6} más en los movimientos.</span>}
-                    <button
-                      type="button"
-                      className="link-btn"
-                      onClick={() => {
-                        setCatFilter(c.id)
-                        setShowAll(false)
-                        closeCat()
-                      }}
-                    >
-                      Ver solo estos movimientos ↓
-                    </button>
-                  </div>
-                )}
-                {editing === c.id && (
-                  <div className="stack tight">
-                    <label className="line-help" htmlFor={`cn-${c.id}`}>Nombre de la categoría</label>
-                    <input id={`cn-${c.id}`} className="input" maxLength={40} value={nameValue} onChange={(e) => setNameValue(e.target.value)} />
-                    <label className="line-help" htmlFor={`cb-${c.id}`}>Cuánto quieren gastar al mes en {c.name} (CLP)</label>
-                    <input id={`cb-${c.id}`} className="input" inputMode="numeric" placeholder="Ej. 250000" value={dots(value)} onChange={(e) => setValue(digitsOnly(e.target.value))} />
-                    <div className="row">
-                      <button type="button" className="btn small" disabled={busy} onClick={() => void saveBudget(c.id)}>
-                        {busy ? <Spin label="Guardando…" /> : 'Guardar'}
-                      </button>
-                      <button type="button" className="btn ghost small" onClick={() => setEditing(null)}>
-                        Cancelar
-                      </button>
-                    </div>
-                    <button type="button" className="btn danger small" disabled={busy} onClick={() => void archiveCategory(c.id)}>
-                      {archiveId === c.id ? '¿Seguro? Se conservan sus gastos' : 'Quitar categoría'}
-                    </button>
-                  </div>
-                )}
-              </div>
+              ))}
+              {items.length > 8 && <span className="line-help">y {items.length - 8} más en el historial.</span>}
+            </div>
+          )}
+        </div>
+
+        {editing === c.id ? (
+          <div className="stack tight cat-edit">
+            <strong>Editar información</strong>
+            <label className="line-help" htmlFor={`cn-${c.id}`}>Nombre de la categoría</label>
+            <input id={`cn-${c.id}`} className="input" maxLength={40} value={nameValue} onChange={(e) => setNameValue(e.target.value)} />
+            <label className="line-help" htmlFor={`cb-${c.id}`}>Cuánto quieren gastar al mes en {c.name} (CLP)</label>
+            <input id={`cb-${c.id}`} className="input" inputMode="numeric" placeholder="Ej. 250000" value={dots(value)} onChange={(e) => setValue(digitsOnly(e.target.value))} />
+            <div className="row">
+              <button type="button" className="btn small" disabled={busy} onClick={() => void saveBudget(c.id)}>
+                {busy ? <Spin label="Guardando…" /> : 'Guardar'}
+              </button>
+              <button type="button" className="btn ghost small" onClick={() => setEditing(null)}>
+                Cancelar
+              </button>
+            </div>
+            <button type="button" className="btn danger small" disabled={busy} onClick={() => void archiveCategory(c.id)}>
+              {archiveId === c.id ? '¿Seguro? Se conservan sus gastos' : 'Quitar categoría'}
+            </button>
+          </div>
+        ) : (
+          <div className="stack tight">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setEditing(c.id)
+                setValue(String(c.monthly_budget))
+                setNameValue(c.name)
+                setArchiveId(null)
+              }}
+            >
+              Editar información
+            </button>
+            {s > 0 && (
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => {
+                  setCatFilter(c.id)
+                  setShowAll(false)
+                  closeCat()
+                }}
+              >
+                Ver solo estos gastos en el historial
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     )
   }
 
   return (
     <main className="screen">
-      <Collapsibles>
       <div className="row between">
         <h1 className="title">Gastos</h1>
         <ScreenHelp screen="expenses" />
@@ -345,35 +378,38 @@ export default function Expenses({
       <ScopeBar hh={hh} scope={who} onScope={setWho} label="Ver los gastos de" />
 
 
-      <SectionHead title="Resumen del mes" hint="Cuánto se gasta y a qué ritmo" />
+      <SectionHead
+        title={isMe ? 'Resumen de tu mes' : person ? `Resumen del mes de ${person.display_name}` : 'Resumen del mes'}
+        hint={isMe ? 'Cuánta plata se fue este mes y si vas mejor o peor que antes' : person ? `Cuánta plata se fue este mes y si va mejor o peor que antes` : 'Cuánta plata se fue este mes y si van mejor o peor que antes'}
+      />
 
       <section className="card">
         <strong>{person ? (person.user_id === hh.me.user_id ? 'Tus números' : `Números de ${person.display_name}`) : 'Números del hogar'} en {monthName(month)}</strong>
         {list.length === 0 ? (
-          <span className="muted">Todavía no hay gastos este mes para calcular.</span>
+          <span className="muted">{isMe ? 'Todavía no tienes gastos este mes para calcular.' : person ? `Todavía no hay gastos de ${person.display_name} este mes.` : 'Todavía no hay gastos este mes para calcular.'}</span>
         ) : (
           <>
             <div className="tiles">
               <div className="tile">
-                <span className="muted small-text">{person ? (person.user_id === hh.me.user_id ? 'Te corresponde' : 'Le corresponde') : 'Gastaron'}</span>
+                <span className="muted small-text">{person ? (person.user_id === hh.me.user_id ? 'Lo que gastaste' : 'Lo que gastó') : 'Lo que gastaron'}</span>
                 <span className="amount-sm num">{money(totalSpent)}</span>
                 {person && householdTotal > 0 && (
                   <span className="line-help">{Math.round((totalSpent * 100) / householdTotal)} % de lo que gasta el hogar</span>
                 )}
               </div>
               <div className="tile">
-                <span className="muted small-text">Cada día en promedio</span>
+                <span className="muted small-text">Gasto por día</span>
                 <span className="amount-sm num">{money(metrics.avgPerDay)}</span>
-                {metrics.projection !== null && <span className="line-help">A este ritmo: {money(metrics.projection)} al cerrar el mes</span>}
+                {metrics.projection !== null && <span className="line-help">{isMe ? 'Si sigues igual, tu mes cerraría en' : person ? `Si sigue igual, el mes de ${person.display_name} cerraría en` : 'Si siguen igual, el mes cerraría en'} {money(metrics.projection)}</span>}
               </div>
               <div className="tile">
                 <span className="muted small-text">Frente al mes pasado</span>
                 <span className="amount-sm num">{delta === null ? 'Sin datos' : delta === 0 ? 'Igual' : `${delta > 0 ? '+' : '−'}${Math.abs(delta)} %`}</span>
                 <span className="line-help">
-                  {delta === null ? 'Aún no hay un mes anterior para comparar' : delta > 0 ? 'Gastan más que antes' : delta < 0 ? 'Gastan menos que antes' : 'Mismo gasto'}
+                  {delta === null ? 'Aún no hay un mes anterior para comparar' : delta > 0 ? `${verb('Gastas', 'Gasta', 'Gastan')} más que el mes pasado` : delta < 0 ? `${verb('Gastas', 'Gasta', 'Gastan')} menos que el mes pasado: ¡bien!` : `${verb('Gastas', 'Gasta', 'Gastan')} lo mismo que el mes pasado`}
                 </span>
               </div>
-              {topCat && topCat.spent > 0 && (
+              {desktop && topCat && topCat.spent > 0 && (
                 <div className="tile">
                   <span className="muted small-text">Donde más se va</span>
                   <span className="amount-sm">{topCat.name}</span>
@@ -381,35 +417,34 @@ export default function Expenses({
                 </div>
               )}
             </div>
-            {personStats && (
+            {desktop && personStats && (
               <span className="line-help">
-                <Rich text={`De lo que pagó, **${money(personStats.paidShared)}** fue compartido y **${money(personStats.paidPersonal)}** personal. Su costo real del mes es **${money(personStats.trueCost)}**.`} />
+                <Rich text={`${isMe ? 'De lo que pagaste' : 'De lo que pagó'}, **${money(personStats.paidShared)}** fue compartido y **${money(personStats.paidPersonal)}** personal. ${isMe ? 'Tu costo real' : 'Su costo real'} del mes es **${money(personStats.trueCost)}**.`} />
               </span>
             )}
-            {metrics.topDay && (
+            {desktop && metrics.topDay && (
               <span className="line-help">
-                <Rich text={`Su día más fuerte fue el **${metrics.topDay.day} de ${monthName(month)}** con **${money(metrics.topDay.amount)}**.`} />
+                <Rich text={`${isMe ? 'Tu' : person ? 'Su' : 'El'} día más fuerte fue el **${metrics.topDay.day} de ${monthName(month)}** con **${money(metrics.topDay.amount)}**.`} />
               </span>
             )}
           </>
         )}
       </section>
 
-      <SectionHead title="Análisis y presupuestos" hint="Qué dicen los números y cómo va cada categoría" />
-
-      <ExpenseInsights hh={hh} data={data} month={month} who={who} />
-
-      <SectionHead title="Presupuesto por categoría" hint="Toca una categoría para ver en qué se fue, ponerle un tope o editarla" />
-
-      <div className="panel-actions">
-        <button type="button" className="btn small" onClick={() => setNewCat(true)}>
-          + Nueva categoría
-        </button>
-      </div>
+      <SectionHead
+        title={isMe ? 'Tu gasto frente al límite' : person ? `Gasto de ${person.display_name} frente al límite` : 'Límite por categoría'}
+        hint={
+          isMe
+            ? 'Cuánto llevas gastado tú en cada tema frente a su límite del mes'
+            : person
+              ? `Cuánto lleva gastado ${person.display_name} en cada tema frente a su límite del mes`
+              : 'Cuánto deciden gastar como máximo cada mes en cada tema'
+        }
+      />
 
       <div className="fixed-grid wide">
-        {[...data.categories]
-          .sort((a, b) => (spent.get(b.id) ?? 0) - (spent.get(a.id) ?? 0))
+        {sortedCats
+          .slice(0, showAllCats ? undefined : CAT_PAGE)
           .map((c) => {
             const s = spent.get(c.id) ?? 0
             const hasBudget = c.monthly_budget > 0
@@ -441,8 +476,8 @@ export default function Expenses({
                 )}
                 <span className="fixed-next">
                   <span className="fixed-date">
-                    <span className="muted small-text">{hasBudget ? 'Tope mensual' : 'Sin tope definido'}</span>
-                    <strong>{hasBudget ? money(c.monthly_budget) : 'Ponle un tope'}</strong>
+                    <span className="muted small-text">{hasBudget ? 'Límite al mes' : 'Sin límite'}</span>
+                    <strong>{hasBudget ? money(c.monthly_budget) : 'Pon un límite'}</strong>
                   </span>
                   {hasBudget && (
                     <span className={over ? 'pill fixed-when soon' : 'pill fixed-when'}>
@@ -450,14 +485,27 @@ export default function Expenses({
                     </span>
                   )}
                 </span>
+                <span className="card-cta" aria-hidden="true">
+                  Toca para ver el detalle <Icon name="chevR" size={16} />
+                </span>
               </button>
             )
           })}
       </div>
 
+      {sortedCats.length > CAT_PAGE && (
+        <button type="button" className="btn ghost small wide" aria-expanded={showAllCats} onClick={() => setShowAllCats((v) => !v)}>
+          {showAllCats ? 'Ver menos categorías' : `Ver más (${sortedCats.length - CAT_PAGE} categorías más)`}
+        </button>
+      )}
+
+      <button type="button" className="btn small wide" onClick={() => setNewCat(true)}>
+        Agregar categoría
+      </button>
+
       {selCatRow && (
         <Modal label={`Detalle de ${selCatRow.name}`} onClose={closeCat}>
-          <div className="card">{renderCat(selCatRow)}</div>
+          <div className="card cat-sheet">{renderCat(selCatRow)}</div>
         </Modal>
       )}
 
@@ -467,7 +515,7 @@ export default function Expenses({
             <strong className="fixed-title">Nueva categoría</strong>
             <label className="line-help" htmlFor="nc-name">Nombre de la nueva categoría</label>
             <input id="nc-name" className="input" maxLength={40} placeholder="Ej. Mascotas, Educación" value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <label className="line-help" htmlFor="nc-budget">Tope mensual (opcional)</label>
+            <label className="line-help" htmlFor="nc-budget">Límite al mes (opcional)</label>
             <input id="nc-budget" className="input" inputMode="numeric" placeholder="Ej. 80000" value={dots(newBudget)} onChange={(e) => setNewBudget(digitsOnly(e.target.value))} />
             <div className="row">
               <button type="button" className="btn small" disabled={busy} onClick={() => void addCategory()}>
@@ -481,45 +529,61 @@ export default function Expenses({
         </Modal>
       )}
 
-      <SectionHead title="Movimientos" hint="Cada gasto anotado, para corregirlo o borrarlo" />
+      <SectionHead
+        title={isMe ? 'Tu historial de gastos' : person ? `Historial de gastos de ${person.display_name}` : 'Historial de gastos'}
+        hint={isMe ? 'La lista de cada gasto tuyo, para repasar en qué se fue la plata' : person ? `La lista de cada gasto de ${person.display_name}, para repasar en qué se fue la plata` : 'La lista de cada gasto que anotaron, para repasar en qué se fue la plata'}
+      />
 
       <section className="card wide">
-        <strong>Movimientos de {monthName(month)}</strong>
+        <strong>Historial de {monthName(month)}</strong>
         <span className="muted small-text">
           {visible.length === 0
-            ? 'Sin gastos para mostrar.'
+            ? 'Sin gastos para mostrar con este filtro.'
             : `${visible.length} ${visible.length === 1 ? 'gasto' : 'gastos'} por ${money(visible.reduce((s, e) => s + e.amount, 0))}. Toca uno para ver el detalle, corregirlo o borrarlo.`}
         </span>
         <div className="filter-row">
-          <span className="filter-label" id="f-cat">Categoría</span>
-        <div className="chip-strip" role="group" aria-labelledby="f-cat">
-          <button type="button" className="chip" aria-pressed={catFilter === 'all'} onClick={() => setCatFilter('all')}>
-            Todas
-          </button>
-          {data.categories
-            .filter((c) => (spent.get(c.id) ?? 0) > 0)
-            .map((c) => (
-              <button key={c.id} type="button" className="chip" aria-pressed={catFilter === c.id} onClick={() => setCatFilter(c.id)}>
-                {c.name}
-              </button>
-            ))}
+          <label className="filter-label" htmlFor="f-cat">Ver gastos de la categoría</label>
+          <select
+            id="f-cat"
+            className="input"
+            value={catFilter}
+            onChange={(e) => {
+              setCatFilter(e.target.value)
+              setShowAll(false)
+            }}
+          >
+            <option value="all">Todas las categorías</option>
+            {sortedCats
+              .filter((c) => (spent.get(c.id) ?? 0) > 0)
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} · {money(spent.get(c.id) ?? 0)}
+                </option>
+              ))}
+          </select>
         </div>
-        </div>
-        {days.length > 1 && (
-          <div className="filter-row">
-          <span className="filter-label" id="f-day">Día</span>
-          <div className="chip-strip" role="group" aria-labelledby="f-day">
-            <button type="button" className="chip" aria-pressed={activeDay === 'all'} onClick={() => setDayFilter('all')}>
-              Todo el mes
-            </button>
-            {days.map((g) => (
-              <button key={g.date} type="button" className="chip" aria-pressed={activeDay === g.date} aria-label={`${dayHeading(g.date)}, ${money(g.total)}`} onClick={() => setDayFilter(g.date)}>
-                <span className="cap">{shortDay(g.date)}</span>
+        <div className="filter-row">
+          <label className="filter-label" htmlFor="f-date">Ver gastos de un día</label>
+          <div className="row">
+            <input
+              id="f-date"
+              className="input"
+              type="date"
+              min={`${monthPrefix}-01`}
+              max={`${monthPrefix}-${String(new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()).padStart(2, '0')}`}
+              value={activeDay === 'all' ? '' : activeDay}
+              onChange={(e) => {
+                setDayFilter(e.target.value || 'all')
+                setShowAll(false)
+              }}
+            />
+            {activeDay !== 'all' && (
+              <button type="button" className="btn ghost small" onClick={() => setDayFilter('all')}>
+                Ver todo el mes
               </button>
-            ))}
+            )}
           </div>
-          </div>
-        )}
+        </div>
       </section>
 
       <div className="fixed-grid wide">
@@ -549,37 +613,45 @@ export default function Expenses({
                     {e.recurring_id && <span className="tag">Gasto fijo</span>}
                   </span>
                 </span>
+                <span className="card-cta" aria-hidden="true">
+                  Toca para ver el detalle <Icon name="chevR" size={16} />
+                </span>
               </button>
             ))}
       </div>
 
-      {!showAll && visible.length > PAGE && (
-        <button type="button" className="btn ghost small wide" onClick={() => setShowAll(true)}>
-          Ver los {visible.length} gastos
+      {visible.length > PAGE && (
+        <button type="button" className="btn ghost small wide" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
+          {showAll ? 'Ver menos gastos' : `Ver más (${visible.length - PAGE} gastos más)`}
         </button>
       )}
 
       {selExpRow && (
         <Modal label={`Detalle de ${selExpRow.note || 'gasto'}`} onClose={closeExp}>
-          <div className="card fixed-sheet">
+          <div className="card cat-sheet">
+            <div className="stack cat-detail">
             <div className="row between">
               <span className={selExpRow.shared ? 'tag' : 'tag alt'}>{selExpRow.shared ? 'Compartido' : 'Personal'}</span>
-              <button type="button" className="icon-btn" aria-label="Cerrar" onClick={closeExp}>
-                ✕
+              <button type="button" className="btn ghost small" onClick={closeExp}>
+                Cerrar
               </button>
             </div>
             {editExp === selExpRow.id ? (
               <>
-                <strong className="fixed-title">Editar gasto</strong>
+                <strong className="cat-title">Editar información</strong>
                 <div className="stack tight">
+                  <label className="line-help" htmlFor="ee-amount">Monto (CLP)</label>
                   <input
+                    id="ee-amount"
                     className="input"
                     inputMode="numeric"
                     value={dots(eAmount)}
                     onChange={(ev) => setEAmount(digitsOnly(ev.target.value))}
                     aria-label="Monto"
                   />
+                  <label className="line-help" htmlFor="ee-note">Nota</label>
                   <input
+                    id="ee-note"
                     className="input"
                     maxLength={120}
                     value={eNote}
@@ -587,6 +659,7 @@ export default function Expenses({
                     placeholder="Nota (opcional)"
                     aria-label="Nota"
                   />
+                  <span className="line-help">Categoría</span>
                   <div className="chips" role="group" aria-label="Categoría">
                     {data.categories.map((c) => (
                       <button key={c.id} type="button" className="chip" aria-pressed={eCat === c.id} onClick={() => setECat(c.id)}>
@@ -594,6 +667,7 @@ export default function Expenses({
                       </button>
                     ))}
                   </div>
+                  <span className="line-help">Quién pagó</span>
                   <div className="seg" role="group" aria-label="Quién pagó">
                     {hh.members.map((m) => (
                       <button key={m.user_id} type="button" aria-pressed={ePaidBy === m.user_id} onClick={() => setEPaidBy(m.user_id)}>
@@ -601,7 +675,9 @@ export default function Expenses({
                       </button>
                     ))}
                   </div>
+                  <label className="line-help" htmlFor="ee-date">Fecha del gasto</label>
                   <input
+                    id="ee-date"
                     className="input"
                     type="date"
                     max={todayISO()}
@@ -633,47 +709,52 @@ export default function Expenses({
               </>
             ) : (
               <>
-                <div className="fixed-hero">
-                  <strong className="fixed-title">{selExpRow.note || catName.get(selExpRow.category_id) || 'Gasto'}</strong>
-                  <span className="amount num">{money(selExpRow.amount)}</span>
+                <div className="stack tight">
+                  <strong className="cat-title">{selExpRow.note || catName.get(selExpRow.category_id) || 'Gasto'}</strong>
+                  <span className="cat-big num">{money(selExpRow.amount)}</span>
                   {person && (selExpRow as { fullAmount?: number }).fullAmount !== undefined && (
-                    <span className="muted small-text">
+                    <span className="muted">
                       {person.user_id === hh.me.user_id ? 'Tu parte' : `Parte de ${person.display_name}`} de un gasto de {money((selExpRow as { fullAmount?: number }).fullAmount!)}
                     </span>
                   )}
                 </div>
-                <dl className="fixed-facts">
-                  <div>
-                    <dt>Fecha</dt>
-                    <dd>{dayHeading(selExpRow.spent_on)}</dd>
+                <div className="tiles">
+                  <div className="tile">
+                    <span className="muted small-text">Fecha</span>
+                    <span className="amount-sm">{dayHeading(selExpRow.spent_on)}</span>
                   </div>
-                  <div>
-                    <dt>Categoría</dt>
-                    <dd>{catName.get(selExpRow.category_id) ?? 'Sin categoría'}</dd>
+                  <div className="tile">
+                    <span className="muted small-text">Categoría</span>
+                    <span className="amount-sm">{catName.get(selExpRow.category_id) ?? 'Sin categoría'}</span>
                   </div>
-                  <div>
-                    <dt>Pagó</dt>
-                    <dd>{members.get(selExpRow.paid_by)?.display_name ?? 'Alguien'}</dd>
+                  <div className="tile">
+                    <span className="muted small-text">Pagó</span>
+                    <span className="amount-sm">{members.get(selExpRow.paid_by)?.display_name ?? 'Alguien'}</span>
                   </div>
-                  <div>
-                    <dt>Tipo</dt>
-                    <dd>{selExpRow.recurring_id ? 'Gasto fijo' : selExpRow.shared ? 'Compartido' : 'Personal'}</dd>
+                  <div className="tile">
+                    <span className="muted small-text">Tipo</span>
+                    <span className="amount-sm">{selExpRow.recurring_id ? 'Gasto fijo' : selExpRow.shared ? 'Compartido' : 'Personal'}</span>
                   </div>
-                </dl>
-                <div className="fixed-sheet-actions">
-                  <button type="button" className="btn small" onClick={() => startEdit(selExpRow)}>
-                    Editar
+                </div>
+                {totalSpent > 0 && (
+                  <p className="cat-verdict">
+                    Este gasto es el {Math.round((selExpRow.amount * 100) / totalSpent)} % de todo lo gastado en {monthName(month)}.
+                  </p>
+                )}
+                <div className="stack tight">
+                  <button type="button" className="btn" onClick={() => startEdit(selExpRow)}>
+                    Editar información
                   </button>
-                  <button type="button" className={confirmId === selExpRow.id ? 'btn danger small' : 'btn ghost small'} onClick={() => void remove(selExpRow.id)}>
-                    {confirmId === selExpRow.id ? 'Toca otra vez para borrar' : 'Borrar'}
+                  <button type="button" className={confirmId === selExpRow.id ? 'btn danger' : 'btn ghost'} onClick={() => void remove(selExpRow.id)}>
+                    {confirmId === selExpRow.id ? 'Toca otra vez para borrar' : 'Borrar gasto'}
                   </button>
                 </div>
               </>
             )}
+            </div>
           </div>
         </Modal>
       )}
-      </Collapsibles>
     </main>
   )
 }

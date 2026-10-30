@@ -1,6 +1,8 @@
+import Icon from './Icon'
+import Modal from './Modal'
 import Spin from './Spin'
 import { useState } from 'react'
-import { AFPS, CL, calcularLiquido } from '../lib/chile'
+import { AFPS, calcularLiquido } from '../lib/chile'
 import type { AfpId, Contrato } from '../lib/chile'
 import { money } from '../lib/format'
 import { digitsOnly, dots } from '../lib/ui'
@@ -26,32 +28,36 @@ export default function SalaryCalculator({ onUse, busy = false }: { onUse: (liqu
     setOpen(false)
   }
 
-  if (!open) {
-    return (
-      <section className="card">
-        <strong>¿Solo sabes tu sueldo bruto?</strong>
-        <span className="muted">Calcula cuánto te llega a la cuenta después de AFP, salud e impuesto.</span>
-        <button type="button" className="btn ghost small" onClick={() => setOpen(true)}>
-          Calcular mi sueldo líquido
-        </button>
-      </section>
-    )
-  }
-
   const n = Number(bruto)
   const r = n > 0 ? calcularLiquido({ bruto: n, contrato, afp }) : null
 
   return (
-    <section className="card" aria-label="Calculadora de sueldo líquido">
+    <>
+      <div className="fixed-grid wide">
+        <button type="button" className="fixed-card" aria-haspopup="dialog" onClick={() => setOpen(true)}>
+          <span className="fixed-top">
+            <span className="grow fixed-name">
+              <strong>¿Solo sabes tu sueldo bruto?</strong>
+              <span className="muted small-text">Calcula cuánto te llega después de descuentos</span>
+            </span>
+          </span>
+          <span className="card-cta" aria-hidden="true">
+            Toca para calcularlo <Icon name="chevR" size={16} />
+          </span>
+        </button>
+      </div>
+      {open && (
+        <Modal label="Calculadora de sueldo líquido" onClose={() => setOpen(false)}>
+          <div className="card cat-sheet">
+            <div className="stack cat-detail">
       <div className="row between">
-        <strong>De sueldo bruto a líquido</strong>
-        <button type="button" className="link-btn" onClick={() => setOpen(false)}>
+        <strong className="cat-title">De bruto a líquido</strong>
+        <button type="button" className="btn ghost small" onClick={() => setOpen(false)}>
           Cerrar
         </button>
       </div>
       <div className="field">
-        <label htmlFor="bruto">Sueldo bruto mensual</label>
-        <span className="line-help">Lo que dice tu contrato antes de descuentos. Sin bonos ni horas extra.</span>
+        <label htmlFor="bruto">Sueldo bruto (el de tu contrato)</label>
         <input id="bruto" className="input" inputMode="numeric" autoComplete="off" placeholder="Ej. 1200000" value={dots(bruto)} onChange={(e) => setBruto(digitsOnly(e.target.value))} />
       </div>
       <div className="field">
@@ -68,7 +74,7 @@ export default function SalaryCalculator({ onUse, busy = false }: { onUse: (liqu
       </div>
       {contrato !== 'honorarios' && (
         <div className="field">
-          <label htmlFor="afp">Tu AFP</label>
+          <label htmlFor="afp">AFP</label>
           <select id="afp" className="input" value={afp} onChange={(e) => setAfp(e.target.value as AfpId)}>
             {AFPS.map((a) => (
               <option key={a.id} value={a.id}>
@@ -80,36 +86,35 @@ export default function SalaryCalculator({ onUse, busy = false }: { onUse: (liqu
       )}
 
       {r && (
-        <div className="stack tight" role="status">
-          <div className="row between">
-            <span>Sueldo bruto</span>
-            <span className="num">{money(r.bruto)}</span>
-          </div>
-          {r.descuentos.map((d) => (
-            <div className="row between muted" key={d.key}>
-              <span>{d.label}</span>
-              <span className="num">− {money(d.monto)}</span>
+        <div className="stack calc-result" role="status">
+          <div className="stack tight">
+            <div className="row between">
+              <span>Sueldo bruto</span>
+              <span className="num strong">{money(r.bruto)}</span>
             </div>
-          ))}
-          <div className="row between">
-            <strong>Te llegan</strong>
-            <span className="amount small num">{money(r.liquido)}</span>
+            {r.descuentos.map((d) => (
+              <div className="row between muted" key={d.key}>
+                <span>{d.label}</span>
+                <span className="num">− {money(d.monto)}</span>
+              </div>
+            ))}
           </div>
-          <span className="muted small-text">Se descuenta el {String(r.descuentoPct).replace('.', ',')} % de tu sueldo bruto.</span>
-          {r.sobreTope && (
-            <span className="muted small-text">Tu sueldo pasa el tope imponible: la AFP y la salud se calculan solo hasta {money(Math.round(CL.topeAfpUf * CL.uf))}.</span>
-          )}
-          {contrato === 'honorarios' && (
-            <span className="muted small-text">La retención se declara en abril: según tus gastos y cotizaciones puedes recuperar parte o tener que pagar más.</span>
-          )}
-          <button type="button" className="btn small" disabled={busy} onClick={() => void use(r.liquido)}>
+          <div className="stack tight">
+            <span className="muted">Te llegan cada mes</span>
+            <span className="cat-big num">{money(r.liquido)}</span>
+            <span className="muted">Es un {String(r.descuentoPct).replace('.', ',')} % menos que tu bruto</span>
+            {contrato === 'honorarios' && <span className="muted small-text">La retención se ajusta en abril: puedes recuperar o pagar más.</span>}
+          </div>
+          <button type="button" className="btn" disabled={busy} onClick={() => void use(r.liquido)}>
             {busy ? <Spin label="Guardando sueldo…" /> : `Usar ${money(r.liquido)} como mi sueldo`}
           </button>
         </div>
       )}
-      <span className="muted small-text">
-        Valores de referencia de {CL.actualizado} (UTM {money(CL.utm)}, UF {money(CL.uf)}). Tu liquidación puede variar por gratificación, Isapre, APV o descuentos de tu empresa. Es una orientación, no reemplaza a un asesor.
-      </span>
-    </section>
+      <span className="muted small-text">Es una orientación: tu liquidación real puede variar.</span>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
   )
 }
