@@ -12,21 +12,47 @@ export function passwordStrength(pw: string): number {
 
 export const STRENGTH_LABEL = ['', 'Muy débil', 'Aceptable', 'Buena', 'Excelente']
 
-/** Freno local contra intentos repetidos: tras 5 fallos espera 30 s, y se duplica. */
-export function createThrottle(max = 5, baseMs = 30000) {
+/**
+ * Freno local contra intentos repetidos: tras 5 fallos espera 30 s, y se duplica.
+ * Con `storeKey` el conteo se guarda en el dispositivo: recargar la página o abrir otra pestaña no lo reinicia.
+ */
+export function createThrottle(max = 5, baseMs = 30000, storeKey?: string) {
   let fails = 0
   let until = 0
+  const load = () => {
+    if (!storeKey) return
+    try {
+      const v = JSON.parse(localStorage.getItem(storeKey) ?? 'null') as { fails?: unknown; until?: unknown } | null
+      fails = typeof v?.fails === 'number' && v.fails > 0 ? Math.min(v.fails, 1000) : 0
+      until = typeof v?.until === 'number' ? v.until : 0
+    } catch {
+      /* sin almacenamiento: queda solo en memoria */
+    }
+  }
+  const save = () => {
+    if (!storeKey) return
+    try {
+      if (fails === 0) localStorage.removeItem(storeKey)
+      else localStorage.setItem(storeKey, JSON.stringify({ fails, until }))
+    } catch {
+      /* sin almacenamiento: queda solo en memoria */
+    }
+  }
   return {
     remaining(): number {
+      load()
       return Math.max(0, Math.ceil((until - Date.now()) / 1000))
     },
     fail(): void {
+      load()
       fails++
       if (fails >= max) until = Date.now() + baseMs * 2 ** Math.min(fails - max, 5)
+      save()
     },
     reset(): void {
       fails = 0
       until = 0
+      save()
     },
   }
 }

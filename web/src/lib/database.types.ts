@@ -375,32 +375,6 @@ isOneToOne: false
       referencedColumns: ["household_id","user_id"]
     }
                   ]
-                },"widget_tokens": {
-                  Row: {
-                    "created_at": string,"created_by": string,"household_id": string,"id": string,"label": string,"token_hash": string
-                  }
-                  ComputedFields: never
-                  Insert: {
-                    "created_at"?: string,"created_by"?: string,"household_id": string,"id"?: string,"label": string,"token_hash": string
-                  }
-                  Update: {
-                    "created_at"?: string,"created_by"?: string,"household_id"?: string,"id"?: string,"label"?: string,"token_hash"?: string
-                  }
-                  Relationships: [
-                    {
-      foreignKeyName: "widget_tokens_household_id_created_by_fkey"
-      columns: ["household_id","created_by"]
-isOneToOne: false
-      referencedRelation: "members"
-      referencedColumns: ["household_id","user_id"]
-    },{
-      foreignKeyName: "widget_tokens_household_id_fkey"
-      columns: ["household_id"]
-isOneToOne: false
-      referencedRelation: "households"
-      referencedColumns: ["id"]
-    }
-                  ]
                 }
           }
           Views: {
@@ -418,9 +392,6 @@ isOneToOne: false
                            },
 "set_expense_split":
 { Args: { "pct": number | null }; Returns: undefined
-                           },
-"create_widget_token":
-{ Args: { "p_label": string }; Returns: string
                            },
 "delete_account":
 { Args: Record<PropertyKey, never>; Returns: undefined
@@ -442,9 +413,6 @@ isOneToOne: false
                            },
 "rotate_invite_code":
 { Args: Record<PropertyKey, never>; Returns: string
-                           },
-"widget_summary":
-{ Args: { "p_token": string }; Returns: Json
                            }
           }
           Enums: {

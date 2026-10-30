@@ -8,6 +8,8 @@ import { NEEDS } from '../lib/needs'
 import { supabase } from '../lib/supabase'
 import { STRENGTH_LABEL, createThrottle, friendlyError, passwordStrength } from '../lib/security'
 import Spin from '../components/Spin'
+import LegalModal from '../components/LegalModal'
+import { LEGAL_VERSION } from '../lib/legal'
 
 const throttle = createThrottle()
 
@@ -23,6 +25,8 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<Msg | null>(notice ? { text: notice, error: true } : null)
   const [show, setShow] = useState(false)
+  const [accepted, setAccepted] = useState(false)
+  const [legal, setLegal] = useState<'privacy' | 'terms' | null>(null)
   const strength = passwordStrength(password)
 
   async function submit(e: FormEvent) {
@@ -34,6 +38,10 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
     }
     if (mode === 'register' && strength < 2) {
       setMsg({ text: 'Usa una contraseña de al menos 10 caracteres, con letras y números, y no tan obvia.', error: true })
+      return
+    }
+    if (mode === 'register' && !accepted) {
+      setMsg({ text: 'Para crear tu cuenta, marca la casilla que acepta los términos y la política de privacidad.', error: true })
       return
     }
     setBusy(true)
@@ -79,7 +87,7 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
       const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
-        options: { captchaToken: captcha },
+        options: { captchaToken: captcha, data: { accepted_terms_at: new Date().toISOString(), terms_version: LEGAL_VERSION } },
       })
       if (error) {
         setMsg({ text: friendlyError(error.message), error: true })
@@ -152,6 +160,22 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
             )}
           </div>
           )}
+          {mode === 'register' && (
+            <label className="accept">
+              <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
+              <span>
+                Acepto los{' '}
+                <button type="button" className="link-btn" onClick={() => setLegal('terms')}>
+                  términos y condiciones
+                </button>{' '}
+                y la{' '}
+                <button type="button" className="link-btn" onClick={() => setLegal('privacy')}>
+                  política de privacidad
+                </button>
+                .
+              </span>
+            </label>
+          )}
           {msg && (
             <p className={msg.error ? 'error' : 'notice'} role="alert">
               {msg.text}
@@ -194,6 +218,14 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
           </ul>
         </details>
         <footer className="auth-foot">
+          <div className="legal-links">
+            <button type="button" className="link-btn" onClick={() => setLegal('terms')}>
+              Términos y condiciones
+            </button>
+            <button type="button" className="link-btn" onClick={() => setLegal('privacy')}>
+              Política de privacidad
+            </button>
+          </div>
           <span>{copyright()}</span>
           <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer">
             Síguenos en Instagram {INSTAGRAM_HANDLE}
@@ -201,6 +233,7 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
         </footer>
       </main>
       <InstallBanner onAuth />
+      {legal && <LegalModal doc={legal} onClose={() => setLegal(null)} />}
     </div>
   )
 }

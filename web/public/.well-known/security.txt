@@ -1,0 +1,4 @@
+Contact: mailto:dinovancejr1098@gmail.com
+Expires: 2027-10-29T00:00:00.000Z
+Preferred-Languages: es, en
+Canonical: https://contigo.dinovance.cl/.well-known/security.txt

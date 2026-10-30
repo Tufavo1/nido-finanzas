@@ -6,7 +6,8 @@ import { createThrottle } from '../lib/security'
 import Logo from './Logo'
 import Spin from './Spin'
 
-const throttle = createThrottle()
+// Guardado en el dispositivo: recargar la página no reinicia los intentos
+const throttle = createThrottle(5, 30000, 'contigo-lock-throttle')
 
 /** Pantalla que tapa la app mientras está bloqueada. Para entrar hay que escribir la contraseña de la cuenta. */
 export default function LockScreen({ onUnlock }: { onUnlock: () => void }) {

@@ -1,3 +1,4 @@
+import { wipeSessionData } from './lib/wipe'
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
@@ -64,6 +65,7 @@ export default function App() {
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === 'PASSWORD_RECOVERY') setRecovering(true)
+      if (event === 'SIGNED_OUT') wipeSessionData()
       setSession(s)
     })
     void consumeRecoveryLink().then(async (r) => {

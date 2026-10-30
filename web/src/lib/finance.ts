@@ -200,7 +200,7 @@ export function summarizeDebts(debts: Debt[], payments: DebtPayment[], now: Date
       detail:
         v.debt.monthly_payment === 0
           ? 'No tiene cuota definida. Fija un monto mensual para que avance.'
-          : `La cuota no cubre ni los intereses (~${Math.round(v.monthlyInterest).toLocaleString('es-CL')} al mes). Súbela o abona de más.`,
+          : `La cuota no cubre ni los intereses (~${Math.round(v.monthlyInterest).toLocaleString('es-CL')} al mes). Paga más que la cuota para que baje.`,
     })
   }
   for (const v of active) {
@@ -215,8 +215,8 @@ export function summarizeDebts(debts: Debt[], payments: DebtPayment[], now: Date
   if (focus && active.length > 1) {
     findings.push({
       level: 'warn',
-      title: `Ataquen primero **${focus.debt.name}**`,
-      detail: `Es la que más interés cobra (${focus.debt.monthly_rate} % mensual). Cualquier extra que tengan rinde más ahí.`,
+      title: `Paguen primero **${focus.debt.name}**`,
+      detail: `Es la que más interés cobra (${focus.debt.monthly_rate} % mensual). Cualquier plata extra rinde más si la usan ahí.`,
     })
   }
   if (interest > 0) {
@@ -428,7 +428,7 @@ export function analyzeSalary(opts: {
       findings.push({
         level: 'bad',
         title: `Tus deudas se llevan el ${debtPct} % del sueldo`,
-        detail: 'Sobre 40 % se vuelve difícil de sostener. Prioricen bajar las cuotas o el interés.',
+        detail: 'Sobre 40 % cuesta mucho pagar. Conviene bajar las cuotas o el interés.',
       })
     } else if (debtPct > 30) {
       if (level === 'ok') level = 'warn'

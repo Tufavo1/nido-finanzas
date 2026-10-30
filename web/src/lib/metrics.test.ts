@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { computeMetrics } from './metrics'
 import { compact, monthGrid } from './calendar'
 import { createThrottle, passwordStrength } from './security'
@@ -73,6 +73,20 @@ describe('seguridad', () => {
     expect(t.remaining()).toBeGreaterThan(0)
     t.reset()
     expect(t.remaining()).toBe(0)
+  })
+  it('recordar los intentos guardados: recargar la página no reinicia el freno', () => {
+    const mem = new Map<string, string>()
+    const fake = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) }
+    vi.stubGlobal('localStorage', fake)
+    const a = createThrottle(2, 1000, 'k')
+    a.fail()
+    a.fail()
+    expect(a.remaining()).toBeGreaterThan(0)
+    // «recarga»: otra instancia con la misma clave sigue frenada
+    expect(createThrottle(2, 1000, 'k').remaining()).toBeGreaterThan(0)
+    a.reset()
+    expect(createThrottle(2, 1000, 'k').remaining()).toBe(0)
+    vi.unstubAllGlobals()
   })
 })
 

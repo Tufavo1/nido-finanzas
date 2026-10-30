@@ -99,7 +99,7 @@ export const HELP_GROUPS: HelpGroup[] = [
         id: 'perfil',
         title: 'Perfil: tu perfil financiero y tu cuenta',
         hint: 'Qué perfil eres, tu nivel y cómo subir',
-        text: 'La pestaña Perfil reúne quién eres con la plata (según tu análisis), los datos de tu cuenta y qué puede ver tu pareja de lo tuyo. Todo el perfil financiero es privado: solo tú lo ves.',
+        text: 'El Perfil financiero (en Ajustes) reúne quién eres con la plata (según tu análisis), los datos de tu cuenta y qué puede ver tu pareja de lo tuyo. Todo el perfil financiero es privado: solo tú lo ves.',
         steps: [
           'El **perfil** (por ejemplo Equilibrado/a o Reconstruyendo) sale de tu ahorro, tus deudas, tus gastos y tu colchón. Necesita tu **sueldo** y tus gastos del mes.',
           'El **nivel** va de 1 a 5 según tu puntaje de 100 puntos y te dice cuántos te faltan para el siguiente.',
@@ -113,7 +113,7 @@ export const HELP_GROUPS: HelpGroup[] = [
         hint: 'Qué ve tu pareja de lo tuyo y qué es siempre privado',
         text: 'Tú decides qué parte de lo tuyo ve tu pareja. Por defecto se comparte todo, y puedes esconder cosas cuando quieras.',
         steps: [
-          'En **Perfil > Privacidad con mi pareja**, activa o desactiva: tus deudas, tus gastos fijos personales, tus gastos personales y tus aportes a metas.',
+          'En **Ajustes > Perfil financiero > Privacidad con mi pareja**, activa o desactiva: tus deudas, tus gastos fijos personales, tus gastos personales y tus aportes a metas.',
           'Lo **compartido** (gastos, fijos y deudas de los dos) se ve siempre: es de ambos.',
           'Tu **sueldo**, tus **ingresos extra**, tu análisis y tu perfil son **siempre privados**.',
           'Si escondes tus gastos personales, el total del hogar que ve tu pareja no los incluye, y no le llegan avisos de ellos.',

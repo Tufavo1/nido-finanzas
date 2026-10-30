@@ -19,7 +19,7 @@ export default function Profile({
   reload,
   onToast,
   onGoSalary,
-  onSettings,
+  onBack,
 }: {
   hh: Household
   data: HouseholdData
@@ -27,7 +27,7 @@ export default function Profile({
   reload: () => Promise<void>
   onToast: Notify
   onGoSalary: () => void
-  onSettings: () => void
+  onBack?: () => void
 }) {
   const partner = hh.members.find((m) => m.user_id !== hh.me.user_id)
   // Se pueden abrir varios a la vez; parte abierto el perfil financiero
@@ -41,18 +41,20 @@ export default function Profile({
   const item = { onToggle: toggle }
   return (
     <main className="screen">
+      {onBack && (
+        <button type="button" className="btn ghost small" onClick={onBack} style={{ alignSelf: 'flex-start' }}>
+          Volver a Ajustes
+        </button>
+      )}
       <div className="card wide profile-head">
         <Avatar name={hh.me.display_name} color={hh.me.color} size={56} />
         <div className="grow">
-          <h1 className="title">{hh.me.display_name}</h1>
+          <h1 className="title">Mi perfil</h1>
           <span className="muted">
             {hh.household.name}
             {partner ? ` · con ${partner.display_name}` : ' · 1 de 2 personas'}
           </span>
         </div>
-        <button type="button" className="btn ghost small" onClick={onSettings}>
-          Ajustes y seguridad
-        </button>
       </div>
 
       <div className="set-list profile-acc">

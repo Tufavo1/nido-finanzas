@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getLockMinutes, isFlaggedLocked, lastActive, setFlaggedLocked, shouldLock, touch } from './applock'
+import { LOCK_FLAG_KEY, getLockMinutes, isFlaggedLocked, lastActive, setFlaggedLocked, shouldLock, touch } from './applock'
 
 /** Vigila la inactividad y dice si la app debe estar bloqueada. El estado sobrevive a recargar la página. */
 export function useAppLock(): { locked: boolean; unlock: () => void } {
@@ -42,6 +42,16 @@ export function useAppLock(): { locked: boolean; unlock: () => void } {
       window.clearInterval(timer)
     }
   }, [locked, lock])
+
+  // Varias pestañas: si una se bloquea (o se desbloquea con la contraseña), las demás la siguen
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== LOCK_FLAG_KEY && e.key !== null) return
+      setLocked(getLockMinutes() > 0 && isFlaggedLocked())
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   const unlock = useCallback(() => {
     setFlaggedLocked(false)

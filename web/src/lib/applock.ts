@@ -10,6 +10,8 @@ export const LOCK_OPTIONS = [
 const PREF = 'contigo-lock-min'
 const LAST = 'contigo-last-active'
 const LOCKED = 'contigo-locked'
+/** Claves que cambian cuando otra pestaña bloquea o desbloquea */
+export const LOCK_FLAG_KEY = LOCKED
 
 function read(key: string): string | null {
   try {

@@ -2,6 +2,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
 
 const ALLOWED = [
+  'https://contigo.dinovance.cl',
   'https://nido-finanzas.joseromeroesteban353.workers.dev',
   'http://localhost:5173',
 ]

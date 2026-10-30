@@ -18,7 +18,7 @@ export default function LeaveAccount({ hh, reload, onToast }: { hh: Household; r
 
   const explain: Record<Action, string> = partner
     ? {
-        leave: `Dejarás de ver este hogar. Tu sueldo, tus ingresos, tu perfil, tus deudas personales y los widgets que creaste se borran. Los gastos que compartieron quedan en el historial de ${partner.display_name}, con tu nombre. Después podrás crear tu propio hogar o unirte a otro.`,
+        leave: `Dejarás de ver este hogar. Tu sueldo, tus ingresos, tu perfil, tus deudas personales y tus gastos fijos personales se borran. Los gastos que compartieron quedan en el historial de ${partner.display_name}, con tu nombre. Después podrás crear tu propio hogar o unirte a otro.`,
         delete: `Sales del hogar (como arriba) y se borra tu cuenta para siempre. Los gastos compartidos quedan en el historial de ${partner.display_name}. No se puede deshacer.`,
       }
     : {

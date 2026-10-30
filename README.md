@@ -28,7 +28,6 @@ Además:
 - **Instalable** en Android y iPhone, con ícono propio, pantalla completa, atajo «Registrar un gasto» y funcionamiento básico sin conexión.
 - **Bloqueo por inactividad** que pide la contraseña (1, 5 o 15 minutos).
 - **Respaldo**: descarga de todos los datos del hogar en JSON, y de los gastos en CSV. Se arma en el dispositivo.
-- **Widgets**: enlaces de solo lectura para ver un resumen fuera de la app (solo administrador).
 - **Lenguaje simple**: «ahorro para imprevistos» en vez de «fondo de emergencia», sin jerga financiera.
 
 ### Cómo funciona un hogar
@@ -44,7 +43,7 @@ Además:
 | --- | --- | --- |
 | Gastos, metas, finanzas, perfil, hogar, contraseña, bloqueo, respaldo, borrar cuenta | ✅ | ✅ |
 | Notificaciones (dos interruptores) | ✅ | ✅ + botón «Enviar prueba» |
-| Instalación y conexión, Seguridad de Contigo, Widgets | — | ✅ |
+| Instalación y conexión, Seguridad de Contigo | — | ✅ |
 | Panel de administración (conteos agregados, limpieza de hogares) | — | ✅ (exige segundo factor) |
 
 ---
@@ -90,7 +89,7 @@ Además:
 
 ### Modelo de datos (resumen)
 
-`households` · `members` (1–2 activos por hogar, con `left_at` para el historial) · `categories` (con tope mensual) · `expenses` · `recurring_expenses` · `goals` y `contributions` · `debts` y `debt_payments` · `salaries` e `incomes` (privados por persona) · `profiles` · `push_subscriptions` · `widget_tokens` · `invite_attempts` · `admins` y `admin_audit` (registro de acciones destructivas del panel). Los montos son **pesos chilenos enteros** (`bigint`).
+`households` · `members` (1–2 activos por hogar, con `left_at` para el historial) · `categories` (con tope mensual) · `expenses` · `recurring_expenses` · `goals` y `contributions` · `debts` y `debt_payments` · `salaries` e `incomes` (privados por persona) · `profiles` · `push_subscriptions` · `invite_attempts` · `admins` y `admin_audit` (registro de acciones destructivas del panel). Los montos son **pesos chilenos enteros** (`bigint`).
 
 ---
 

@@ -87,7 +87,7 @@ export function smartAlerts({ hh, data, month, now, rows, myCost }: SmartInput):
           title: `A fin de mes te faltarían ${money(-end)}`,
           detail: `Contando lo que aún vence este mes y tu gasto diario de ~${money(Math.round(variableDaily))}.`,
           tab: 'money',
-          action: 'Ver cómo cuadrarlo',
+          action: 'Ver qué hacer',
           amount: -end,
           priority: 92 + Math.min(6, Math.round(((-end / income) * 100) / 5)),
         })
