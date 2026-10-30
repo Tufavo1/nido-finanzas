@@ -28,3 +28,6 @@ export async function checkForUpdate(): Promise<UpdateResult> {
   await new Promise((r) => setTimeout(r, 1500))
   return reg.installing || reg.waiting ? 'updating' : 'up-to-date'
 }
+
+/** Correo para consultas sobre privacidad y datos personales */
+export const CONTACT_EMAIL = 'dinovancejr1098@gmail.com'

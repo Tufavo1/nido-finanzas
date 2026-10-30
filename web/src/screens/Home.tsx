@@ -1,3 +1,4 @@
+import ScreenHelp from '../components/ScreenHelp'
 import { useEffect, useMemo, useState } from 'react'
 import type { Household } from '../App'
 import SectionHead from '../components/SectionHead'
@@ -153,6 +154,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, alerts, onGo
           <h1 className="title">Hola, {hh.me.display_name}</h1>
         </div>
         <div className="row">
+          <ScreenHelp screen="home" />
           {members.length === 2 ? <AvatarPair people={members} /> : <Logo size={30} />}
           <button type="button" className="icon-btn" aria-label="Ajustes y seguridad" onClick={onSettings}>
             <Icon name="gear" />

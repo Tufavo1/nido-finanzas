@@ -1,3 +1,4 @@
+import ScreenHelp from '../components/ScreenHelp'
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createPortal } from 'react-dom'
@@ -1106,7 +1107,10 @@ export default function Money(props: Props) {
 
   return (
     <main className="screen plata">
-      <h1 className="title">Mis finanzas</h1>
+      <div className="row between">
+        <h1 className="title">Mis finanzas</h1>
+        <ScreenHelp screen="money" />
+      </div>
       <ScopeBar hh={props.hh} scope={who} onScope={props.onScope} label="Ver las finanzas de" />
 
       {!data.financeReady ? (

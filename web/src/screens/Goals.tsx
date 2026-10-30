@@ -1,3 +1,4 @@
+import ScreenHelp from '../components/ScreenHelp'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Household } from '../App'
@@ -390,9 +391,12 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
       <Collapsibles>
       <div className="row between">
         <h1 className="title">Metas</h1>
-        <button type="button" className="btn small" onClick={() => setCreating((c) => !c)}>
-          Nueva meta
-        </button>
+        <div className="row">
+          <ScreenHelp screen="goals" />
+          <button type="button" className="btn small" onClick={() => setCreating((c) => !c)}>
+            Nueva meta
+          </button>
+        </div>
       </div>
 
       <ScopeBar hh={hh} scope={who} onScope={onScope} label="Ver los aportes de" />

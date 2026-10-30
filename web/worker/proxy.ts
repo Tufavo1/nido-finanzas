@@ -22,7 +22,7 @@ const ALLOWED: RegExp[] = [
 ]
 
 /** Endpoints de autenticación que se limitan más (fuerza bruta, correos masivos) */
-const SENSITIVE_AUTH = /^\/auth\/v1\/(token|signup|recover|otp|verify|resend|reauthenticate|user)$/i
+const SENSITIVE_AUTH = /^\/auth\/v1\/(token|signup|recover|otp|verify|resend|reauthenticate|user|factors\/[0-9a-f-]{36}\/(challenge|verify))$/i
 
 /** Limpia lo que suele colarse al pegar un secreto: espacios, comillas, barra final o falta de https:// */
 export function normalizeOrigin(raw: string | undefined): string | null {

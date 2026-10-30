@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { NEWS_SLIDES, WELCOME_SLIDES } from './tourSlides'
+import type { Slide } from './tourSlides'
 import { Rich } from '../lib/rich'
 
 interface Props {
-  kind: 'welcome' | 'news'
+  kind: 'welcome' | 'news' | 'screen'
+  /** Solo para `screen`: las pantallas de la guía de esa sección */
+  slides?: Slide[]
+  /** Solo para `screen`: la etiqueta de arriba, por ejemplo «Ayuda de Gastos» */
+  label?: string
   onClose: () => void
 }
 
 /** Guía en pocas pantallas (bienvenida o novedades), con una animación cada una. Se cierra con Saltar o con Escape. */
-export default function Tour({ kind, onClose }: Props) {
-  const SLIDES = kind === 'news' ? NEWS_SLIDES : WELCOME_SLIDES
+export default function Tour({ kind, slides, label, onClose }: Props) {
+  const SLIDES = kind === 'screen' && slides ? slides : kind === 'news' ? NEWS_SLIDES : WELCOME_SLIDES
   const [i, setI] = useState(0)
   const next = useRef<HTMLButtonElement>(null)
   const last = i === SLIDES.length - 1
@@ -29,7 +34,7 @@ export default function Tour({ kind, onClose }: Props) {
   return (
     <div className="tour-back">
       <div className="tour card" role="dialog" aria-modal="true" aria-labelledby="tour-title">
-        {kind === 'news' && <span className="pill tour-label">Novedades</span>}
+        {kind !== 'welcome' && <span className="pill tour-label">{kind === 'news' ? 'Novedades' : label}</span>}
         <div className="tour-stage" key={i}>
           {slide.art}
         </div>
@@ -58,7 +63,7 @@ export default function Tour({ kind, onClose }: Props) {
             </button>
           )}
           <button ref={next} type="button" className="btn grow" onClick={() => (last ? onClose() : setI(i + 1))}>
-            {last ? 'Empezar' : 'Siguiente'}
+            {last ? (kind === 'screen' ? 'Entendido' : 'Empezar') : 'Siguiente'}
           </button>
         </div>
       </div>

@@ -1,3 +1,4 @@
+import ScreenHelp from '../components/ScreenHelp'
 import { useMemo, useState } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
@@ -336,7 +337,10 @@ export default function Expenses({
   return (
     <main className="screen">
       <Collapsibles>
-      <h1 className="title">Gastos</h1>
+      <div className="row between">
+        <h1 className="title">Gastos</h1>
+        <ScreenHelp screen="expenses" />
+      </div>
 
       <ScopeBar hh={hh} scope={who} onScope={setWho} label="Ver los gastos de" />
 

@@ -61,7 +61,6 @@ declare
   a  uuid := '00000000-0000-0000-0000-0000000000a1';
   c  uuid := '00000000-0000-0000-0000-0000000000c3';
   h1 uuid; h3 uuid; cat1 uuid; g1 uuid; d1 uuid;
-  tok_a text; tok_c text;
   t text; filt text; col text;
 begin
   set local role authenticated;
@@ -80,17 +79,15 @@ begin
   insert into public.incomes (household_id, amount, source) values (h1, 100000, 'Extra');
   insert into public.profiles (user_id, household_id) values (a, h1);
   insert into public.push_subscriptions (endpoint, p256dh, auth_key) values ('https://push.test/a', 'k', 'k');
-  tok_a := public.create_widget_token('Widget de A');
 
   -- C tiene su propio hogar, vacío
   perform set_config('request.jwt.claims', json_build_object('sub', c)::text, true);
   h3 := public.create_household('Casa de C', 'Carla');
-  tok_c := public.create_widget_token('Widget de C');
   reset role;
 
   -- C frente al hogar de A: no lee, no cambia, no borra (un grupo por tabla)
   foreach t in array array['expenses','categories','goals','contributions','debts','debt_payments',
-                           'recurring_expenses','incomes','profiles','members','widget_tokens','households'] loop
+                           'recurring_expenses','incomes','profiles','members','households'] loop
     filt := case when t = 'households' then format('id = %L', h1) else format('household_id = %L', h1) end;
     col  := case when t = 'households' then 'id' else 'household_id' end;
     insert into public.t_casos (grupo, quien, modo, q) values
@@ -130,17 +127,6 @@ begin
     ('admins', 'grant all on public.admins to authenticated; alter table public.admins disable row level security'),
     ('admin_audit', 'grant all on public.admin_audit to authenticated; alter table public.admin_audit disable row level security'),
     ('invite_attempts', 'grant all on public.invite_attempts to authenticated; alter table public.invite_attempts disable row level security');
-
-  -- Widget: un token inválido no entrega nada y cada token solo ve su hogar
-  insert into public.t_casos (grupo, quien, modo, esperado, q) values
-    ('widget_summary', c, 'falla', '28000', 'select public.widget_summary(''nw_inventado'')'),
-    ('widget_summary', c, 'falla', '28000', 'select public.widget_summary('''')'),
-    ('widget_summary', c, 'falla', '28000', 'select public.widget_summary(null)'),
-    ('widget_summary', c, 'falla', '28000', format('select public.widget_summary(%L)', tok_a || 'x'));
-  insert into public.t_casos (grupo, quien, modo, q) values
-    ('widget_summary', c, 'cero', format('select (public.widget_summary(%L) ->> ''spent'')::bigint', tok_c));
-  -- control positivo: el token de A sí ve su gasto (si no, la prueba anterior no probaría nada)
-  assert (public.widget_summary(tok_a) ->> 'spent')::bigint = 48900, 'el token de A debe ver el gasto de A';
 end $$;
 
 \if :{?mutar}

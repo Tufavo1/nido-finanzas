@@ -87,6 +87,8 @@ describe('otros', () => {
   it('reconoce los endpoints sensibles de la cuenta', () => {
     expect(isSensitive('/auth/v1/token')).toBe(true)
     expect(isSensitive('/rest/v1/expenses')).toBe(false)
+    expect(isSensitive('/auth/v1/factors/123e4567-e89b-12d3-a456-426614174000/verify')).toBe(true)
+    expect(isSensitive('/auth/v1/factors/123e4567-e89b-12d3-a456-426614174000')).toBe(false)
   })
 })
 

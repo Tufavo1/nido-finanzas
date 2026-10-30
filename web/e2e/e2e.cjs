@@ -59,6 +59,7 @@ async function register(page, email) {
   await page.getByRole('button', { name: 'Crear una cuenta' }).click()
   await page.getByLabel('Correo').fill(email)
   await page.getByLabel('Contraseña', { exact: true }).fill(PW)
+  await page.getByRole('checkbox').check()
   await page.getByRole('button', { name: 'Crear cuenta' }).click()
   await page.getByText('Te enviamos un correo').waitFor({ timeout: 30000 })
   // Confirma el correo y vuelve a iniciar sesión (la app no lee tokens desde la URL)
@@ -129,12 +130,11 @@ async function addExpense(page, digits, note) {
     await fakeInstall(ana, 'accepted')
     await ana.waitForTimeout(500)
     assert((await ana.getByText('Instala Contigo en tu celular').count()) === 0, 'tras decir que no, no vuelve a molestar')
-    // Ana no es administradora: no ve «Instalación y conexión» ni «Widgets», y en Notificaciones solo hay los dos interruptores
+    // Ana no es administradora: no ve «Instalación y conexión», y en Notificaciones solo hay los dos interruptores
     await tab(ana, 'Ajustes', 'Notificaciones')
     await ana.getByRole('switch', { name: 'Avisos de tu pareja' }).waitFor()
     await ana.getByRole('switch', { name: 'Avisos de la app' }).waitFor()
     assert((await ana.locator('.set-head button', { hasText: 'Instalación y conexión' }).count()) === 0, 'una persona normal no ve «Instalación y conexión»')
-    assert((await ana.locator('.set-head button', { hasText: 'Widgets' }).count()) === 0, 'una persona normal no ve los widgets')
     assert((await ana.locator('.set-head button', { hasText: 'Seguridad de Contigo' }).count()) === 0, 'una persona normal no ve «Seguridad de Contigo»')
     assert((await ana.getByRole('button', { name: 'Enviar prueba' }).count()) === 0, 'una persona normal no ve «Enviar prueba»')
     step('Acerca de: versión, copyright y agradecimiento')

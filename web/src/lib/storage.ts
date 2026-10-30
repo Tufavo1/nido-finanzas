@@ -28,6 +28,5 @@ export const TABLE_LABEL: Record<string, string> = {
   salaries: 'Sueldos',
   profiles: 'Perfiles',
   push_subscriptions: 'Avisos push',
-  widget_tokens: 'Widgets',
   invite_attempts: 'Intentos de invitación',
 }

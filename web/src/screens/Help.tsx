@@ -4,7 +4,7 @@ import SectionHead from '../components/SectionHead'
 import { HELP_GROUPS } from '../lib/help'
 
 /** Ayuda y consejos: un índice arriba y cada tema como desplegable */
-export default function Help() {
+export default function Help({ onBack }: { onBack?: () => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set())
 
   function toggle(id: string) {
@@ -23,6 +23,11 @@ export default function Help() {
 
   return (
     <main className="screen">
+      {onBack && (
+        <button type="button" className="btn ghost small" onClick={onBack} style={{ alignSelf: 'flex-start' }}>
+          Volver a Ajustes
+        </button>
+      )}
       <h1 className="title">Ayuda y consejos</h1>
 
       <nav className="card wide help-index" aria-label="Índice de ayuda">

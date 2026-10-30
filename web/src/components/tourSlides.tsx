@@ -8,7 +8,7 @@ export interface Slide {
   art: ReactNode
 }
 
-const badge = (name: Parameters<typeof Icon>[0]['name']) => (
+export const badge = (name: Parameters<typeof Icon>[0]['name']) => (
   <span className="tour-art tour-badge">
     <Icon name={name} size={40} />
   </span>
@@ -68,12 +68,12 @@ export const WELCOME_SLIDES: Slide[] = [
   },
   {
     title: 'Ayuda y tu perfil',
-    text: 'En **Ayuda** hay consejos con un índice para ir directo a lo que buscas. En **Perfil** ves qué perfil financiero tienes, tu nivel y cómo subir, y manejas tu cuenta.',
+    text: 'En **Ajustes** (el engranaje de Inicio) está la **Ayuda**, con consejos y un índice para ir directo a lo que buscas. En **Ajustes → Perfil financiero** ves qué perfil tienes, tu nivel y cómo subir, y manejas tu cuenta.',
     art: badge('help'),
   },
   {
     title: 'Invita a tu pareja',
-    text: 'En **Perfil → Mi hogar** generas un código para sumar a tu pareja. Cada una ve lo mismo, al instante, y tú decides qué temas no comparten. Esta guía la ves otra vez en Ajustes.',
+    text: 'En **Ajustes → Perfil financiero → Mi hogar** generas un código para sumar a tu pareja. Cada una ve lo mismo, al instante, y tú decides qué temas no comparten. Esta guía la ves otra vez en Ajustes.',
     art: <Logo size={84} animate />,
   },
 ]
@@ -97,12 +97,12 @@ export const NEWS_SLIDES: Slide[] = [
   },
   {
     title: 'Tu perfil financiero',
-    text: 'La nueva pestaña **Perfil** te dice qué tipo de perfil financiero tienes, en qué nivel vas y los **tres pasos** para subir. También ahí cambias nombre, correo y contraseña.',
+    text: 'El nuevo **Perfil financiero** (en Ajustes) te dice qué tipo de perfil financiero tienes, en qué nivel vas y los **tres pasos** para subir. También ahí cambias nombre, correo y contraseña.',
     art: badge('user'),
   },
   {
     title: 'Tú decides qué ve tu pareja',
-    text: 'En **Perfil → Privacidad** apagas por tema (deudas, fijos, gastos personales, ahorro) lo que no quieres compartir. Lo que ocultas no se ve, ni siquiera en las notificaciones.',
+    text: 'En **Ajustes → Perfil financiero → Privacidad** apagas por tema (deudas, fijos, gastos personales, ahorro) lo que no quieres compartir. Lo que ocultas no se ve, ni siquiera en las notificaciones.',
     art: badge('lock'),
   },
   {
@@ -112,7 +112,7 @@ export const NEWS_SLIDES: Slide[] = [
   },
   {
     title: 'Ayuda a un toque',
-    text: 'La pestaña **Ayuda** reúne todos los consejos en desplegables, con un **índice** para ir directo al tema. Esta guía la puedes ver otra vez en Ajustes.',
+    text: 'La **Ayuda** (dentro de **Ajustes**, con el engranaje de Inicio) reúne todos los consejos en desplegables, con un **índice** para ir directo al tema. Esta guía la puedes ver otra vez ahí mismo.',
     art: badge('help'),
   },
 ]

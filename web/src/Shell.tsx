@@ -32,15 +32,13 @@ const Tour = lazy(() => import('./components/Tour'))
 const TABS = [
   { key: 'home', label: 'Inicio', icon: 'home' },
   { key: 'expenses', label: 'Gastos', icon: 'list' },
-  { key: 'money', label: 'Finanzas', icon: 'wallet' },
   { key: 'add', label: 'Registrar', icon: 'plus' },
+  { key: 'money', label: 'Finanzas', icon: 'wallet' },
   { key: 'goals', label: 'Metas', icon: 'target' },
-  { key: 'help', label: 'Ayuda', icon: 'help' },
-  { key: 'profile', label: 'Perfil', icon: 'user' },
 ] as const
 
-// Ajustes no tiene pestaña propia: se abre con el engranaje de Inicio. Registrar queda en el centro de las 7
-type Tab = (typeof TABS)[number]['key'] | 'security'
+// Ajustes y Ayuda no tienen pestaña propia: se abren con el engranaje de Inicio. Registrar queda en el centro de las 5; Perfil se abre desde Ajustes
+type Tab = (typeof TABS)[number]['key'] | 'security' | 'help' | 'profile'
 
 // Cuando el navegador está libre, deja listas las pantallas pesadas para que abran al instante
 function warmScreens() {
@@ -208,11 +206,11 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   } else if (tab === 'goals') {
     body = <Goals hh={hh} data={data} onToast={setToast} scope={scope} onScope={setScope} />
   } else if (tab === 'profile') {
-    body = <Profile hh={hh} data={data} month={month} reload={reload} onToast={setToast} onGoSalary={() => goTo('money', 'salary')} onSettings={() => setTab('security')} />
+    body = <Profile hh={hh} data={data} month={month} reload={reload} onToast={setToast} onGoSalary={() => goTo('money', 'salary')} onBack={() => setTab('security')} />
   } else if (tab === 'help') {
-    body = <Help />
+    body = <Help onBack={() => setTab('security')} />
   } else {
-    body = <Security hh={hh} reload={reload} data={data} onToast={setToast} />
+    body = <Security hh={hh} reload={reload} data={data} onToast={setToast} onHelp={() => setTab('help')} onProfile={() => setTab('profile')} />
   }
 
   if (locked) return <LockScreen onUnlock={unlock} />

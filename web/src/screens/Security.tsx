@@ -1,3 +1,4 @@
+import LegalModal from '../components/LegalModal'
 import { Suspense, lazy, useState } from 'react'
 import type { Household } from '../App'
 import AboutCard from '../components/AboutCard'
@@ -13,7 +14,6 @@ import { NEWS_EVENT, TOUR_EVENT } from '../lib/tour'
 import { getLockMinutes } from '../lib/applock'
 import { VERSION } from '../lib/about'
 import LeaveAccount from '../components/LeaveAccount'
-import WidgetTokens from '../components/WidgetTokens'
 import PushToggle from '../components/PushToggle'
 import ProfileCard from '../components/ProfileCard'
 import ThemeToggle from '../components/ThemeToggle'
@@ -29,16 +29,21 @@ export default function Security({
   reload,
   data,
   onToast,
+  onHelp,
+  onProfile,
 }: {
   hh: Household
   reload: () => Promise<void>
   data: HouseholdData
   onToast: Notify
+  onHelp: () => void
+  onProfile: () => void
 }) {
   const [open, setOpen] = useState<string | null>(null)
   const toggle = (id: string) => setOpen((cur) => (cur === id ? null : id))
   const isAdmin = useIsAdmin()
   const [showAdmin, setShowAdmin] = useState(false)
+  const [legal, setLegal] = useState<'privacy' | 'terms' | null>(null)
 
   if (showAdmin && isAdmin) {
     return (
@@ -81,6 +86,24 @@ export default function Security({
           open={open === 'home'}
         >
           <HomeCard hh={hh} reload={reload} onToast={onToast} />
+        </SettingsItem>
+
+        <SettingsItem {...item} id="finprofile" icon="user" title="Perfil financiero y privacidad" summary="Tu nivel, cómo subir y qué ve tu pareja" open={open === 'finprofile'}>
+          <section className="card">
+            <span className="muted">Mira qué perfil financiero tienes, tu nivel, los pasos para mejorar y qué temas compartes con tu pareja.</span>
+            <button type="button" className="btn ghost small" onClick={onProfile}>
+              Abrir mi perfil
+            </button>
+          </section>
+        </SettingsItem>
+
+        <SettingsItem {...item} id="help" icon="help" title="Ayuda y consejos" summary="Cómo se usa cada sección y consejos de finanzas" open={open === 'help'}>
+          <section className="card">
+            <span className="muted">Explicaciones paso a paso de cada parte de la app, con un índice para ir directo a lo que buscas.</span>
+            <button type="button" className="btn ghost small" onClick={onHelp}>
+              Abrir la ayuda
+            </button>
+          </section>
         </SettingsItem>
 
         <SettingsItem {...item} id="tour" icon="info" title="Guía de bienvenida" summary="Para qué sirve cada parte de la app" open={open === 'tour'}>
@@ -145,11 +168,6 @@ export default function Security({
         <SettingsItem {...item} id="notify" icon="bell" title="Notificaciones" summary="Avisos de tu pareja y de la app" open={open === 'notify'}>
           <PushToggle isAdmin={isAdmin} onToast={onToast} />
         </SettingsItem>
-        {isAdmin && (
-          <SettingsItem {...item} id="widgets" icon="target" title="Widgets y accesos externos" summary="Enlaces para ver tu resumen fuera de la app" open={open === 'widgets'}>
-            <WidgetTokens onToast={onToast} />
-          </SettingsItem>
-        )}
       </div>
 
       <h2 className="set-group">Tus datos</h2>
@@ -164,6 +182,18 @@ export default function Security({
 
       <h2 className="set-group">Información</h2>
       <div className="set-list">
+        <SettingsItem {...item} id="legal" icon="shield" title="Privacidad y términos" summary="Qué datos guardamos y las reglas de uso" open={open === 'legal'}>
+          <section className="card">
+            <span className="muted">Lee con calma qué datos guarda Contigo, para qué se usan y las reglas para usar la app.</span>
+            <button type="button" className="btn ghost small" onClick={() => setLegal('privacy')}>
+              Política de privacidad
+            </button>
+            <button type="button" className="btn ghost small" onClick={() => setLegal('terms')}>
+              Términos y condiciones
+            </button>
+          </section>
+        </SettingsItem>
+
         <SettingsItem {...item} id="about" icon="info" title="Acerca de Contigo" summary={`Versión ${VERSION}`} open={open === 'about'}>
           <AboutCard onToast={onToast} />
         </SettingsItem>
@@ -172,6 +202,7 @@ export default function Security({
       <button className="btn danger" type="button" onClick={() => void supabase.auth.signOut()}>
         Cerrar sesión
       </button>
+      {legal && <LegalModal doc={legal} onClose={() => setLegal(null)} />}
     </main>
   )
 }

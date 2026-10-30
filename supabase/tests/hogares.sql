@@ -135,7 +135,6 @@ begin
   insert into public.debts (household_id, name, original_amount, owner_id) values (h1, 'Tarjeta de Beto', 100000, b);
   insert into public.debts (household_id, name, original_amount) values (h1, 'Crédito común', 900000);
   insert into public.expenses (household_id, category_id, amount, paid_by) values (h1, cat, 7777, b);
-  assert public.create_widget_token('Mi widget') like 'nw_%', 'B crea un widget';
   insert into public.recurring_expenses (household_id, category_id, amount, note, paid_by, day_of_month)
   values (h1, cat, 9990, 'Netflix', b, 28);
   perform public.leave_household();
@@ -151,8 +150,6 @@ begin
   assert n = 1, 'el gasto de B queda en el historial';
   select count(*) into n from public.debts;
   assert n = 1, 'la deuda personal de B se fue; la común queda';
-  select count(*) into n from public.widget_tokens;
-  assert n = 0, 'el widget de B quedó revocado';
   select count(*) into n from public.recurring_expenses where paid_by = b;
   assert n = 0, 'los gastos fijos de B se fueron';
   reset role;
