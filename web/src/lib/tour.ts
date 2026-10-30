@@ -11,8 +11,8 @@ export const NEWS_EVENT = 'nido:news'
  * Cada persona la ve una sola vez; quien está entrando por primera vez ve la de bienvenida y no esta.
  * Con `ANNOUNCE_NEWS = false` nunca se abre sola, pero siempre se puede ver desde Ajustes.
  */
-export const NEWS_VERSION = '2026-10'
-export const ANNOUNCE_NEWS = true
+export const NEWS_VERSION = '2026-11'
+export const ANNOUNCE_NEWS = false
 
 // El almacenamiento puede estar bloqueado (ventana privada): sin él, la guía simplemente se muestra una vez por sesión
 const seenInSession = new Set<string>()

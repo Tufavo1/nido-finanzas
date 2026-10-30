@@ -114,29 +114,96 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, defaultOwne
   }
 
   const range = suggestion?.range
+  const multi = hh.members.length > 1
+  const [step, setStep] = useState(0)
+
+  // Una pregunta por pantalla; los pasos dependen de lo que se va respondiendo
+  const steps: string[] = ['who']
+  if (who === 'otra') steps.push('link')
+  if (who === 'otra' && link === 'institucion') steps.push('inst')
+  if (isPerson) steps.push('person')
+  if (!isPerson) steps.push('type')
+  steps.push('total')
+  if (isPerson) steps.push('interest', 'fee')
+  else steps.push('term', 'rate', 'fee')
+  if (multi) steps.push('owner')
+  steps.push('due')
+  const cur = steps[Math.min(step, steps.length - 1)]!
+  const last = cur === steps[steps.length - 1]
+
+  const okByStep: Record<string, boolean> = {
+    who: who !== '',
+    link: link !== null,
+    inst: inst.trim().length > 0,
+    person: person.trim().length > 0,
+    type: type !== null,
+    total: amount > 0,
+    interest: true,
+    term: true,
+    rate: true,
+    fee: true,
+    owner: true,
+    due: true,
+  }
+  const canNext = okByStep[cur] ?? true
+
+  const title: Record<string, string> = {
+    who: '¿Con quién tienes la deuda?',
+    link: '¿Es con un banco o con una persona?',
+    inst: '¿Cuál es?',
+    person: '¿A quién le debes?',
+    type: '¿Qué tipo de deuda es?',
+    total: isPerson ? '¿Cuánto le debes hoy?' : '¿Cuánto falta pagar hoy?',
+    interest: '¿Te cobra interés?',
+    term: typeInfo?.years ? '¿En cuántos años termina?' : '¿Cuántas cuotas te faltan?',
+    rate: '¿Qué interés al mes tiene?',
+    fee: isPerson ? '¿Le pagas una cuota fija al mes?' : '¿Cuánto es la cuota al mes?',
+    owner: '¿Quién la debe?',
+    due: '¿Qué día vence la cuota?',
+  }
+
+  function next(e: FormEvent) {
+    e.preventDefault()
+    if (!canNext) return
+    if (last) void submit(e)
+    else setStep((v) => v + 1)
+  }
 
   return (
-    <form className="card" onSubmit={(e) => void submit(e)}>
-      <strong>Agregar una deuda</strong>
+    <div className="card cat-sheet">
+      <form className="stack cat-detail" onSubmit={next}>
+        <div className="row between">
+          <strong className="cat-title">Agregar deuda</strong>
+          <button className="btn ghost small" type="button" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+        <div className="stack tight">
+          <span className="muted small-text">Paso {Math.min(step, steps.length - 1) + 1} de {steps.length}</span>
+          <div className="bar" aria-hidden="true">
+            <span style={{ width: `${((Math.min(step, steps.length - 1) + 1) * 100) / steps.length}%`, background: 'var(--accent)' }} />
+          </div>
+        </div>
 
-      <div className="field">
-        <label htmlFor="g-who">1. ¿Con quién tienes la deuda?</label>
-        <select id="g-who" className="input" value={who} onChange={(e) => pickWho(e.target.value)}>
-          <option value="">Elige una opción…</option>
-          {BANKS.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-          <option value="otra">Otra (otro banco, una tienda o una persona)</option>
-        </select>
-        {bank && <span className="line-help">Con {bank.name} la app ya conoce sus tasas y te las sugiere.</span>}
-      </div>
+        <h2 className="cat-verdict" id="g-q">{title[cur]}</h2>
 
-      {who === 'otra' && (
-        <div className="field">
-          <span id="g-link" className="strong">¿Es con un banco o con una persona?</span>
-          <div className="chips" role="group" aria-labelledby="g-link">
+        {cur === 'who' && (
+          <div className="field">
+            <select id="g-who" aria-labelledby="g-q" className="input" value={who} onChange={(e) => pickWho(e.target.value)}>
+              <option value="">Elige una opción…</option>
+              {BANKS.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+              <option value="otra">Otra (otro banco, tienda o persona)</option>
+            </select>
+            {bank && <span className="line-help">Con {bank.name} te sugerimos sus tasas.</span>}
+          </div>
+        )}
+
+        {cur === 'link' && (
+          <div className="stack tight" role="group" aria-labelledby="g-q">
             <button type="button" className="chip" aria-pressed={link === 'institucion'} onClick={() => { setLink('institucion'); setType(null) }}>
               Un banco, tienda o institución
             </button>
@@ -144,140 +211,97 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, defaultOwne
               Una persona (familiar o amigo)
             </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {who === 'otra' && link === 'institucion' && (
-        <div className="field">
-          <label htmlFor="g-inst">¿Cuál es? </label>
-          <input id="g-inst" className="input" maxLength={40} placeholder="Ej. Banco Estado, Líder, Ripley, Cooperativa" value={inst} onChange={(e) => setInst(e.target.value)} />
-        </div>
-      )}
+        {cur === 'inst' && (
+          <input id="g-inst" aria-labelledby="g-q" className="input" maxLength={40} placeholder="Ej. Ripley, Cooperativa" value={inst} onChange={(e) => setInst(e.target.value)} />
+        )}
 
-      {isPerson && (
-        <div className="field">
-          <label htmlFor="g-person">¿A quién le debes?</label>
-          <input id="g-person" className="input" maxLength={40} placeholder="Ej. Mamá, Juan, mi hermano" value={person} onChange={(e) => setPerson(e.target.value)} />
-        </div>
-      )}
+        {cur === 'person' && (
+          <input id="g-person" aria-labelledby="g-q" className="input" maxLength={40} placeholder="Ej. Mamá, Juan" value={person} onChange={(e) => setPerson(e.target.value)} />
+        )}
 
-      {knowsWho && !isPerson && hasName && (
-        <div className="field">
-          <span id="g-type" className="strong">2. ¿Qué tipo de deuda es?</span>
-          <div className="chips" role="group" aria-labelledby="g-type">
+        {cur === 'type' && (
+          <div className="stack tight" role="group" aria-labelledby="g-q">
             {TYPES.filter((t) => !bank || t.product !== null).map((t) => (
               <button key={t.key} type="button" className="chip" aria-pressed={type === t.key} onClick={() => { setType(t.key); setRate(null); setFee(null); setTerm('') }}>
                 {t.label}
               </button>
             ))}
+            {typeInfo && <span className="line-help">{typeInfo.help}</span>}
           </div>
-          {typeInfo && <span className="line-help">{typeInfo.help}</span>}
-        </div>
-      )}
+        )}
 
-      {ready && (
-        <>
-          <div className="field">
-            <label htmlFor="g-total">{isPerson ? '2. ¿Cuánto le debes hoy?' : '3. ¿Cuánto falta pagar hoy?'}</label>
-            <span className="line-help">
-              {typeInfo?.key === 'tarjeta' ? 'La deuda que tienes en cuotas, o el monto facturado.' : 'Lo que falta pagar ahora, no lo que pidieron al principio.'}
-            </span>
-            <input id="g-total" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800000" value={dots(total)} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
-          </div>
+        {cur === 'total' && (
+          <input id="g-total" aria-labelledby="g-q" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800000" value={dots(total)} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
+        )}
 
-          {isPerson ? (
-            <>
-              <div className="field">
-                <span id="g-int" className="strong">3. ¿Te cobra interés?</span>
-                <div className="seg" role="group" aria-labelledby="g-int">
-                  <button type="button" aria-pressed={!interest} onClick={() => setInterest(false)}>
-                    No
-                  </button>
-                  <button type="button" aria-pressed={interest} onClick={() => setInterest(true)}>
-                    Sí
-                  </button>
-                </div>
-                <span className="line-help">Entre familiares y amigos casi siempre es no.</span>
-              </div>
-              {interest && (
-                <div className="field">
-                  <label htmlFor="g-rate">Interés mensual en %</label>
-                  <input id="g-rate" autoComplete="off" className="input" inputMode="decimal" placeholder="Ej. 2" value={rateStr} onChange={(e) => setRate(e.target.value.replace(/[^\d.,]/g, '').slice(0, 5))} />
-                </div>
-              )}
-              <div className="field">
-                <label htmlFor="g-fee">4. ¿Le pagas una cuota fija cada mes? (opcional)</label>
-                <span className="line-help">Si pagan cuando puedan, déjalo vacío: la deuda queda anotada sin plazo.</span>
-                <input id="g-fee" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 50000" value={dots(feeStr)} onChange={(e) => setFee(digitsOnly(e.target.value))} />
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="field">
-                <span id="g-term" className="strong">
-                  {typeInfo?.years ? '4. ¿En cuántos años termina?' : typeInfo?.key === 'linea' ? '4. ¿En cuántos meses quieren pagarla?' : '4. ¿Cuántas cuotas te faltan?'}
-                </span>
-                <div className="chips" role="group" aria-labelledby="g-term">
-                  {(typeInfo?.years ? YEAR_CHIPS : MONTH_CHIPS).map((n) => (
-                    <button key={n} type="button" className="chip" aria-pressed={term === String(n)} onClick={() => { setTerm(String(n)); setFee(null) }}>
-                      {n} {typeInfo?.years ? 'años' : 'cuotas'}
-                    </button>
-                  ))}
-                </div>
-                <input className="input" aria-label={typeInfo?.years ? 'Años que faltan' : 'Cuotas que faltan'} autoComplete="off" inputMode="numeric" placeholder={typeInfo?.years ? 'Otro plazo en años' : 'Otro número de cuotas'} value={term} onChange={(e) => { setTerm(digitsOnly(e.target.value).slice(0, 3)); setFee(null) }} />
-              </div>
-
-              <div className="field">
-                <label htmlFor="g-rate">5. Interés mensual en %</label>
-                {range ? (
-                  <>
-                    <span className="line-help">
-                      {bank?.name} publica {range.min !== null ? `entre ${fmtRate(range.min)} % y ${fmtRate(range.max)} %` : `hasta ${fmtRate(range.max)} %`} al mes para este monto
-                      {suggestion?.approx ? ' (la tasa anual dividida en 12)' : ''}. Pusimos el máximo; si conoces la tuya, cámbiala.
-                    </span>
-                    <div className="chips" role="group" aria-label="Tasa sugerida">
-                      {range.min !== null && (
-                        <button type="button" className="chip" aria-pressed={rateStr === fmtRate(range.min)} onClick={() => { setRate(fmtRate(range.min!)); setFee(null) }}>
-                          Mínima {fmtRate(range.min)} %
-                        </button>
-                      )}
-                      <button type="button" className="chip" aria-pressed={rateStr === fmtRate(range.max)} onClick={() => { setRate(fmtRate(range.max)); setFee(null) }}>
-                        Máxima {fmtRate(range.max)} %
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <span className="line-help">Aparece en el contrato o la cartola como tasa mensual. Si no la sabes, déjala vacía.</span>
-                )}
-                <input id="g-rate" autoComplete="off" className="input" inputMode="decimal" placeholder="Ej. 2,5" value={rateStr} onChange={(e) => { setRate(e.target.value.replace(/[^\d.,]/g, '').slice(0, 5)); setFee(null) }} />
-              </div>
-
-              <div className="field">
-                <label htmlFor="g-fee">6. Cuota mensual</label>
-                <span className="line-help">
-                  {calcFee > 0 ? `Calculada con el saldo, las cuotas y el interés: ${money(calcFee)}. Cámbiala si tu cuota real es distinta.` : 'Lo que pagas cada mes. Si eliges las cuotas arriba, la calculamos sola.'}
-                </span>
-                <input id="g-fee" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 65000" value={dots(feeStr)} onChange={(e) => setFee(digitsOnly(e.target.value))} />
-              </div>
-            </>
-          )}
-
-          {amount > 0 && feeNum > 0 && (
-            <div className="verdict ok">
-              {payoffMonths === null ? (
-                <span className="hint">Con esa cuota y ese interés la deuda no baja: conviene subir la cuota.</span>
-              ) : (
-                <span className="hint">
-                  Pagando {money(feeNum)} al mes terminarías en ~{payoffMonths} {payoffMonths === 1 ? 'mes' : 'meses'}
-                  {plan && plan.interest > 0 ? ` y pagarías ~${money(plan.interest)} en intereses.` : '.'}
-                </span>
-              )}
+        {cur === 'interest' && (
+          <div className="stack tight">
+            <div className="seg" role="group" aria-labelledby="g-q">
+              <button type="button" aria-pressed={!interest} onClick={() => setInterest(false)}>
+                No
+              </button>
+              <button type="button" aria-pressed={interest} onClick={() => setInterest(true)}>
+                Sí
+              </button>
             </div>
-          )}
+            {interest && (
+              <input id="g-rate" aria-label="Interés mensual en %" autoComplete="off" className="input" inputMode="decimal" placeholder="Ej. 2 (% al mes)" value={rateStr} onChange={(e) => setRate(e.target.value.replace(/[^\d.,]/g, '').slice(0, 5))} />
+            )}
+          </div>
+        )}
 
-          <div className="field">
-            <span id="g-owner" className="strong">{isPerson ? '5.' : '7.'} ¿Quién la debe?</span>
-            <div className="seg" role="group" aria-labelledby="g-owner">
+        {cur === 'term' && (
+          <div className="stack tight">
+            <div className="chips" role="group" aria-labelledby="g-q">
+              {(typeInfo?.years ? YEAR_CHIPS : MONTH_CHIPS).map((n) => (
+                <button key={n} type="button" className="chip" aria-pressed={term === String(n)} onClick={() => { setTerm(String(n)); setFee(null) }}>
+                  {n} {typeInfo?.years ? 'años' : 'cuotas'}
+                </button>
+              ))}
+            </div>
+            <input className="input" aria-label={typeInfo?.years ? 'Años que faltan' : 'Cuotas que faltan'} autoComplete="off" inputMode="numeric" placeholder={typeInfo?.years ? 'Otro plazo en años' : 'Otro número de cuotas'} value={term} onChange={(e) => { setTerm(digitsOnly(e.target.value).slice(0, 3)); setFee(null) }} />
+            <span className="line-help">Si no lo sabes, sigue: es opcional.</span>
+          </div>
+        )}
+
+        {cur === 'rate' && (
+          <div className="stack tight">
+            {range && (
+              <div className="chips" role="group" aria-label="Tasa sugerida">
+                {range.min !== null && (
+                  <button type="button" className="chip" aria-pressed={rateStr === fmtRate(range.min)} onClick={() => { setRate(fmtRate(range.min!)); setFee(null) }}>
+                    Mínima {fmtRate(range.min)} %
+                  </button>
+                )}
+                <button type="button" className="chip" aria-pressed={rateStr === fmtRate(range.max)} onClick={() => { setRate(fmtRate(range.max)); setFee(null) }}>
+                  Máxima {fmtRate(range.max)} %
+                </button>
+              </div>
+            )}
+            <input id="g-rate" aria-labelledby="g-q" autoComplete="off" className="input" inputMode="decimal" placeholder="Ej. 2,5 (% al mes)" value={rateStr} onChange={(e) => { setRate(e.target.value.replace(/[^\d.,]/g, '').slice(0, 5)); setFee(null) }} />
+            <span className="line-help">{range ? `${bank?.name} publica hasta ${fmtRate(range.max)} % al mes. Pusimos el máximo.` : 'Está en tu contrato o cartola. Si no lo sabes, sigue.'}</span>
+          </div>
+        )}
+
+        {cur === 'fee' && (
+          <div className="stack tight">
+            <input id="g-fee" aria-labelledby="g-q" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 65000" value={dots(feeStr)} onChange={(e) => setFee(digitsOnly(e.target.value))} />
+            {calcFee > 0 && <span className="line-help">Calculada para ti: {money(calcFee)}. Cámbiala si tu cuota real es distinta.</span>}
+            {amount > 0 && feeNum > 0 && (
+              <span className="hint">
+                {payoffMonths === null
+                  ? 'Con esa cuota la deuda no baja: conviene subirla.'
+                  : `Terminarías en ~${payoffMonths} ${payoffMonths === 1 ? 'mes' : 'meses'}${plan && plan.interest > 0 ? ` y pagarías ~${money(plan.interest)} de interés` : ''}.`}
+              </span>
+            )}
+          </div>
+        )}
+
+        {cur === 'owner' && (
+          <div className="stack tight">
+            <div className="seg" role="group" aria-labelledby="g-q">
               <button type="button" aria-pressed={owner === ''} onClick={() => setOwner('')}>
                 Los dos
               </button>
@@ -287,27 +311,31 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, defaultOwne
                 </button>
               ))}
             </div>
-            <span className="line-help">
-              {owner === '' ? 'Las cuotas se reparten según lo acordado entre los dos.' : owner === hh.me.user_id ? 'La cuota cuenta solo en tus cálculos.' : 'La cuota cuenta solo en los cálculos de esa persona.'}
-            </span>
           </div>
+        )}
 
-          <div className="field">
-            <label htmlFor="g-due">{isPerson ? '6.' : '8.'} Día de vencimiento (opcional)</label>
-            <span className="line-help">El día del mes en que hay que pagar la cuota. Te avisamos cuando se acerque.</span>
-            <input id="g-due" className="input" inputMode="numeric" value={due} onChange={(e) => setDue(e.target.value.replace(/\D/g, '').slice(0, 2))} />
-          </div>
-        </>
-      )}
+        {cur === 'due' && (
+          <select id="g-due" aria-labelledby="g-q" className="input" value={due} onChange={(e) => setDue(e.target.value)}>
+            <option value="">No sé / sin día</option>
+            {Array.from({ length: 31 }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>
+                Día {n}
+              </option>
+            ))}
+          </select>
+        )}
 
-      <div className="row">
-        <button className="btn small" type="submit" disabled={busy || !ready}>
-          {busy ? <Spin label="Guardando deuda…" /> : 'Guardar deuda'}
-        </button>
-        <button className="btn ghost small" type="button" onClick={onClose}>
-          Cancelar
-        </button>
-      </div>
-    </form>
+        <div className="stack tight">
+          <button className="btn" type="submit" disabled={busy || !canNext}>
+            {busy ? <Spin label="Guardando deuda…" /> : last ? 'Guardar deuda' : 'Siguiente'}
+          </button>
+          {step > 0 && (
+            <button className="btn ghost" type="button" onClick={() => setStep((v) => Math.max(0, v - 1))}>
+              Atrás
+            </button>
+          )}
+        </div>
+      </form>
+    </div>
   )
 }

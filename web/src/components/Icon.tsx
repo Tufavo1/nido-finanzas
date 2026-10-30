@@ -69,6 +69,8 @@ const PATHS = {
   bell: <path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7M10 20a2 2 0 0 0 4 0" />,
   chevL: <path d="M15 6l-6 6 6 6" />,
   chevR: <path d="M9 6l6 6-6 6" />,
+  /** Destello: identifica a DinovanceAI */
+  spark: <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z" />,
   back: (
     <>
       <path d="M21 5H9l-6 7 6 7h12z" />

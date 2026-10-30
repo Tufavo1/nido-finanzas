@@ -10,7 +10,7 @@ const DAY = 24 * HOUR
 /** De noche no se molesta */
 const QUIET_FROM = 22
 const QUIET_TO = 8
-const DAILY_CAP = 2
+const DAILY_CAP = 1
 /** Un aviso urgente que sigue sin resolverse se vuelve a recordar cada tanto */
 const RENOTIFY_BAD_MS = 3 * DAY
 

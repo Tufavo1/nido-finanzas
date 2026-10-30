@@ -1590,3 +1590,49 @@ body::before {
 /* Sin barras de desplazamiento visibles en ninguna parte (se sigue pudiendo desplazar) */
 * { scrollbar-width: none; -ms-overflow-style: none; }
 *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+.icon-btn.bell { position: relative; }
+.bell-dot { position: absolute; top: -2px; right: -2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--warn); color: var(--surface); font-size: 11px; font-weight: 700; line-height: 16px; text-align: center; }
+
+.card-cta { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line, rgba(128, 128, 128, 0.25)); color: var(--accent); font-size: 14px; font-weight: 600; }
+
+/* Detalle de una categoría: más grande y fácil de leer */
+.sheet:has(.cat-sheet) { width: min(560px, 100%); max-height: 92dvh; }
+.cat-sheet { padding: 22px; gap: 18px; font-size: 17px; }
+.cat-detail { gap: 18px; }
+.cat-title { font-family: var(--font-display); font-size: 26px; line-height: 32px; }
+.cat-big { font-family: var(--font-display); font-weight: 700; font-size: 38px; line-height: 44px; }
+.cat-bar { height: 16px; border-radius: 8px; }
+.cat-verdict { margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; }
+.cat-verdict.over { color: var(--warn); }
+.cat-detail .where { display: flex; flex-direction: column; gap: 10px; font-size: 16px; }
+.cat-detail .btn { width: 100%; }
+.cat-edit { padding-top: 14px; border-top: 1px solid var(--line); }
+.cat-detail .row .btn { width: auto; flex: none; height: 40px; padding: 0 18px; font-size: 15px; }
+.calc-result { gap: 22px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 17px; }
+.cat-detail .field { gap: 10px; }
+.cat-detail .field label, .cat-detail .field .label-text { font-size: 16px; font-weight: 600; }
+.cat-detail .input { height: 54px; font-size: 18px; }
+.cat-detail .chips { gap: 10px; }
+.cat-detail .chip { min-height: 44px; padding: 0 16px; font-size: 16px; }
+.cat-detail .hint, .cat-detail .line-help { font-size: 15px; line-height: 22px; }
+.cat-detail .tiles { gap: 14px; }
+.cat-detail .tile { padding: 16px; gap: 4px; }
+.cat-detail form .field + .field { margin-top: 6px; }
+.tip-row { width: 100%; text-align: left; cursor: pointer; align-items: flex-start; }
+.tip-detail { display: block; margin-top: 6px; font-size: 15px; line-height: 22px; }
+.tip-emoji { font-size: 22px; line-height: 26px; flex: none; }
+.tip-card { display: flex; flex-direction: column; gap: 4px; padding: 14px; border-radius: 14px; background: var(--surface-2); font-size: 16px; line-height: 23px; }
+.tip-card.good { background: color-mix(in srgb, var(--accent) 12%, var(--surface-2)); }
+.ai-tip { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 14px; text-align: left; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--line); border-left: 5px solid var(--accent); color: inherit; cursor: pointer; }
+.ai-tip.warn { border-left-color: var(--amber); }
+.ai-tip.bad { border-left-color: var(--warn); }
+.ai-tip-top { display: flex; align-items: center; gap: 12px; }
+.ai-tip-top .grow { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.ai-tip-title { font-family: var(--font-display); font-size: 18px; line-height: 24px; font-weight: 700; }
+.ai-tip-detail { font-size: 16px; line-height: 23px; }
+.ai-tip-hint { font-size: 14px; color: var(--muted); }
+
+/* Inicio: la tarjeta principal apilada y simple */
+.hero { display: flex; flex-direction: column; gap: 8px; }
+.hero .meter { width: 100%; }

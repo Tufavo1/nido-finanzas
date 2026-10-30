@@ -1,6 +1,9 @@
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import type { Household } from '../App'
-import Collapsibles from './Collapsibles'
+import Icon from './Icon'
+import Modal from './Modal'
+import { useDesktop } from '../lib/useDesktop'
 import SectionHead from './SectionHead'
 import type { HouseholdData } from '../lib/data'
 import { useAnalysisBuild } from '../lib/useAnalysisBuild'
@@ -8,7 +11,7 @@ import type { Analysis } from '../lib/analysis'
 import UpcomingCard from './UpcomingCard'
 import type { Plan } from '../lib/advisor'
 import type { Numbers } from '../lib/numbers'
-import type { Level } from '../lib/finance'
+import type { Finding, Level } from '../lib/finance'
 import { money } from '../lib/format'
 import { monthName } from '../lib/ui'
 import { SLICE_COLORS, levelColor } from '../lib/chartColors'
@@ -23,8 +26,7 @@ interface Props {
   onGoSalary: () => void
 }
 
-const MARK: Record<Level, string> = { ok: '✓', warn: '!', bad: '✕' }
-const WORD: Record<Level, string> = { ok: 'Bien', warn: 'Ojo', bad: 'Urgente' }
+const EMOJI: Record<Level, string> = { ok: '👏', warn: '💡', bad: '❗' }
 
 function RuleRow({ label, hint, amount, income, target, kind }: { label: string; hint: string; amount: number; income: number; target: number; kind: 'max' | 'min' }) {
   const pct = income > 0 ? Math.round((amount * 100) / income) : 0
@@ -64,14 +66,10 @@ function ruleNote(a: Analysis): string {
 const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${money(Math.abs(n))}`
 const comma = (x: number, d = 1) => x.toFixed(d).replace('.', ',')
 
-function FlowCard({ f, month, isCurrent }: { f: NonNullable<Numbers['flow']>; month: Date; isCurrent: boolean }) {
+function FlowCard({ f, isCurrent }: { f: NonNullable<Numbers['flow']>; isCurrent: boolean }) {
   const pct = f.savingsPct
   return (
     <section className="card" aria-label="Tu mes en números">
-      <strong>Tu mes en números</strong>
-      <span className="muted small-text">
-        Lo que entra, lo que sale y lo que sobra en {monthName(month)}{isCurrent ? ' (hasta hoy)' : ''}.
-      </span>
       <div className="tiles">
         <div className="tile">
           <span className="muted small-text">Ganas</span>
@@ -104,11 +102,6 @@ function FlowCard({ f, month, isCurrent }: { f: NonNullable<Numbers['flow']>; mo
           <span className={f.realFree < 0 ? 'amount-sm num over' : 'amount-sm num'}>{money(Math.abs(isCurrent ? f.realFree : f.free))}</span>
         </div>
       </div>
-      {isCurrent && f.pendingFixed > 0 && (
-        <span className="muted small-text">
-          Hoy tienes {money(f.free)}, pero aún vencen {money(f.pendingFixed)} en gastos fijos este mes: lo que de verdad puedes gastar es {money(f.realFree)}.
-        </span>
-      )}
       <div className="stack tight">
         <span className="strong">De cada $100 que ganas</span>
         <div className="split" role="img" aria-label={`Gastos ${f.per100.spent} pesos, deudas ${f.per100.debts} pesos, fijos por venir ${f.per100.pending} pesos, ahorro ${f.per100.saved} pesos, te sobran ${f.per100.left} pesos`}>
@@ -146,13 +139,6 @@ function FlowCard({ f, month, isCurrent }: { f: NonNullable<Numbers['flow']>; mo
           </span>
         </div>
       </div>
-      <details className="how">
-        <summary>¿Cómo se calcula?</summary>
-        <p>
-          «Gastas» es tu costo real: tus gastos personales más tu parte de los compartidos. «Te sobra» es lo que ganas menos lo que gastas y
-          menos tus cuotas de deuda. Al cierre se estima con tu ritmo diario actual. Ahorrar entre 10 % y 20 % de lo que ganas es una meta sana.
-        </p>
-      </details>
     </section>
   )
 }
@@ -341,7 +327,13 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
   const n = built?.n ?? null
   const up = built?.u ?? null
   const plan = built?.plan ?? null
-  const [showAll, setShowAll] = useState(false)
+  const [openScore, setOpenScore] = useState(false)
+  const [openFlow, setOpenFlow] = useState(false)
+  const [openTips, setOpenTips] = useState(false)
+  const [showSlices, setShowSlices] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [openExtra, setOpenExtra] = useState<string | null>(null)
+  const desktop = useDesktop()
 
   if (failed) {
     return (
@@ -376,71 +368,21 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
   }
 
   const isCurrent = month.getFullYear() === new Date().getFullYear() && month.getMonth() === new Date().getMonth()
-  const shownInsights = showAll ? a.insights : a.insights.slice(0, 4)
   const total = a.slices.reduce((s, x) => s + x.amount, 0)
+  const flow = n.flow
+  const tips: Finding[] = a.insights
+  const todo = tips.filter((f) => f.level !== 'ok')
+  const good = tips.filter((f) => f.level === 'ok')
 
-  return (
-    <Collapsibles>
-      <section className="card hero" aria-label="Tu panorama">
-        <div className="row between">
-          <strong>Tu panorama</strong>
-          <span className="pill">🔒 Solo tú</span>
-        </div>
-        {a.score ? (
-          <div className="score-top">
-            <Gauge value={a.score.value} level={a.score.level} />
-            <div className="grow">
-              <span className="muted small-text">Tu salud financiera de {monthName(month)}</span>
-              <span className="score-label" style={{ color: a.score.level === 'ok' ? 'var(--accent-ink)' : a.score.level === 'warn' ? 'var(--text)' : 'var(--warn)' }}>
-                {a.score.label}
-              </span>
-            </div>
-          </div>
-        ) : null}
-        <p className="summary">{a.summary}</p>
-
-        {a.score ? (
-          <div className="stack">
-            {a.score.parts.map((p) => (
-              <div className="stack tight" key={p.key}>
-                <div className="row between">
-                  <span className="strong">{p.label}</span>
-                  <span className="muted small-text num">
-                    {p.points} / {p.max}
-                  </span>
-                </div>
-                <div className="bar" aria-hidden="true">
-                  <span style={{ width: `${(p.points * 100) / p.max}%`, background: levelColor(p.level) }} />
-                </div>
-                <span className="muted small-text">{p.detail}</span>
-              </div>
-            ))}
-            <details className="how">
-              <summary>¿Cómo se calcula este puntaje?</summary>
-              <p>
-                Suma hasta 100 puntos con cuatro cosas: <strong>ahorro</strong> (40, llegando al 20 % de lo que ganas),{' '}
-                <strong>deudas</strong> (25, con cuotas bajo el 15 % de tu ingreso), <strong>presupuesto</strong> (15, categorías del hogar
-                dentro de lo definido) y <strong>ahorro para imprevistos</strong> (20, lo que llevas en tu meta de imprevistos frente a 6 meses de gastos). Si falta
-                alguno, el puntaje se calcula con lo que hay. Es una orientación con tus datos; no reemplaza a un asesor financiero.
-              </p>
-            </details>
-          </div>
-        ) : (
-          <div className="stack tight">
-            <span className="muted">Pon tu sueldo para que calcule cuánto ahorras, cómo vas con tus deudas y te dé un puntaje.</span>
-            <button type="button" className="btn small" onClick={onGoSalary}>
-              Poner mi sueldo
-            </button>
-          </div>
-        )}
-      </section>
-
-      <SectionHead title="Este mes en números" hint="Lo que entra, lo que sale y lo que sobra" />
-
-      {a.savings && (
+  // Cada análisis extra es una fila corta: título y una cifra. El detalle completo se abre al tocarla.
+  const items: { key: string; title: string; figure: string; over?: boolean; body: ReactNode }[] = []
+  if (a.savings) {
+    items.push({
+      key: 'ahorro',
+      title: 'Si sigues así, ahorrarías',
+      figure: `${money(a.savings.in12)} en 12 meses`,
+      body: (
         <section className="card" aria-label="Cuánto tendrías ahorrado">
-          <strong>Si sigues así, ahorrarías</strong>
-          <span className="muted">Si cada mes te sobra lo mismo que este mes (~{money(a.savings.monthly)}):</span>
           <div className="tiles">
             <div className="tile">
               <span className="muted small-text">En 6 meses</span>
@@ -451,106 +393,316 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
               <span className="amount-sm num">{money(a.savings.in12)}</span>
             </div>
           </div>
-          <span className="muted small-text">Es una suma simple de lo que te sobra, sin intereses ni inflación. Si gastas distinto, cambia.</span>
         </section>
-      )}
+      ),
+    })
+  }
+  if (up && (up.events.length > 0 || up.endOfMonth !== null)) {
+    const end = up.endOfMonth
+    items.push({
+      key: 'pagos',
+      title: 'Pagos que vienen',
+      figure: end !== null ? (end < 0 ? `Te faltarían ${money(-end)}` : `Te quedarían ${money(end)}`) : `${up.events.length} pagos`,
+      over: end !== null && end < 0,
+      body: <UpcomingCard u={up} />,
+    })
+  }
+  if (plan) {
+    items.push({ key: 'plan', title: plan.kind === 'deficit' ? 'Cómo cuadrar el mes' : 'Qué hacer con lo que te sobra', figure: `${plan.steps.length} pasos`, body: <PlanCard plan={plan} /> })
+  }
+  if (n.changes) {
+    items.push({ key: 'cambios', title: 'Frente al mes pasado', figure: signed(n.changes.diff), over: n.changes.diff > 0, body: <ChangesCard c={n.changes} month={month} /> })
+  }
+  if (n.fixedVar) {
+    items.push({ key: 'fijos', title: 'Lo fijo y lo variable', figure: `${n.fixedVar.fixedPct} % es fijo`, body: <FixedVarCard f={n.fixedVar} /> })
+  }
+  items.push({
+    key: 'meses',
+    title: 'Tus últimos 6 meses',
+    figure: n.history ? `${money(n.history.avg)} al mes` : '',
+    body: (
+      <>
+        <section className="card" aria-label="Tus últimos meses">
+          <Bars months={a.months} avg={a.avgPrev} />
+        </section>
+        {n.history && <HistoryCard h={n.history} w={n.weekday} />}
+      </>
+    ),
+  })
+  if (a.rule) {
+    const r = a.rule
+    items.push({
+      key: 'regla',
+      title: 'Cómo se reparte lo que ganas',
+      figure: r.income > 0 ? `Ahorro ${Math.round((r.savings * 100) / r.income)} %` : '',
+      body: (
+        <section className="card" aria-label="Regla 50, 30, 20">
+          <RuleRow label="Necesidades" hint="súper, hogar, transporte, salud y cuotas" amount={r.needs} income={r.income} target={50} kind="max" />
+          <RuleRow label="Gustos" hint="ocio y lo demás" amount={r.wants} income={r.income} target={30} kind="max" />
+          <RuleRow label="Ahorro" hint="lo que te sobra" amount={r.savings} income={r.income} target={20} kind="min" />
+          <span className="small-text">{ruleNote(a)}</span>
+        </section>
+      ),
+    })
+  }
+  if (n.debts) {
+    items.push({ key: 'deudas', title: 'Tus deudas en números', figure: money(n.debts.remaining), over: n.debts.stuck, body: <DebtsCard d={n.debts} /> })
+  }
+  if (n.cushion) {
+    items.push({ key: 'colchon', title: 'Ahorro para imprevistos', figure: `${comma(n.cushion.covered)} de 6 meses`, body: <CushionCard c={n.cushion} /> })
+  }
+  const openItem = items.find((x) => x.key === openExtra)
 
-      {n.flow && <FlowCard f={n.flow} month={month} isCurrent={isCurrent} />}
+  const extras = (
+    <div className="stack tight">
+      {items.map((x) => (
+        <button key={x.key} type="button" className="fixed-card" aria-haspopup="dialog" onClick={() => setOpenExtra(x.key)}>
+          <span className="fixed-top">
+            <span className="grow fixed-name">
+              <strong>{x.title}</strong>
+              {x.figure && <span className={x.over ? 'small-text over' : 'muted small-text'}>{x.figure}</span>}
+            </span>
+            <Icon name="chevR" size={18} />
+          </span>
+        </button>
+      ))}
+    </div>
+  )
 
-      {up && <UpcomingCard u={up} />}
+  return (
+    <>
+      <SectionHead title="Tu panorama" hint="Cómo vas este mes, de un vistazo" />
 
-      {plan && <PlanCard plan={plan} />}
+      <div className="fixed-grid wide">
+        {a.score ? (
+          <button type="button" className="fixed-card" aria-haspopup="dialog" onClick={() => setOpenScore(true)}>
+            <span className="fixed-top">
+              <span className="grow fixed-name">
+                <strong>Tu salud financiera</strong>
+                <span className="muted small-text">🔒 Solo tú · {monthName(month)}</span>
+              </span>
+            </span>
+            <span className="score-top">
+              <Gauge value={a.score.value} level={a.score.level} />
+              <span className="grow">
+                <span className="score-label" style={{ color: a.score.level === 'ok' ? 'var(--accent-ink)' : a.score.level === 'warn' ? 'var(--text)' : 'var(--warn)' }}>
+                  {a.score.label}
+                </span>
+              </span>
+            </span>
+            <span className="card-cta" aria-hidden="true">
+              Toca para ver el detalle <Icon name="chevR" size={16} />
+            </span>
+          </button>
+        ) : (
+          <section className="card">
+            <strong>Pon tu sueldo para ver tu puntaje</strong>
+            <button type="button" className="btn small wide" onClick={onGoSalary}>
+              Poner mi sueldo
+            </button>
+          </section>
+        )}
 
-      <SectionHead title="En qué se va tu plata" hint="Categorías, cambios frente al mes pasado y gastos fijos" />
+        {flow && (
+          <button type="button" className="fixed-card" aria-haspopup="dialog" onClick={() => setOpenFlow(true)}>
+            <span className="fixed-top">
+              <span className="grow fixed-name">
+                <strong>Este mes en números</strong>
+                <span className="muted small-text">{monthName(month)}</span>
+              </span>
+            </span>
+            <span className="tiles">
+              <span className="tile">
+                <span className="muted small-text">Ganas</span>
+                <span className="amount-sm num">{money(flow.income)}</span>
+              </span>
+              <span className="tile">
+                <span className="muted small-text">Gastas</span>
+                <span className="amount-sm num">{money(flow.spent + flow.commitments)}</span>
+              </span>
+            </span>
+            <span className="row between">
+              <span className="muted">{flow.free < 0 ? 'Te faltará' : 'Te sobra'}</span>
+              <strong className={flow.free < 0 ? 'amount-sm num over' : 'amount-sm num'}>{money(Math.abs(flow.free))}</strong>
+            </span>
+            <span className="card-cta" aria-hidden="true">
+              Toca para ver el detalle <Icon name="chevR" size={16} />
+            </span>
+          </button>
+        )}
+      </div>
 
       {a.slices.length > 0 && (
-        <section className="card" aria-label="En qué se va tu plata">
-          <strong>En qué se va tu plata</strong>
-          <span className="muted small-text">Tu costo real: lo tuyo más tu parte de lo compartido.</span>
-          <div className="donut-row">
-            <Donut
-              amounts={a.slices.map((s) => s.amount)}
-              label={`Tu gasto de ${monthName(month)} por categoría: ${a.slices.map((s) => `${s.name} ${s.pct} %`).join(', ')}`}
-            >
-              <span className="donut-total num">{money(total)}</span>
-              <span className="muted small-text">en {monthName(month)}</span>
-            </Donut>
-          </div>
-          <div className="legend">
-            {a.slices.map((s, i) => (
-              <div className="legend-item" key={s.id}>
-                <span className="swatch" style={{ background: SLICE_COLORS[i % SLICE_COLORS.length] }} aria-hidden="true" />
-                <span className="grow ellipsis">{s.name}</span>
-                <span className="muted small-text num">{s.pct} %</span>
-                <span className="num strong">{money(s.amount)}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {n.changes && <ChangesCard c={n.changes} month={month} />}
-
-      {n.fixedVar && <FixedVarCard f={n.fixedVar} />}
-
-      <SectionHead title="Tu historial" hint="Cómo vienes en los últimos meses y cómo repartes lo que ganas" />
-
-      <section className="card" aria-label="Tus últimos meses">
-        <strong>Tus últimos 6 meses</strong>
-        <Bars months={a.months} avg={a.avgPrev} />
-        <span className="muted small-text">
-          {a.avgPrev ? `La línea punteada es tu promedio de meses anteriores: ${money(a.avgPrev)}.` : 'Aún no hay meses anteriores para comparar.'}
-        </span>
-      </section>
-
-      {n.history && <HistoryCard h={n.history} w={n.weekday} />}
-
-      {a.rule && (
-        <section className="card" aria-label="Regla 50, 30, 20">
-          <strong>¿Cómo se reparte lo que ganas?</strong>
-          <span className="muted small-text">
-            Referencia popular 50/30/20: la mitad para lo básico, 30 % para gustos y 20 % para ahorrar. Es una guía, ajústala a tu realidad.
-          </span>
-          <RuleRow label="Necesidades" hint="súper, hogar, transporte, salud y cuotas" amount={a.rule.needs} income={a.rule.income} target={50} kind="max" />
-          <RuleRow label="Gustos" hint="ocio y lo demás" amount={a.rule.wants} income={a.rule.income} target={30} kind="max" />
-          <RuleRow label="Ahorro" hint="lo que te sobra" amount={a.rule.savings} income={a.rule.income} target={20} kind="min" />
-          <span className="small-text">{ruleNote(a)}</span>
-          {a.projected !== null && <span className="muted small-text">Estimado a fin de mes con tu ritmo actual.</span>}
-        </section>
-      )}
-
-      {(n.debts || n.cushion) && <SectionHead title="Deudas y colchón" hint="Cuánto debes y cuánto tienes para imprevistos" />}
-
-      {n.debts && <DebtsCard d={n.debts} />}
-
-      {n.cushion && <CushionCard c={n.cushion} />}
-
-      <SectionHead title="Tu plan" hint="Qué conviene cambiar para llegar mejor a fin de mes" />
-
-      <section className="card" aria-label="Qué puedes mejorar">
-        <div className="row between">
-          <strong>Qué puedes mejorar</strong>
-          {a.insights.length > 4 && (
-            <button type="button" className="link-btn" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
-              {showAll ? 'Ver menos' : `Ver los ${a.insights.length}`}
-            </button>
-          )}
-        </div>
-        <div className="stack tight">
-          {shownInsights.map((f, i) => (
-            <div className={`find ${f.level}`} key={`${f.title}-${i}`}>
-              <span className="find-mark" aria-label={WORD[f.level]}>
-                {MARK[f.level]}
-              </span>
-              <div className="grow">
-                <div className="strong"><Rich text={f.title} /></div>
-                <div className="muted small-text"><Rich text={f.detail} /></div>
-              </div>
+        <>
+          <SectionHead title="En qué se va tu plata" hint="Tus gastos por categoría" />
+          <section className="card" aria-label="En qué se va tu plata">
+            <div className="donut-row">
+              <Donut
+                amounts={a.slices.map((s) => s.amount)}
+                label={`Tu gasto de ${monthName(month)} por categoría: ${a.slices.map((s) => `${s.name} ${s.pct} %`).join(', ')}`}
+              >
+                <span className="donut-total num">{money(total)}</span>
+                <span className="muted small-text">en {monthName(month)}</span>
+              </Donut>
             </div>
-          ))}
-        </div>
-        <span className="muted small-text">Calculado automáticamente con tus datos. Son orientaciones, no asesoría financiera.</span>
-      </section>
-    </Collapsibles>
+            <div className="legend">
+              {a.slices.slice(0, showSlices ? undefined : 3).map((s, i) => (
+                <div className="legend-item" key={s.id}>
+                  <span className="swatch" style={{ background: SLICE_COLORS[i % SLICE_COLORS.length] }} aria-hidden="true" />
+                  <span className="grow ellipsis">{s.name}</span>
+                  <span className="muted small-text num">{s.pct} %</span>
+                  <span className="num strong">{money(s.amount)}</span>
+                </div>
+              ))}
+            </div>
+            {a.slices.length > 3 && (
+              <button type="button" className="btn ghost small wide" aria-expanded={showSlices} onClick={() => setShowSlices((v) => !v)}>
+                {showSlices ? 'Ver menos' : `Ver más (${a.slices.length - 3} categorías más)`}
+              </button>
+            )}
+          </section>
+        </>
+      )}
+
+      {tips.length > 0 && (
+        <>
+          <SectionHead title="Consejos para este mes" hint="Pequeños cambios que te ayudan a llegar mejor a fin de mes" />
+          <section className="card" aria-label="Consejos para este mes">
+            <div className="stack tight">
+              {[...todo, ...good].slice(0, 3).map((f, i) => (
+                <div className={`find ${f.level}`} key={`${f.title}-${i}`}>
+                  <span className="tip-emoji" aria-hidden="true">
+                    {EMOJI[f.level]}
+                  </span>
+                  <span className="strong">
+                    <Rich text={f.title} />
+                  </span>
+                </div>
+              ))}
+            </div>
+            <button type="button" className="btn ghost small wide" aria-haspopup="dialog" onClick={() => setOpenTips(true)}>
+              Ver cómo mejorar
+            </button>
+          </section>
+        </>
+      )}
+
+      {desktop ? (
+        <>
+          <SectionHead title="Más análisis" hint="Toca uno para ver el detalle" />
+          {extras}
+        </>
+      ) : (
+        <>
+          <button type="button" className="btn ghost small wide" aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)}>
+            {moreOpen ? 'Ver menos análisis' : 'Ver más análisis'}
+          </button>
+          {moreOpen && extras}
+        </>
+      )}
+
+      {openScore && a.score && (
+        <Modal label="Tu salud financiera" onClose={() => setOpenScore(false)}>
+          <div className="card cat-sheet">
+            <div className="stack cat-detail">
+              <div className="row between">
+                <strong className="cat-title">Tu salud financiera</strong>
+                <button type="button" className="btn ghost small" onClick={() => setOpenScore(false)}>
+                  Cerrar
+                </button>
+              </div>
+              <p className="cat-verdict">{a.summary}</p>
+              {a.score.parts.map((p) => (
+                <div className="stack tight" key={p.key}>
+                  <div className="row between">
+                    <span className="strong">{p.label}</span>
+                    <span className="muted num">
+                      {p.points} / {p.max}
+                    </span>
+                  </div>
+                  <div className="bar cat-bar" aria-hidden="true">
+                    <span style={{ width: `${(p.points * 100) / p.max}%`, background: levelColor(p.level) }} />
+                  </div>
+                  <span className="muted small-text">{p.detail}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {openFlow && flow && (
+        <Modal label="Este mes en números" onClose={() => setOpenFlow(false)}>
+          <div className="card cat-sheet">
+            <div className="stack cat-detail">
+              <div className="row between">
+                <strong className="cat-title">Este mes en números</strong>
+                <button type="button" className="btn ghost small" onClick={() => setOpenFlow(false)}>
+                  Cerrar
+                </button>
+              </div>
+              <FlowCard f={flow} isCurrent={isCurrent} />
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {openItem && (
+        <Modal label={openItem.title} onClose={() => setOpenExtra(null)}>
+          <div className="card cat-sheet">
+            <div className="stack cat-detail">
+              <div className="row between">
+                <strong className="cat-title">{openItem.title}</strong>
+                <button type="button" className="btn ghost small" onClick={() => setOpenExtra(null)}>
+                  Cerrar
+                </button>
+              </div>
+              {openItem.body}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {openTips && (
+        <Modal label="Consejos para este mes" onClose={() => setOpenTips(false)}>
+          <div className="card cat-sheet">
+            <div className="stack cat-detail">
+              <div className="row between">
+                <strong className="cat-title">Consejos para este mes</strong>
+                <button type="button" className="btn ghost small" onClick={() => setOpenTips(false)}>
+                  Cerrar
+                </button>
+              </div>
+              {todo.length > 0 && (
+                <div className="stack tight">
+                  <strong>💡 Para mejorar</strong>
+                  {todo.map((f, i) => (
+                    <div className="tip-card" key={`${f.title}-${i}`}>
+                      <span className="strong"><Rich text={f.title} /></span>
+                      <span className="muted">
+                        <Rich text={f.detail} />
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {good.length > 0 && (
+                <div className="stack tight cat-edit">
+                  <strong>👏 Lo que ya haces bien</strong>
+                  {good.map((f, i) => (
+                    <div className="tip-card good" key={`${f.title}-${i}`}>
+                      <span className="strong"><Rich text={f.title} /></span>
+                      <span className="muted">
+                        <Rich text={f.detail} />
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
   )
 }

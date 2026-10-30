@@ -9,6 +9,7 @@ import { notifyPartner } from '../lib/push'
 import { saidNoSavings, setSaidNoSavings } from '../lib/savingsAnswer'
 import { monthName, digitsOnly, dots } from '../lib/ui'
 import { monthKey } from '../lib/analysis'
+import Modal from './Modal'
 import Spin from './Spin'
 import type { Notify } from './Toast'
 
@@ -74,53 +75,91 @@ export default function SavingsCheck({ hh, data, month, onToast, onGoals }: Prop
     setAdding(false)
   }
 
-  const form = adding && (
-    <div className="stack tight">
-      {goals.length === 0 ? (
-        <>
-          <span className="muted small-text">Para anotar un ahorro primero crea una meta, por ejemplo «Fondo de emergencia».</span>
-          {onGoals && (
-            <button type="button" className="btn small" onClick={onGoals}>
-              Crear una meta
-            </button>
-          )}
-        </>
-      ) : (
-        <>
-          {goals.length > 1 && (
-            <div className="field">
-              <label htmlFor="sv-goal">¿A cuál meta?</label>
-              <select id="sv-goal" className="input" value={chosen?.id ?? ''} onChange={(e) => setGoalId(e.target.value)}>
-                {goals.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          <div className="field">
-            <label htmlFor="sv-amount">¿Cuánto guardaste?</label>
-            <input
-              id="sv-amount" autoComplete="off"
-              className="input"
-              inputMode="numeric"
-              placeholder="Ej. 50000"
-              value={dots(amount)}
-              onChange={(e) => setAmount(digitsOnly(e.target.value))}
-            />
-          </div>
-          <div className="row">
-            <button type="button" className="btn small" disabled={busy} onClick={() => void save()}>
-              {busy ? <Spin label="Guardando ahorro…" /> : 'Guardar ahorro'}
-            </button>
+  const goalSaved = chosen ? data.contributions.filter((c) => c.goal_id === chosen.id).reduce((t, c) => t + c.amount, 0) : 0
+  const goalPct = chosen && chosen.target_amount > 0 ? Math.min(100, Math.round((goalSaved * 100) / chosen.target_amount)) : null
+
+  // Ventana con toda la información y el formulario para anotar el ahorro
+  const modal = adding && (
+    <Modal label="Anotar ahorro" onClose={() => setAdding(false)}>
+      <div className="card cat-sheet">
+        <div className="stack cat-detail">
+          <div className="row between">
+            <strong className="cat-title">{no ? 'Ahorra ahora' : 'Anota tu ahorro'}</strong>
             <button type="button" className="btn ghost small" onClick={() => setAdding(false)}>
-              Cancelar
+              Cerrar
             </button>
           </div>
-        </>
-      )}
-    </div>
+          <span className="muted">Lo que ahorres se descuenta de tu sueldo, así ves cuánto te queda de verdad.</span>
+
+          <div className="tiles">
+            <div className="tile">
+              <span className="muted small-text">Ahorrado en {monthName(month)}</span>
+              <span className="amount-sm num">{money(saved)}</span>
+            </div>
+            <div className="tile">
+              <span className="muted small-text">De lo que ganas</span>
+              <span className="amount-sm num">{pct !== null ? `${pct} %` : '—'}</span>
+            </div>
+          </div>
+
+          {goals.length === 0 ? (
+            <>
+              <span className="muted">Para anotar un ahorro primero crea una meta, por ejemplo «Fondo de emergencia».</span>
+              {onGoals && (
+                <button type="button" className="btn" onClick={onGoals}>
+                  Crear una meta
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              {goals.length > 1 && (
+                <div className="field">
+                  <label htmlFor="sv-goal">¿A cuál meta?</label>
+                  <select id="sv-goal" className="input" value={chosen?.id ?? ''} onChange={(e) => setGoalId(e.target.value)}>
+                    {goals.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {chosen && (
+                <div className="stack tight">
+                  <div className="row between">
+                    <span className="strong">{chosen.name}</span>
+                    <span className="muted num">
+                      {money(goalSaved)}
+                      {chosen.target_amount > 0 ? ` de ${money(chosen.target_amount)}` : ''}
+                    </span>
+                  </div>
+                  {goalPct !== null && (
+                    <div className="bar cat-bar" role="img" aria-label={`${chosen.name}: ${goalPct} % de la meta`}>
+                      <span style={{ width: `${goalPct}%`, background: 'var(--accent)' }} />
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="field">
+                <label htmlFor="sv-amount">{no ? '¿Cuánto quieres ahorrar?' : '¿Cuánto guardaste?'}</label>
+                <input
+                  id="sv-amount" autoComplete="off"
+                  className="input"
+                  inputMode="numeric"
+                  placeholder="Ej. 50000"
+                  value={dots(amount)}
+                  onChange={(e) => setAmount(digitsOnly(e.target.value))}
+                />
+              </div>
+              <button type="button" className="btn" disabled={busy} onClick={() => void save()}>
+                {busy ? <Spin label="Guardando ahorro…" /> : 'Guardar ahorro'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </Modal>
   )
 
   // Meses que ya pasaron: solo se muestra lo que hubo, no se pregunta
@@ -130,16 +169,14 @@ export default function SavingsCheck({ hh, data, month, onToast, onGoals }: Prop
     return (
       <section className="card verdict ok">
         <strong>Tu ahorro de {monthName(month)}</strong>
-        <span className="amount num">{money(saved)}</span>
-        <span className="muted small-text">
-          Guardaste esto este mes{pct !== null ? ` (${pct} % de lo que ganas)` : ''}. Ya está descontado de lo que te queda del sueldo.
-        </span>
-        {isCurrent && !adding && (
-          <button type="button" className="btn ghost small" onClick={() => setAdding(true)}>
+        <span className="cat-big num">{money(saved)}</span>
+        <span className="muted">{pct !== null ? `Es el ${pct} % de lo que ganas` : 'Ya está descontado de tu sueldo'}</span>
+        {isCurrent && (
+          <button type="button" className="btn small wide" aria-haspopup="dialog" onClick={() => setAdding(true)}>
             Anotar otro ahorro
           </button>
         )}
-        {form}
+        {modal}
       </section>
     )
   }
@@ -148,13 +185,11 @@ export default function SavingsCheck({ hh, data, month, onToast, onGoals }: Prop
     return (
       <section className="card">
         <strong>Este mes no has guardado ahorro</strong>
-        <span className="muted small-text">Está bien, pero ojo: un aporte chico y seguido rinde más que uno grande de vez en cuando.</span>
-        {!adding && (
-          <button type="button" className="btn ghost small" onClick={() => setAdding(true)}>
-            Ya guardé algo
-          </button>
-        )}
-        {form}
+        <span className="muted">Un aporte chico y seguido rinde más que uno grande de vez en cuando.</span>
+        <button type="button" className="btn small wide" aria-haspopup="dialog" onClick={() => setAdding(true)}>
+          Quiero ahorrar ahora
+        </button>
+        {modal}
       </section>
     )
   }
@@ -162,19 +197,15 @@ export default function SavingsCheck({ hh, data, month, onToast, onGoals }: Prop
   return (
     <section className="card">
       <strong>¿Guardaste algo de ahorro este mes?</strong>
-      <span className="muted small-text">Lo que ahorres se descuenta de tu sueldo, así ves cuánto te queda de verdad.</span>
-      {!adding ? (
-        <div className="row">
-          <button type="button" className="btn small" onClick={() => setAdding(true)}>
-            Sí, guardé
-          </button>
-          <button type="button" className="btn ghost small" onClick={answerNo}>
-            No, este mes no
-          </button>
-        </div>
-      ) : (
-        form
-      )}
+      <div className="row">
+        <button type="button" className="btn small" aria-haspopup="dialog" onClick={() => setAdding(true)}>
+          Sí, guardé
+        </button>
+        <button type="button" className="btn ghost small" onClick={answerNo}>
+          No, este mes no
+        </button>
+      </div>
+      {modal}
     </section>
   )
 }

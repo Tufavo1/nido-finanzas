@@ -119,16 +119,14 @@ describe('notificaciones inteligentes', () => {
     expect(pickToNotify([mk('a', 'bad')], [], [], new Date(2026, 9, 20, 23, 0))).toEqual([])
   })
 
-  it('manda primero lo más importante y como mucho 2 al día', () => {
+  it('manda primero lo más importante y como mucho 1 al día', () => {
     const list = [mk('w', 'warn', 40), mk('b1', 'bad', 90), mk('b2', 'bad', 70), mk('i', 'info')]
-    expect(pickToNotify(list, [], [], noon).map((a) => a.id)).toEqual(['b1', 'b2'])
+    expect(pickToNotify(list, [], [], noon).map((a) => a.id)).toEqual(['b1'])
   })
 
   it('descuenta lo ya enviado hoy', () => {
     const log = [{ id: 'z', t: new Date(2026, 9, 20, 9, 0).getTime() }]
-    expect(pickToNotify([mk('b1', 'bad', 90), mk('b2', 'bad', 70)], log, [], noon).map((a) => a.id)).toEqual(['b1'])
-    const two = [...log, { id: 'y', t: new Date(2026, 9, 20, 10, 0).getTime() }]
-    expect(pickToNotify([mk('b1', 'bad')], two, [], noon)).toEqual([])
+    expect(pickToNotify([mk('b1', 'bad', 90), mk('b2', 'bad', 70)], log, [], noon)).toEqual([])
   })
 
   it('un aviso de cuidado no se repite, pero uno urgente sin resolver se recuerda a los 3 días', () => {

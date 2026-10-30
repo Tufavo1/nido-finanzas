@@ -6,6 +6,7 @@ import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import Icon from '../components/Icon'
 import { money, todayISO } from '../lib/format'
+import { finalAmount, initialDraft, resolveSpentOn, saveBlocker, saveLabel } from '../lib/register'
 import { supabase } from '../lib/supabase'
 import { notifyPartner } from '../lib/push'
 import Spin from '../components/Spin'
@@ -32,7 +33,7 @@ export default function Register({
   const [shared, setShared] = useState(true)
   const [more, setMore] = useState(false)
   const [note, setNote] = useState('')
-  const [date, setDate] = useState(todayISO)
+  const [date, setDate] = useState('')
   const [busy, setBusy] = useState(false)
   const setError = useToastError(onToast)
 
@@ -42,8 +43,9 @@ export default function Register({
   const gross = digits ? Number(digits) : 0
   const pct = hasDiscount ? Math.min(100, Math.max(0, Number(discount.replace(',', '.')) || 0)) : 0
   // Lo que realmente se pagó, ya con el descuento aplicado
-  const amount = Math.round(gross * (1 - pct / 100))
+  const amount = finalAmount(gross, hasDiscount, discount)
   const today = todayISO()
+  const blocker = saveBlocker({ ...initialDraft(catId, paidBy), digits, note, date, hasDiscount, discount, shared }, today)
 
   function press(k: (typeof KEYS)[number]) {
     setDigits((d) => {
@@ -54,7 +56,8 @@ export default function Register({
   }
 
   async function save() {
-    if (amount <= 0 || !catId || !date || date > today) return
+    const spentOn = resolveSpentOn(date, today)
+    if (blocker || spentOn === null) return
     setBusy(true)
     setError(null)
     const { data: created, error: err } = await supabase.from('expenses').insert({
@@ -63,8 +66,8 @@ export default function Register({
       amount,
       paid_by: paidBy,
       shared,
-      note: note.trim() || null,
-      spent_on: date,
+      note: note.trim(),
+      spent_on: spentOn,
     }).select('id').single()
     if (err) {
       setError('No se pudo guardar. Intenta de nuevo.')
@@ -84,6 +87,21 @@ export default function Register({
     else setStep((n) => (n > first ? ((n - 1) as 1 | 2 | 3 | 4) : n))
   }
 
+  /** Descarta lo anotado y vuelve al primer paso */
+  function cancel() {
+    const d = initialDraft(data.categories[0]?.id, hh.me.user_id)
+    setDigits(d.digits)
+    setNote(d.note)
+    setDate(d.date)
+    setMore(d.more)
+    setHasDiscount(d.hasDiscount)
+    setDiscount(d.discount)
+    setShared(d.shared)
+    setPaidBy(d.paidBy)
+    setCatId(d.catId)
+    setStep(d.step)
+  }
+
   function chooseShared(v: boolean) {
     setShared(v)
     setStep(2)
@@ -95,7 +113,7 @@ export default function Register({
     if (!v) setStep(3)
   }
 
-  const canSave = !busy && amount > 0 && !!catId && !!date && date <= today
+  const canSave = !busy && blocker === null
 
   return (
     <main className="screen reg">
@@ -258,12 +276,25 @@ export default function Register({
             ))}
           </div>
 
+          <div className="reg-note field">
+            <label htmlFor="reg-note" className="strong">¿De qué es este gasto?</label>
+            <input
+              id="reg-note"
+              className="input"
+              placeholder="Ej. Pan y leche, bencina, almuerzo"
+              maxLength={120}
+              required
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </div>
+
           <button className="btn reg-save" type="button" disabled={!canSave} onClick={() => void save()}>
-            {busy ? <Spin label="Guardando gasto…" /> : amount > 0 ? `Guardar ${money(amount)}` : 'Escribe el monto'}
+            {busy ? <Spin label="Guardando gasto…" /> : saveLabel(blocker, amount)}
           </button>
 
           <button type="button" className="btn ghost" aria-expanded={more} onClick={() => setMore((v) => !v)}>
-            {more ? 'Ocultar' : (multi ? 'Más: quién pagó, fecha, nota' : 'Más: fecha y nota')}
+            {more ? 'Ocultar' : (multi ? 'Cambiar quién pagó o si es de otra fecha' : '¿Es un pago de una fecha anterior?')}
           </button>
           {more && (
             <section className="reg-card">
@@ -280,28 +311,26 @@ export default function Register({
                 </div>
               )}
               <div className="reg-meta">
+                <label htmlFor="spent-on" className="muted small-text">¿Qué día fue? (si no, se anota hoy)</label>
                 <input
                   id="spent-on"
                   className="input"
                   type="date"
                   max={today}
-                  required
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   aria-label="Fecha del gasto"
-                />
-                <input
-                  className="input"
-                  placeholder="Nota (opcional)"
-                  maxLength={120}
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  aria-label="Nota"
                 />
               </div>
             </section>
           )}
         </>
+      )}
+
+      {step > first && (
+        <button type="button" className="btn ghost" disabled={busy} onClick={cancel}>
+          Cancelar registro
+        </button>
       )}
     </main>
   )

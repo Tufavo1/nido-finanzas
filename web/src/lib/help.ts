@@ -36,15 +36,15 @@ export const HELP_GROUPS: HelpGroup[] = [
       },
       {
         id: 'gastos',
-        title: 'Gastos: movimientos y presupuesto por categoría',
-        hint: 'Ver, filtrar y corregir lo gastado; ponerle tope a cada categoría',
-        text: 'Cada categoría agrupa un tipo de gasto: supermercado, transporte, ocio. Si le pones un tope mensual, la barra te muestra cuánto llevan gastado y cuánto les queda.',
+        title: 'Gastos: historial y límite por categoría',
+        hint: 'Ver, filtrar y corregir lo gastado; ponerle un límite mensual a cada categoría',
+        text: 'Cada categoría agrupa un tipo de gasto: supermercado, transporte, ocio. Si le pones un límite de gasto al mes, la barra te muestra cuánto llevan gastado y cuánto les queda.',
         steps: [
-          'En **Presupuesto por categoría**, toca una categoría y luego el **lápiz**.',
+          'En **Límite por categoría**, toca una categoría y luego **Editar información**.',
           'Escribe cuánto quieren gastar **al mes** en ella y guarda.',
-          'Mira la barra: mientras más llena, más cerca del tope. Si se pone roja, ya se pasaron.',
-          'Toca **Ver en qué se fue** para saber qué compras pesaron más.',
-          'En **Movimientos**, filtra por categoría o por día y toca un gasto para corregirlo o borrarlo.',
+          'Mira la barra: mientras más llena, más cerca del límite. Si se pone roja, ya se pasaron.',
+          'En el detalle ves **En qué se fue** para saber qué compras pesaron más.',
+          'En **Historial de gastos**, busca por fecha o filtra por categoría y toca un gasto para corregirlo o borrarlo.',
         ],
       },
       {
@@ -53,7 +53,7 @@ export const HELP_GROUPS: HelpGroup[] = [
         hint: 'Arriendo, luz, internet, suscripciones: se anotan solos',
         text: 'Son pagos que se repiten todos los meses con el mismo monto: arriendo, luz, internet, celular, suscripciones. Los anotas una sola vez y la app los agrega a tus gastos sola. Para compras que cambian, como el supermercado, usa el botón Registrar.',
         steps: [
-          'En **Finanzas > Fijos**, toca **Agregar un gasto fijo**.',
+          'En **Finanzas > Fijos**, toca **Agregar gasto fijo**.',
           'Elige qué es, por ejemplo **Arriendo**, y escribe cuánto pagas al mes.',
           'Elige el **día del mes** en que se paga y su categoría.',
           'Listo: cada mes aparecerá solo en tus gastos. Toca una tarjeta para editarlo, pausarlo o borrarlo.',
@@ -65,10 +65,10 @@ export const HELP_GROUPS: HelpGroup[] = [
         hint: 'Con tu sueldo la app calcula cuánto te queda de verdad',
         text: 'Aquí guardas lo que te pagan por tu trabajo. Con ese número la app calcula cuánto te sobra después de pagar tus gastos y tus deudas, y solo tú lo ves. Los bonos o ventas ocasionales no van aquí: anótalos en Ingresos extra.',
         steps: [
-          'En **Finanzas > Sueldo**, escribe tu sueldo **líquido**: lo que realmente llega a tu cuenta, después de los descuentos de AFP, salud e impuestos.',
+          'En **Finanzas > Sueldo**, toca **Agregar mi sueldo** y escribe tu sueldo **líquido**: lo que realmente llega a tu cuenta, después de los descuentos de AFP, salud e impuestos.',
           'Elige el **día del mes** en que te depositan.',
           'Toca **Guardar mi sueldo**.',
-          'Verás **cuánto te queda** este mes y si vas bien. Si solo sabes el sueldo bruto, usa **Calcular mi sueldo líquido**.',
+          'Verás **cuánto te queda** este mes y si vas bien. Si solo sabes el sueldo bruto, toca **¿Solo sabes tu sueldo bruto?**.',
         ],
       },
       {
@@ -77,7 +77,7 @@ export const HELP_GROUPS: HelpGroup[] = [
         hint: 'Tarjetas, créditos y préstamos con su fecha de término',
         text: 'Una deuda es plata que todavía tienes que devolver: una tarjeta, un crédito del banco o un préstamo de un familiar. Al anotarla, la app te muestra cuánto falta y en cuántos meses terminas.',
         steps: [
-          'En **Finanzas > Deudas**, toca **Agregar una deuda**.',
+          'En **Finanzas > Deudas**, toca **Agregar deuda**.',
           'Ponle un nombre que reconozcas, por ejemplo Tarjeta Banco Estado, y escribe **cuánto falta pagar hoy**.',
           'Si lo sabes, agrega la **cuota mensual** y el **interés**. Con eso calculamos en cuántos meses terminas.',
           'Cada vez que pagues una cuota, abre la deuda y toca **Anotar un pago**. El saldo baja solo.',
@@ -89,7 +89,7 @@ export const HELP_GROUPS: HelpGroup[] = [
         hint: 'Un viaje, un fondo de imprevistos, un electrodoméstico',
         text: 'Una meta es algo que quieren pagar con ahorro: un viaje, el ahorro para imprevistos, un electrodoméstico. Cada aporte que anotan acerca la barra al objetivo.',
         steps: [
-          'Toca **Nueva meta**.',
+          'Toca **Agregar meta**.',
           'Escribe qué quieren lograr y **cuánto cuesta**.',
           'Si tienen una fecha límite, agrégala: la app calcula cuánto aportar **por mes**.',
           'Cada vez que ahorren, abre la meta y toca **Aportar a esta meta**.',
@@ -206,7 +206,7 @@ export const HELP_GROUPS: HelpGroup[] = [
         steps: [
           'Anota **todo** durante un mes, aunque sea chico. Ver el total sorprende.',
           'Mira en **Gastos** qué categorías suben más de lo normal.',
-          'Elige uno o dos que **no te hagan falta** y ponle un tope en el presupuesto por categoría.',
+          'Elige uno o dos que **no te hagan falta** y ponle un límite en Gastos.',
           'Reemplaza en vez de eliminar: lo que no se puede dejar de golpe, se reduce.',
         ],
       },
@@ -229,7 +229,7 @@ export const HELP_GROUPS: HelpGroup[] = [
         text: 'El sueldo bruto es lo que dice el contrato. El líquido es lo que realmente llega a tu cuenta después de descontar AFP, salud e impuesto. Los planes de gasto siempre se hacen con el líquido.',
         steps: [
           'Usa **siempre el líquido** para decidir cuánto gastar y ahorrar.',
-          'Si solo conoces el bruto, usa **Calcular mi sueldo líquido** en Finanzas > Sueldo.',
+          'Si solo conoces el bruto, toca **¿Solo sabes tu sueldo bruto?** en Finanzas > Sueldo.',
           'Los bonos y trabajos aparte no son fijos: anótalos como **ingresos extra**.',
         ],
       },
@@ -254,7 +254,7 @@ export const HELP_GROUPS: HelpGroup[] = [
           'Anota los gastos que se hayan quedado sin registrar.',
           'Mira el **Análisis** de Finanzas y lee qué dice la app sobre tu mes.',
           'Revisa que tus **deudas** tengan el pago del mes anotado.',
-          'Aporta a tus **metas** y ajusta algún tope que haya quedado corto o largo.',
+          'Aporta a tus **metas** y ajusta algún límite que haya quedado corto o largo.',
         ],
       },
     ],

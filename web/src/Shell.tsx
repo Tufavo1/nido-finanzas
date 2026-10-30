@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import type { Household } from './App'
 import Icon from './components/Icon'
 import InstallBanner from './components/InstallBanner'
@@ -10,12 +10,7 @@ import type { ToastData, ToastKind } from './components/Toast'
 import { useData } from './lib/data'
 import { ANNOUNCE_NEWS, NEWS_EVENT, TOUR_EVENT, markNewsSeen, markTourSeen, newsSeen, tourSeen } from './lib/tour'
 import { focusMain } from './lib/a11y'
-import { buildAlerts } from './lib/engine'
 import type { AlertTab, MoneySection } from './lib/engine'
-import { readSnoozed, snoozeAlert, withoutSnoozed } from './lib/alertState'
-import type { ExpRow } from './lib/expenseAnalysis'
-import { fetchExpenseRows } from './lib/history'
-import { notifyNewAlerts } from './lib/smartNotify'
 import { useAppLock } from './lib/useAppLock'
 const Expenses = lazy(() => import('./screens/Expenses'))
 const Goals = lazy(() => import('./screens/Goals'))
@@ -123,44 +118,12 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   const isCurrent = ym.y === now.getFullYear() && ym.m === now.getMonth()
   const month = new Date(ym.y, ym.m, 1)
 
-  // Gastos de los últimos meses (con nota): alimentan los avisos de gastos repetidos, inusuales y suscripciones
-  const [rows, setRows] = useState<ExpRow[]>([])
-  useEffect(() => {
-    if (!data.ready) return
-    let off = false
-    fetchExpenseRows(hh.household.id, new Date(ym.y, ym.m, 1))
-      .then((r) => {
-        if (!off) setRows(r)
-      })
-      .catch(() => {
-        /* sin historial se omiten solo esos avisos */
-      })
-    return () => {
-      off = true
-    }
-  }, [data.ready, hh.household.id, ym.y, ym.m, data.expenses])
-
-  // Avisos que la persona pospuso o descartó: se guardan en este dispositivo
-  const [snoozed, setSnoozed] = useState(() => readSnoozed())
-  const snooze = useCallback((id: string, days: number) => setSnoozed(snoozeAlert(id, days)), [])
   // Finanzas se abre en la pestaña que pide el aviso (la clave reinicia la pantalla)
   const [moneyNav, setMoneyNav] = useState<{ section: MoneySection; n: number }>({ section: 'analysis', n: 0 })
   const goTo = useCallback((t: AlertTab, section?: MoneySection) => {
     if (t === 'money') setMoneyNav((v) => ({ section: section ?? 'analysis', n: v.n + 1 }))
     setTab(t)
   }, [])
-
-  // Motor de avisos: se recalcula en cada cambio de datos
-  const allAlerts = useMemo(
-    () => (data.ready ? buildAlerts(hh, data, month, undefined, { rows }) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hh, data.ready, data.expenses, data.prevExpenses, data.categories, data.goals, data.contributions, data.debts, data.debtPayments, data.salary, data.incomes, data.recurring, data.profiles, rows, ym.y, ym.m],
-  )
-  const alerts = useMemo(() => withoutSnoozed(allAlerts, snoozed), [allAlerts, snoozed])
-  const urgent = alerts.filter((a) => a.level === 'bad' || a.level === 'warn').length
-  useEffect(() => {
-    if (data.ready && !data.loading && isCurrent) void notifyNewAlerts(alerts)
-  }, [alerts, data.ready, data.loading, isCurrent])
 
   function shiftMonth(delta: number) {
     if (delta > 0 && isCurrent) return
@@ -196,7 +159,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
       </main>
     )
   } else if (tab === 'home') {
-    body = <Home hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} alerts={alerts} onGo={goTo} onSnooze={snooze} onSettings={() => setTab('security')} onToast={setToast} scope={scope} onScope={setScope} />
+    body = <Home hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} onGo={goTo} onSettings={() => setTab('security')} onToast={setToast} scope={scope} onScope={setScope} />
   } else if (tab === 'expenses') {
     body = <Expenses hh={hh} data={data} month={month} onToast={setToast} scope={scope} onScope={setScope} />
   } else if (tab === 'add') {
@@ -254,11 +217,6 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
               <Icon name={t.icon} />
             )}
             <span>{t.label}</span>
-            {t.key === 'home' && urgent > 0 && (
-              <span className="badge" aria-label={`${urgent} avisos`}>
-                {urgent}
-              </span>
-            )}
           </button>
         ))}
       </nav>

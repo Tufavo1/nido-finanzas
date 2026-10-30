@@ -81,38 +81,18 @@ export const WELCOME_SLIDES: Slide[] = [
 /** Guía de novedades: presenta lo que cambió; es solo para mirar, no hace falta probar nada */
 export const NEWS_SLIDES: Slide[] = [
   {
-    title: 'Contigo se renovó',
-    text: 'Hicimos la app **más ordenada y más fácil de usar**, en el celular y también en el computador. Te mostramos lo nuevo en un minuto.',
-    art: <Logo size={84} animate />,
+    title: 'Pantallas más simples',
+    text: 'Ahora **Inicio, Gastos, Sueldo, Fijos, Deudas y Metas** muestran lo importante en **tarjetas**. Toca una tarjeta para ver **todo el detalle** y editarla.',
+    art: badge('wallet'),
   },
   {
-    title: 'Todo en tarjetas',
-    text: 'Gastos fijos, deudas, metas, categorías e ingresos extra ahora son **tarjetas**. Toca una para ver el detalle, editarla o borrarla; agregar también abre una ventana propia.',
+    title: 'Registrar con nota',
+    text: 'Al **registrar un gasto** cuenta **de qué es**: así después sabes en qué se fue la plata. La fecha es opcional y, si no la pones, se anota **hoy**. Puedes **cancelar** cuando quieras.',
+    art: badge('plus'),
+  },
+  {
+    title: 'Los gráficos, al final',
+    text: 'En **Inicio** primero ves cuánto gastaron, tus cuentas y los últimos gastos. Los **gráficos** están más abajo, con un botón **Ver gráficos**.',
     art: badge('list'),
-  },
-  {
-    title: 'Secciones que se abren y cierran',
-    text: 'En Gastos, Finanzas y Metas cada tema tiene su **desplegable**, con el primero abierto. Así ves lo importante primero y el resto cuando lo necesitas.',
-    art: badge('chevD'),
-  },
-  {
-    title: 'Tu perfil financiero',
-    text: 'El nuevo **Perfil financiero** (en Ajustes) te dice qué tipo de perfil financiero tienes, en qué nivel vas y los **tres pasos** para subir. También ahí cambias nombre, correo y contraseña.',
-    art: badge('user'),
-  },
-  {
-    title: 'Tú decides qué ve tu pareja',
-    text: 'En **Ajustes → Perfil financiero → Privacidad** apagas por tema (deudas, fijos, gastos personales, ahorro) lo que no quieres compartir. Lo que ocultas no se ve, ni siquiera en las notificaciones.',
-    art: badge('lock'),
-  },
-  {
-    title: 'Más análisis, menos cuentas',
-    text: 'Los gastos fijos ahora tienen **análisis**: cuánto pesan en tu sueldo y dónde se va más. Y en tu sueldo, **«Usar»** guarda el líquido calculado al tiro y te avisa.',
-    art: badge('target'),
-  },
-  {
-    title: 'Ayuda a un toque',
-    text: 'La **Ayuda** (dentro de **Ajustes**, con el engranaje de Inicio) reúne todos los consejos en desplegables, con un **índice** para ir directo al tema. Esta guía la puedes ver otra vez ahí mismo.',
-    art: badge('help'),
   },
 ]
