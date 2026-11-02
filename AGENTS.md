@@ -42,3 +42,8 @@ El humano coordina: ningún agente llama a otro. Se elige con Tab. Un paso peque
 - No escribas "completado" ni "tests pasan" sin haberlo comprobado.
 - Antes de crear algo, busca si ya existe (p. ej. los gastos ya tienen `note`).
 - SQL nuevo solo en `supabase/migrations/` como migración nueva; nunca en `supabase/functions/`.
+
+## Cómo se escriben los tests aquí
+- Vitest, archivos `*.test.ts` junto al módulo (`web/src/lib`). Sigue el estilo de `numbers.test.ts`.
+- Las fechas se prueban pasando una fecha explícita (`new Date(2026, 9, 15)`) a la función. NO se mockea el reloj ni se usa `global`/`globalThis`; para funciones sin parámetro (`todayISO`) basta comprobar el formato.
+- Si un test queda con errores de `tsc` o falla dos veces, bórralo o simplifícalo y repórtalo; no lo dejes roto.
