@@ -131,6 +131,13 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
   const dayList = dayExpenses(viewExpenses, day)
   const heroLabel = view === 'all' ? 'Gastado en el mes' : view === hh.me.user_id ? 'Te corresponde en el mes' : `Le corresponde a ${byId.get(view)?.display_name ?? ''}`
 
+  const steps = [
+    { key: 'expense', label: 'Anotar tu primer gasto', done: data.expenses.length > 0 || data.prevExpenses.length > 0, go: () => onGo('add') },
+    { key: 'salary', label: 'Agregar tu sueldo', done: !!data.salary, go: () => onGo('money', 'salary') },
+    { key: 'goal', label: 'Crear una meta de ahorro', done: data.goals.length > 0, go: () => onGo('goals') },
+  ]
+  const stepsDone = steps.filter((x) => x.done).length
+
   function renderExpense(e: Expense) {
     return (
       <div className="item" key={e.id}>
@@ -169,7 +176,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
         </div>
       </div>
 
-      <div className="row between">
+      <div className="row between" role="group" aria-label="Elegir mes">
         <button type="button" className="icon-btn" aria-label="Mes anterior" onClick={() => change(-1)}>
           <Icon name="chevL" />
         </button>
@@ -184,7 +191,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
       <ScopeBar hh={hh} scope={view} onScope={onScope} label="Ver gastos de" />
 
       {/* 1. Lo primero: cuánto se gastó */}
-      <section className="card hero">
+      <section className="card hero" aria-label="Resumen del mes">
         <span className="muted">{heroLabel}</span>
         <span className="amount num">{money(sub.total)}</span>
         {view === 'all' && budget > 0 && (
@@ -211,10 +218,40 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
       </section>
 
       {data.expenses.length === 0 && (
-        <section className="card empty">
+        <section className="card empty" aria-labelledby="home-empty">
           <Logo size={44} animate />
-          <strong>Este mes aún no hay gastos</strong>
-          <span className="muted">Registra el primero con el botón + de abajo.</span>
+          <strong id="home-empty">Este mes aún no hay gastos</strong>
+          <span className="muted">Anota el primero y aquí verás cuánto llevan gastado.</span>
+          <button type="button" className="btn wide" onClick={() => onGo('add')}>
+            Registrar mi primer gasto
+          </button>
+        </section>
+      )}
+
+      {/* Completa tu hogar: pasos sugeridos mientras falten (Completeness Meter) */}
+      {steps.length > 0 && stepsDone < steps.length && (
+        <section className="card setup" aria-labelledby="home-setup">
+          <div className="row between">
+            <strong id="home-setup">Completa tu hogar</strong>
+            <span className="muted small-text">{stepsDone} de {steps.length}</span>
+          </div>
+          <div className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={stepsDone} aria-label="Pasos completados">
+            <span style={{ width: `${Math.round((stepsDone * 100) / steps.length)}%`, background: 'var(--accent)' }} />
+          </div>
+          <ul className="setup-list">
+            {steps.map((st) => (
+              <li key={st.key}>
+                {st.done ? (
+                  <span className="setup-item done"><span aria-hidden="true">✔</span> {st.label}</span>
+                ) : (
+                  <button type="button" className="setup-item" onClick={st.go}>
+                    <span aria-hidden="true">○</span> {st.label}
+                    <Icon name="chevR" size={16} />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

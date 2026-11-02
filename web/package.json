@@ -1,7 +1,7 @@
 {
   "name": "web",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:db": "docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/rls.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/hogares.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/admin.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/aislamiento.sql",
     "test:db:mutacion": "docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 -v mutar=1 < ../supabase/tests/aislamiento.sql",
-    "test:e2e": "node e2e/e2e.cjs",
+    "test:e2e": "node e2e/e2e.cjs && node e2e/mfa.cjs && node e2e/google-setup.cjs",
     "deploy": "npm run build && npx wrangler deploy"
   },
   "dependencies": {

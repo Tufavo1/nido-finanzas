@@ -8,16 +8,13 @@ import LockSettings from '../components/LockSettings'
 import SecurityInfo from '../components/SecurityInfo'
 import SettingsItem from '../components/SettingsItem'
 import AccessCard from '../components/AccessCard'
-import HomeCard from '../components/HomeCard'
 import PasswordCard from '../components/PasswordCard'
-import { NEWS_EVENT, TOUR_EVENT } from '../lib/tour'
+import MfaCard from '../components/MfaCard'
 import { getLockMinutes } from '../lib/applock'
 import { VERSION } from '../lib/about'
 import LeaveAccount from '../components/LeaveAccount'
 import PushToggle from '../components/PushToggle'
-import ProfileCard from '../components/ProfileCard'
 import ThemeToggle from '../components/ThemeToggle'
-import type { HouseholdData } from '../lib/data'
 import { useIsAdmin } from '../lib/admin'
 import { supabase } from '../lib/supabase'
 import type { Notify } from '../components/Toast'
@@ -27,14 +24,12 @@ const Admin = lazy(() => import('./Admin'))
 export default function Security({
   hh,
   reload,
-  data,
   onToast,
   onHelp,
   onProfile,
 }: {
   hh: Household
   reload: () => Promise<void>
-  data: HouseholdData
   onToast: Notify
   onHelp: () => void
   onProfile: () => void
@@ -73,56 +68,17 @@ export default function Security({
 
       <h2 className="set-group">Cuenta</h2>
       <div className="set-list">
-        <SettingsItem {...item} id="profile" icon="user" title="Mi perfil" summary={hh.me.display_name} open={open === 'profile'}>
-          <ProfileCard hh={hh} data={data} reload={reload} onToast={onToast} />
-        </SettingsItem>
-
         <SettingsItem
           {...item}
-          id="home"
-          icon="home"
-          title="Mi hogar e invitación"
-          summary={partner ? `${hh.household.name} · con ${partner.display_name}` : `${hh.household.name} · 1 de 2 personas`}
-          open={open === 'home'}
-        >
-          <HomeCard hh={hh} reload={reload} onToast={onToast} />
-        </SettingsItem>
+          id="profile"
+          icon="user"
+          title="Mi perfil, hogar y privacidad"
+          summary={partner ? `${hh.me.display_name} · ${hh.household.name}, con ${partner.display_name}` : `${hh.me.display_name} · ${hh.household.name}, 1 de 2 personas`}
+          open={false}
+          onGo={onProfile}
+        />
 
-        <SettingsItem {...item} id="finprofile" icon="user" title="Perfil financiero y privacidad" summary="Tu nivel, cómo subir y qué ve tu pareja" open={open === 'finprofile'}>
-          <section className="card">
-            <span className="muted">Mira qué perfil financiero tienes, tu nivel, los pasos para mejorar y qué temas compartes con tu pareja.</span>
-            <button type="button" className="btn ghost small" onClick={onProfile}>
-              Abrir mi perfil
-            </button>
-          </section>
-        </SettingsItem>
-
-        <SettingsItem {...item} id="help" icon="help" title="Ayuda y consejos" summary="Cómo se usa cada sección y consejos de finanzas" open={open === 'help'}>
-          <section className="card">
-            <span className="muted">Explicaciones paso a paso de cada parte de la app, con un índice para ir directo a lo que buscas.</span>
-            <button type="button" className="btn ghost small" onClick={onHelp}>
-              Abrir la ayuda
-            </button>
-          </section>
-        </SettingsItem>
-
-        <SettingsItem {...item} id="tour" icon="info" title="Guía de bienvenida" summary="Para qué sirve cada parte de la app" open={open === 'tour'}>
-          <section className="card">
-            <span className="muted">Un recorrido corto por lo que puedes hacer en Contigo.</span>
-            <button type="button" className="btn ghost small" onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}>
-              Ver la guía
-            </button>
-          </section>
-        </SettingsItem>
-
-        <SettingsItem {...item} id="news" icon="info" title="Novedades" summary="Lo que cambió en la app" open={open === 'news'}>
-          <section className="card">
-            <span className="muted">Un repaso rápido de lo nuevo: pantallas más simples, registrar con nota y los gráficos al final de Inicio.</span>
-            <button type="button" className="btn ghost small" onClick={() => window.dispatchEvent(new Event(NEWS_EVENT))}>
-              Ver las novedades
-            </button>
-          </section>
-        </SettingsItem>
+        <SettingsItem {...item} id="help" icon="help" title="Ayuda y consejos" summary="Cómo se usa la app, guía de bienvenida y novedades" open={false} onGo={onHelp} />
 
         <SettingsItem {...item} id="theme" icon="gear" title="Apariencia" summary="Claro, oscuro o automático" open={open === 'theme'}>
           <ThemeToggle />
@@ -133,6 +89,10 @@ export default function Security({
       <div className="set-list">
         <SettingsItem {...item} id="password" icon="lock" title="Contraseña y sesiones" summary="Cambiar contraseña, cerrar otras sesiones" open={open === 'password'}>
           <PasswordCard onToast={onToast} />
+        </SettingsItem>
+
+        <SettingsItem {...item} id="mfa" icon="shield" title="Verificación en dos pasos" summary="Un código extra al entrar" open={open === 'mfa'}>
+          <MfaCard onToast={onToast} />
         </SettingsItem>
 
         <SettingsItem

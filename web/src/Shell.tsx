@@ -161,7 +161,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   } else if (tab === 'home') {
     body = <Home hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} onGo={goTo} onSettings={() => setTab('security')} onToast={setToast} scope={scope} onScope={setScope} />
   } else if (tab === 'expenses') {
-    body = <Expenses hh={hh} data={data} month={month} onToast={setToast} scope={scope} onScope={setScope} />
+    body = <Expenses hh={hh} data={data} month={month} onToast={setToast} scope={scope} onScope={setScope} onRegister={() => setTab('add')} />
   } else if (tab === 'add') {
     body = <Register hh={hh} data={data} onSaved={backToNow} onToast={setToast} />
   } else if (tab === 'money') {
@@ -173,7 +173,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   } else if (tab === 'help') {
     body = <Help onBack={() => setTab('security')} />
   } else {
-    body = <Security hh={hh} reload={reload} data={data} onToast={setToast} onHelp={() => setTab('help')} onProfile={() => setTab('profile')} />
+    body = <Security hh={hh} reload={reload} onToast={setToast} onHelp={() => setTab('help')} onProfile={() => setTab('profile')} />
   }
 
   if (locked) return <LockScreen onUnlock={unlock} />

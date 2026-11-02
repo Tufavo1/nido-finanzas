@@ -119,12 +119,22 @@ const FORWARD_RESPONSE = new Set([
   'www-authenticate',
 ])
 
+/** Inicio de sesión con Google: Supabase responde con una redirección a la pantalla de Google, y esa sí debe llegar al navegador */
+const GOOGLE_AUTH = /^https:\/\/accounts\.google\.com\/o\/oauth2\/(v2\/)?auth\?/
+
+/** Ubicación de una redirección: las del propio proyecto se reescriben al proxy; solo la de Google pasa tal cual; el resto vuelve al inicio */
+export function rewriteLocation(loc: string, upstreamOrigin: string): string {
+  if (loc.startsWith(upstreamOrigin)) return `${PREFIX}${loc.slice(upstreamOrigin.length)}`
+  if (GOOGLE_AUTH.test(loc)) return loc
+  return '/'
+}
+
 /** Respuesta limpia: sin cookies, sin pistas del servidor real, sin caché y con la ubicación reescrita */
 export function cleanResponseHeaders(upstream: Headers, upstreamOrigin: string): Headers {
   const out = new Headers()
   for (const [k, v] of upstream) if (FORWARD_RESPONSE.has(k.toLowerCase())) out.set(k, v)
   const loc = upstream.get('location')
-  if (loc) out.set('location', loc.startsWith(upstreamOrigin) ? `${PREFIX}${loc.slice(upstreamOrigin.length)}` : '/')
+  if (loc) out.set('location', rewriteLocation(loc, upstreamOrigin))
   out.set('cache-control', 'no-store')
   out.set('x-content-type-options', 'nosniff')
   return out

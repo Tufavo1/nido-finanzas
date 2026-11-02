@@ -70,7 +70,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
     })
     setBusy(false)
     if (err) {
-      setError('No se pudo crear la meta')
+      setError('No se pudo crear la meta. Revisa tu conexión e intenta de nuevo.')
       return
     }
     setName('')
@@ -94,7 +94,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
     }).select('id').single()
     setBusy(false)
     if (err) {
-      setError('No se pudo registrar el aporte')
+      setError('No se pudo registrar el aporte. Revisa tu conexión e intenta de nuevo.')
       return
     }
     setAmt('')
@@ -115,7 +115,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
   async function saveGoal(id: string) {
     const n = Number(gTarget)
     if (!gName.trim() || !n || n <= 0) {
-      setError('Pon un nombre y un monto objetivo mayor a cero')
+      setError('Escribe un nombre y un monto mayor a cero')
       return
     }
     setBusy(true)
@@ -126,7 +126,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
       .eq('id', id)
     setBusy(false)
     if (err) {
-      setError('No se pudo guardar la meta')
+      setError('No se pudo guardar la meta. Revisa tu conexión e intenta de nuevo.')
       return
     }
     setEditGoal(null)
@@ -142,7 +142,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
     const { error: err } = await supabase.from('goals').update({ archived: true }).eq('id', id)
     setArchiveId(null)
     if (err) {
-      setError('No se pudo archivar la meta')
+      setError('No se pudo archivar la meta. Revisa tu conexión e intenta de nuevo.')
       return
     }
     setEditGoal(null)
@@ -153,7 +153,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
   async function saveContribution(id: string) {
     const n = Number(cAmt)
     if (!n || n <= 0 || !cDate || cDate > todayISO()) {
-      setError('Revisa el monto y que la fecha no sea futura')
+      setError('Revisa el monto y elige una fecha de hoy o anterior')
       return
     }
     setBusy(true)
@@ -161,7 +161,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
     const { error: err } = await supabase.from('contributions').update({ amount: n, contributed_on: cDate }).eq('id', id)
     setBusy(false)
     if (err) {
-      setError('No se pudo corregir el aporte')
+      setError('No se pudo corregir el aporte. Revisa tu conexión e intenta de nuevo.')
       return
     }
     setEditC(null)
@@ -178,7 +178,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
     const { error: err } = await supabase.from('contributions').delete().eq('id', id)
     setConfirmId(null)
     if (err) {
-      setError('No se pudo borrar el aporte')
+      setError('No se pudo borrar el aporte. Revisa tu conexión e intenta de nuevo.')
       return
     }
     onToast('Aporte eliminado\nEl **avance** de la meta se recalculó.', 'info')
@@ -330,9 +330,25 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
                     placeholder="Ej. 20000"
                     value={dots(amt)}
                     onChange={(e) => setAmt(digitsOnly(e.target.value))}
+                    aria-describedby={`ap-hint-${g.id}`}
                   />
+                  <div className="chips" role="group" aria-label="Montos sugeridos">
+                    {[...new Set([p.perMonth && p.state !== 'done' ? p.perMonth : 0, 10000, 20000, 50000].filter((v) => v > 0))].map((v) => (
+                      <button key={v} type="button" className="chip" aria-pressed={amt === String(v)} onClick={() => setAmt(String(v))}>
+                        {money(v)}
+                      </button>
+                    ))}
+                    {p.remaining > 0 && (
+                      <button type="button" className="chip" onClick={() => setAmt(String(p.remaining))}>
+                        Lo que falta {money(p.remaining)}
+                      </button>
+                    )}
+                  </div>
+                  <span id={`ap-hint-${g.id}`} className={Number(amt) > p.remaining && p.remaining > 0 ? 'reg-fb bad' : 'muted small-text'} role="status">
+                    {Number(amt) > p.remaining && p.remaining > 0 ? `Con eso pasan la meta por ${money(Number(amt) - p.remaining)}` : 'Toca un monto o escribe el tuyo'}
+                  </span>
                 </div>
-                <button type="button" className="btn" disabled={busy} onClick={() => void contribute(g.id)}>
+                <button type="button" className="btn" disabled={busy || !(Number(amt) > 0)} onClick={() => void contribute(g.id)}>
                   {busy ? <Spin label="Registrando aporte…" /> : 'Guardar aporte'}
                 </button>
                 <button type="button" className="btn ghost" onClick={() => setOpenId(null)}>
@@ -380,6 +396,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
                     ) : (
                       <div className="item" key={c.id}>
                         <Avatar name={members.get(c.user_id)?.display_name} color={members.get(c.user_id)?.color} size={28} />
+                        {c.user_id === hh.me.user_id ? (
                         <button
                           type="button"
                           className="item-main grow muted small-text"
@@ -392,7 +409,13 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
                         >
                           {members.get(c.user_id)?.display_name ?? ''} · {shortDate(c.contributed_on)} · toca para corregir
                         </button>
+                        ) : (
+                          <span className="grow muted small-text">
+                            {members.get(c.user_id)?.display_name ?? ''} · {shortDate(c.contributed_on)}
+                          </span>
+                        )}
                         <span className="num">{money(c.amount)}</span>
+                        {c.user_id === hh.me.user_id && (
                         <button
                           type="button"
                           className={confirmId === c.id ? 'txt-btn warn' : 'txt-btn'}
@@ -401,6 +424,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
                         >
                           {confirmId === c.id ? '¿Seguro?' : 'Borrar'}
                         </button>
+                        )}
                       </div>
                     ),
                   )}
@@ -424,9 +448,12 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
       <ScopeBar hh={hh} scope={who} onScope={onScope} label="Ver los aportes de" />
 
       {goals.length === 0 && (
-        <section className="card goal-empty">
-          <strong>Aún no tienen metas</strong>
-          <span className="muted">Creen la primera y empiecen a ahorrar con un objetivo claro.</span>
+        <section className="card goal-empty" aria-labelledby="goal-empty">
+          <strong id="goal-empty">Aún no tienen metas</strong>
+          <span className="muted">Creen la primera y empiecen a ahorrar con un objetivo claro: un viaje, un fondo de emergencia, un auto…</span>
+          <button type="button" className="btn wide" onClick={() => setCreating(true)}>
+            Crear mi primera meta
+          </button>
         </section>
       )}
 
@@ -501,9 +528,11 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
         </>
       )}
 
-      <button type="button" className="btn small wide" onClick={() => setCreating(true)}>
-        Agregar meta
-      </button>
+      {goals.length > 0 && (
+        <button type="button" className="btn small wide" onClick={() => setCreating(true)}>
+          Agregar meta
+        </button>
+      )}
 
       {creating && (
         <Modal label="Nueva meta" onClose={() => setCreating(false)}>
@@ -518,16 +547,33 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
               <div className="field">
                 <label htmlFor="g-name">¿Qué quieren lograr?</label>
                 <input id="g-name" className="input" required maxLength={60} placeholder="Ej. Viaje al sur" value={name} onChange={(e) => setName(e.target.value)} />
+                <div className="chips" role="group" aria-label="Ideas de metas">
+                  {['Viaje', 'Fondo de emergencia', 'Pie de la casa', 'Auto', 'Vacaciones'].map((idea) => (
+                    <button key={idea} type="button" className="chip" aria-pressed={name === idea} onClick={() => setName(idea)}>
+                      {idea}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="field">
                 <label htmlFor="g-target">¿Cuánto necesitan juntar? (CLP)</label>
-                <input id="g-target" className="input" inputMode="numeric" required placeholder="Ej. 500000" value={dots(target)} onChange={(e) => setTarget(digitsOnly(e.target.value))} />
+                <input id="g-target" className="input" inputMode="numeric" required placeholder="Ej. 500000" value={dots(target)} onChange={(e) => setTarget(digitsOnly(e.target.value))} aria-describedby="g-target-hint" />
+                <div className="chips" role="group" aria-label="Montos sugeridos">
+                  {[100000, 500000, 1000000, 2000000].map((v) => (
+                    <button key={v} type="button" className="chip" aria-pressed={target === String(v)} onClick={() => setTarget(String(v))}>
+                      {money(v)}
+                    </button>
+                  ))}
+                </div>
+                <span id="g-target-hint" className={name.trim() && !(Number(target) > 0) ? 'reg-fb bad' : 'muted small-text'}>
+                  {name.trim() && !(Number(target) > 0) ? 'Escribe cuánto necesitan juntar' : 'Elige un monto o escribe el tuyo'}
+                </span>
               </div>
               <div className="field">
                 <label htmlFor="g-date">¿Para cuándo? (opcional)</label>
                 <input id="g-date" className="input" type="date" min={todayISO()} value={date} onChange={(e) => setDate(e.target.value)} />
               </div>
-              <button className="btn" type="submit" disabled={busy}>
+              <button className="btn" type="submit" disabled={busy || !name.trim() || !(Number(target) > 0)}>
                 {busy ? <Spin label="Creando meta…" /> : 'Crear meta'}
               </button>
             </form>

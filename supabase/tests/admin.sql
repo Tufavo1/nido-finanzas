@@ -122,15 +122,25 @@ begin
   perform public.t_debe_fallar('insert into public.admins (user_id) values (''00000000-0000-0000-0000-0000000000b2'')');
   perform public.t_debe_fallar('delete from public.admin_audit');
 
-  -- 7) admin_households: ni nombres ni user_id; solo una referencia opaca de al menos 16 hex
+  -- 7) admin_households: trae nombre del hogar y de cada persona, pero ni user_id ni correo; cada persona lleva una referencia opaca de al menos 16 hex
   r := public.admin_households();
   assert (select count(*) from jsonb_array_elements(r) h where (h ->> 'id')::uuid in (h1, h2)) = 2, 'admin_households lista los hogares ajenos';
-  assert r::text not like '%Nombre Secreto%' and r::text not like '%Otro Nombre%', 'no se filtran nombres';
+  assert exists (select 1 from jsonb_array_elements(r) h where (h ->> 'id')::uuid = h1 and h ->> 'name' = 'Hogar de prueba 1'), 'trae el nombre del hogar';
+  assert exists (
+    select 1 from jsonb_array_elements(r) h, jsonb_array_elements(h -> 'members') m
+    where (h ->> 'id')::uuid = h1 and m ->> 'name' = 'Nombre Secreto'
+  ), 'trae el nombre de la persona';
   assert r::text not like '%' || normal::text || '%' and r::text not like '%' || otro::text || '%', 'no se filtran user_id';
+  assert r::text not like '%@%', 'no se filtran correos';
   assert not exists (
     select 1 from jsonb_array_elements(r) h, jsonb_array_elements(h -> 'members') m
-    where m ? 'name' or m ? 'user_id' or m ->> 'ref' !~ '^[0-9a-f]{16,}$'
-  ), 'cada persona trae solo ref (hex, 16+) y joined_at';
+    where m ? 'user_id' or m ? 'email' or m ->> 'ref' !~ '^[0-9a-f]{16,}$'
+  ), 'cada persona trae solo ref (hex, 16+), nombre y joined_at';
+  assert not exists (
+    select 1 from jsonb_array_elements(r) h where h ? 'amount' or h ? 'salary' or h ? 'email'
+  ), 'la lista no trae montos ni sueldos';
+  -- Consultar nombres queda en la auditoría (se revisa más abajo); una segunda consulta dentro de 10 minutos no suma otro registro
+  perform public.admin_households();
 
   -- 8) Sacar a una persona con su referencia queda en la auditoría (sin ids de cuenta)
   select m ->> 'ref' into ref
@@ -147,7 +157,8 @@ begin
 
   reset role;
   select count(*) into n from public.admin_audit where admin_id = adm;
-  assert n = 2, 'quedaron 2 registros de auditoría (sacar persona y borrar hogares)';
+  assert n = 3, 'quedaron 3 registros de auditoría (ver nombres, sacar persona y borrar hogares)';
+  assert (select count(*) from public.admin_audit where admin_id = adm and action = 'view_households') = 1, 'la consulta de nombres queda auditada una sola vez';
   assert not exists (select 1 from public.admin_audit where detail::text like '%' || normal::text || '%'), 'la auditoría no guarda ids de cuenta';
 
   raise notice 'TODAS LAS PRUEBAS DE ADMIN PASARON';

@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import { LOCK_OPTIONS, getLockMinutes, setLockMinutes } from '../lib/applock'
 import type { Notify } from './Toast'
+import { useAccount } from '../lib/account'
+import CreatePassword from './CreatePassword'
 
 export default function LockSettings({ onToast }: { onToast: Notify }) {
   const [min, setMin] = useState(getLockMinutes)
+  const account = useAccount()
 
   function choose(m: number) {
     setLockMinutes(m)
@@ -20,6 +23,9 @@ export default function LockSettings({ onToast }: { onToast: Notify }) {
       <span className="muted">
         Si dejas la app abierta o la minimizas, se tapa sola y pide tu contraseña para seguir. Ideal si prestas el teléfono o lo pierdes de vista.
       </span>
+      {!account.hasPassword ? (
+        <CreatePassword reason="La app se desbloquea con tu contraseña y la tuya entra con Google. Créala para activar el bloqueo." />
+      ) : (
       <div className="seg" role="group" aria-label="Tiempo para bloquear">
         {LOCK_OPTIONS.map((o) => (
           <button key={o.minutes} type="button" aria-pressed={min === o.minutes} onClick={() => choose(o.minutes)}>
@@ -27,6 +33,7 @@ export default function LockSettings({ onToast }: { onToast: Notify }) {
           </button>
         ))}
       </div>
+      )}
       <span className="hint">
         Es una barrera de privacidad en este dispositivo. No reemplaza el bloqueo de pantalla de tu teléfono.
       </span>

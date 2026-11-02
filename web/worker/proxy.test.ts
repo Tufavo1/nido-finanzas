@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PLACEHOLDER_KEY, normalizeKey, normalizeOrigin, cleanResponseHeaders, isSameSite, isSensitive, upstreamHeaders, upstreamPath, withRealKey } from './proxy'
+import { PLACEHOLDER_KEY, normalizeKey, normalizeOrigin, cleanResponseHeaders, isSameSite, isSensitive, upstreamHeaders, upstreamPath, withRealKey, rewriteLocation } from './proxy'
 
 describe('upstreamPath', () => {
   it('deja pasar lo que usa la app', () => {
@@ -106,5 +106,22 @@ describe('normalizeOrigin', () => {
   it('limpia la clave', () => {
     expect(normalizeKey(' "sb_publishable_abc"\n')).toBe('sb_publishable_abc')
     expect(normalizeKey('')).toBeNull()
+  })
+})
+
+describe('rewriteLocation (inicio de sesión con Google)', () => {
+  const origin = 'https://abc.supabase.co'
+  it('la redirección a Google pasa tal cual', () => {
+    const g = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=1&state=x'
+    expect(rewriteLocation(g, origin)).toBe(g)
+  })
+  it('una redirección del proyecto se reescribe al proxy', () => {
+    expect(rewriteLocation(`${origin}/auth/v1/callback?x=1`, origin)).toBe('/supabase/auth/v1/callback?x=1')
+  })
+  it('cualquier otra dirección externa vuelve al inicio', () => {
+    expect(rewriteLocation('https://evil.com/', origin)).toBe('/')
+    expect(rewriteLocation('https://accounts.google.com.evil.com/o/oauth2/v2/auth?x=1', origin)).toBe('/')
+    expect(rewriteLocation('http://accounts.google.com/o/oauth2/v2/auth?x=1', origin)).toBe('/')
+    expect(rewriteLocation('https://accounts.google.com/other', origin)).toBe('/')
   })
 })

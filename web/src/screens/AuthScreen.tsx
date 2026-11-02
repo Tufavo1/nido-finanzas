@@ -4,6 +4,7 @@ import InstallBanner from '../components/InstallBanner'
 import Logo from '../components/Logo'
 import { INSTAGRAM_HANDLE, INSTAGRAM_URL, copyright } from '../lib/about'
 import { captchaToken } from '../lib/captcha'
+import GoogleButton from '../components/GoogleButton'
 import { NEEDS } from '../lib/needs'
 import { supabase } from '../lib/supabase'
 import { STRENGTH_LABEL, createThrottle, friendlyError, passwordStrength } from '../lib/security'
@@ -103,7 +104,7 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
 
   return (
     <div className="app">
-      <main className="screen center-y">
+      <main className="screen center-y auth-screen">
         <div className="auth-hero">
           <Logo size={72} animate />
           <h1 className="title brand-title">Contigo</h1>
@@ -116,6 +117,25 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
               ? 'Crea tu cuenta. Tu pareja creará la suya después.'
               : 'Escribe el correo de tu cuenta y te enviaremos un enlace para crear una contraseña nueva.'}
         </p>
+        {mode !== 'forgot' && (
+          <div className="stack tight">
+            <GoogleButton mode={mode === 'register' ? 'register' : 'login'} onError={(text) => setMsg(text ? { text, error: true } : null)} />
+            <span className="hint">
+              Al continuar con Google aceptas los{' '}
+              <button type="button" className="link-btn" onClick={() => setLegal('terms')}>
+                términos y condiciones
+              </button>{' '}
+              y la{' '}
+              <button type="button" className="link-btn" onClick={() => setLegal('privacy')}>
+                política de privacidad
+              </button>
+              .
+            </span>
+            <div className="auth-or" role="separator" aria-label="o">
+              <span>o con tu correo</span>
+            </div>
+          </div>
+        )}
         <form className="stack" noValidate={false} onSubmit={(e) => void submit(e)}>
           <div className="field">
             <label htmlFor="email">Correo</label>

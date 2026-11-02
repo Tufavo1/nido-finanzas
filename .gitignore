@@ -12,3 +12,6 @@ supabase/.branches
 nido-respaldos/
 .wrangler/
 .dev.vars
+
+# Respaldos de la base (contienen datos financieros: nunca al repositorio)
+respaldo-*.sql

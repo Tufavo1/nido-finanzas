@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { createThrottle } from '../lib/security'
 import Logo from './Logo'
 import Spin from './Spin'
+import { useAccount } from '../lib/account'
 
 // Guardado en el dispositivo: recargar la página no reinicia los intentos
 const throttle = createThrottle(5, 30000, 'contigo-lock-throttle')
@@ -15,6 +16,7 @@ export default function LockScreen({ onUnlock }: { onUnlock: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)
+  const account = useAccount()
 
   useEffect(() => input.current?.focus(), [])
 
@@ -45,6 +47,8 @@ export default function LockScreen({ onUnlock }: { onUnlock: () => void }) {
         <Logo size={48} />
         <h1 id="lock-title" className="title">Contigo está bloqueada</h1>
         <p className="muted">Por tu seguridad, la app se bloqueó tras un rato sin usarla. Escribe tu contraseña para seguir.</p>
+        {!account.hasPassword && <p className="muted">Tu cuenta entra con Google y no tiene contraseña. Cierra sesión y vuelve a entrar con Google.</p>}
+        {account.hasPassword && (
         <div className="field">
           <label htmlFor="lock-pw">Contraseña de tu cuenta</label>
           <input
@@ -57,14 +61,17 @@ export default function LockScreen({ onUnlock }: { onUnlock: () => void }) {
             onChange={(e) => setPw(e.target.value)}
           />
         </div>
+        )}
         {error && (
           <p className="error" role="alert">
             {error}
           </p>
         )}
-        <button className="btn" type="submit" disabled={busy || !pw}>
-          {busy ? <Spin label="Verificando…" /> : 'Desbloquear'}
-        </button>
+        {account.hasPassword && (
+          <button className="btn" type="submit" disabled={busy || !pw}>
+            {busy ? <Spin label="Verificando…" /> : 'Desbloquear'}
+          </button>
+        )}
         <button type="button" className="link-btn" onClick={() => void supabase.auth.signOut()}>
           Cerrar sesión
         </button>

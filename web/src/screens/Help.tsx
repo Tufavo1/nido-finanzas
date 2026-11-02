@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Intro from '../components/Intro'
 import SectionHead from '../components/SectionHead'
 import { HELP_GROUPS } from '../lib/help'
+import { NEWS_EVENT, TOUR_EVENT } from '../lib/tour'
 
 /** Ayuda y consejos: un índice arriba y cada tema como desplegable */
 export default function Help({ onBack }: { onBack?: () => void }) {
@@ -29,6 +30,19 @@ export default function Help({ onBack }: { onBack?: () => void }) {
         </button>
       )}
       <h1 className="title">Ayuda y consejos</h1>
+
+      <section className="card wide" aria-label="Guía de bienvenida y novedades">
+        <strong>Recorridos cortos</strong>
+        <span className="muted small-text">Para recordar qué hace cada parte de Contigo o ver lo último que cambió.</span>
+        <div className="row">
+          <button type="button" className="btn ghost small grow" onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}>
+            Guía de bienvenida
+          </button>
+          <button type="button" className="btn ghost small grow" onClick={() => window.dispatchEvent(new Event(NEWS_EVENT))}>
+            Novedades
+          </button>
+        </div>
+      </section>
 
       <nav className="card wide help-index" aria-label="Índice de ayuda">
         <strong>¿Qué quieres ver?</strong>

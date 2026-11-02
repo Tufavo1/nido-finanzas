@@ -72,6 +72,45 @@ describe('saveBlocker (R1, R2, R3, R4, R5)', () => {
   })
 })
 
+describe('pagos de deuda y aportes a metas', () => {
+  const bare: Draft = { ...initialDraft(undefined, 'ana'), digits: '20000' }
+  it('un pago no exige categoría ni nota', () => {
+    expect(saveBlocker(bare, TODAY, 'debt')).toBeNull()
+    expect(saveBlocker(bare, TODAY, 'goal')).toBeNull()
+  })
+  it('un gasto igual sí las exige', () => {
+    expect(saveBlocker(bare, TODAY)).toBe('category')
+  })
+  it('sin monto bloquea también en un pago', () => {
+    expect(saveBlocker({ ...bare, digits: '' }, TODAY, 'debt')).toBe('amount')
+  })
+  it('un pago ignora el descuento que quedó marcado', () => {
+    expect(saveBlocker({ ...bare, hasDiscount: true, discount: '100' }, TODAY, 'debt')).toBeNull()
+  })
+  it('la fecha futura bloquea igual', () => {
+    expect(saveBlocker({ ...bare, date: '2027-01-01' }, TODAY, 'goal')).toBe('date')
+  })
+  it('un pago mayor que el saldo de la deuda se bloquea con «over»', () => {
+    expect(saveBlocker({ ...bare, digits: '300001' }, TODAY, 'debt', 300000)).toBe('over')
+  })
+  it('un pago igual al saldo vale', () => {
+    expect(saveBlocker({ ...bare, digits: '300000' }, TODAY, 'debt', 300000)).toBeNull()
+  })
+  it('el tope solo aplica a deudas: un aporte puede pasar la meta', () => {
+    expect(saveBlocker({ ...bare, digits: '999999' }, TODAY, 'goal', 1000)).toBeNull()
+  })
+  it('sin monto sigue ganando «amount» sobre «over»', () => {
+    expect(saveBlocker({ ...bare, digits: '' }, TODAY, 'debt', 300000)).toBe('amount')
+  })
+  it('el botón explica por qué no deja', () => {
+    expect(saveLabel('over', 0, 'debt')).toBe('Es más de lo que debes')
+  })
+  it('el botón dice Pagar o Aportar', () => {
+    expect(saveLabel(null, 5000, 'debt')).toMatch(/^Pagar /)
+    expect(saveLabel(null, 5000, 'goal')).toMatch(/^Aportar /)
+  })
+})
+
 describe('saveLabel (R6)', () => {
   it('sin monto pide el monto', () => {
     expect(saveLabel('amount', 0)).toBe('Escribe el monto')

@@ -1,7 +1,7 @@
 import { COPYRIGHT_HOLDER, CONTACT_EMAIL } from './about'
 
 /** Versión de los textos: si cambian de fondo, se sube y se guarda con cada cuenta nueva */
-export const LEGAL_VERSION = '2026-10-29'
+export const LEGAL_VERSION = '2026-11-02'
 export const LEGAL_DATE = '29 de octubre de 2026'
 
 export interface LegalSection {
@@ -48,7 +48,14 @@ export const PRIVACY: LegalDoc = {
       paragraphs: ['Si compartes un hogar con tu pareja, ella ve lo que es compartido. Lo demás depende de ti.'],
       items: [
         'Tu sueldo, tus ingresos extra y tu análisis personal nunca los ve tu pareja.',
-        'Tus deudas, tus gastos fijos personales, tus gastos personales y tus aportes a metas los ve solo si tú lo permites. Lo cambias en Ajustes, en Perfil financiero y privacidad.',
+        'Tus deudas, tus gastos fijos personales, tus gastos personales y tus aportes a metas los ve solo si tú lo permites. Lo cambias en Ajustes, en Mi perfil, hogar y privacidad.',
+      ],
+    },
+    {
+      title: 'Quién administra la app',
+      paragraphs: [
+        'Quien administra Contigo puede ver el nombre de cada hogar y el nombre con que cada persona aparece en él, para ayudar si hay un problema o borrar hogares abandonados.',
+        'No ve tus gastos, tus montos, tus deudas, tu sueldo ni tu correo desde el panel de administración. El acceso al panel exige un segundo factor de verificación y cada consulta queda registrada.',
       ],
     },
     {

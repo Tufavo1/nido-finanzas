@@ -28,6 +28,7 @@ export default function Expenses({
   onToast,
   scope,
   onScope,
+  onRegister,
 }: {
   hh: Household
   data: HouseholdData
@@ -35,6 +36,8 @@ export default function Expenses({
   onToast: Notify
   scope: Scope
   onScope: (s: Scope) => void
+  /** Lleva a Registrar */
+  onRegister?: () => void
 }) {
   // En el celular, solo lo esencial; en el computador, todos los análisis
   const desktop = useDesktop()
@@ -62,6 +65,8 @@ export default function Expenses({
   const [showAll, setShowAll] = useState(false)
   const [showAllCats, setShowAllCats] = useState(false)
   const [dayFilter, setDayFilter] = useState<string>('all')
+  const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<'recent' | 'oldest' | 'big' | 'small'>('recent')
   const [busy, setBusy] = useState(false)
   const setError = useToastError(onToast)
 
@@ -95,7 +100,24 @@ export default function Expenses({
   // La fecha buscada solo vale dentro del mes que se está mirando
   const monthPrefix = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`
   const activeDay = dayFilter.startsWith(monthPrefix) ? dayFilter : 'all'
-  const visible = activeDay === 'all' ? byCat : byCat.filter((e) => e.spent_on === activeDay)
+  const byDay = activeDay === 'all' ? byCat : byCat.filter((e) => e.spent_on === activeDay)
+  // Buscar por la nota o la categoría, sin importar tildes ni mayúsculas
+  const norm = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const q = norm(query.trim())
+  const byText = q ? byDay.filter((e) => norm(`${e.note ?? ''} ${catName.get(e.category_id) ?? ''}`).includes(q)) : byDay
+  const visible = [...byText].sort((a, b) => {
+    if (sort === 'big') return b.amount - a.amount
+    if (sort === 'small') return a.amount - b.amount
+    const byDate = a.spent_on.localeCompare(b.spent_on)
+    return sort === 'oldest' ? byDate : -byDate
+  })
+  const filtering = catFilter !== 'all' || activeDay !== 'all' || q !== ''
+  function clearFilters() {
+    setCatFilter('all')
+    setDayFilter('all')
+    setQuery('')
+    setShowAll(false)
+  }
   const PAGE = 2
   const CAT_PAGE = 2
   const sortedCats = [...data.categories].sort((a, b) => (spent.get(b.id) ?? 0) - (spent.get(a.id) ?? 0))
@@ -110,7 +132,7 @@ export default function Expenses({
       .eq('id', id)
     setBusy(false)
     if (err) {
-      setError('No se pudo guardar el límite')
+      setError('No se pudo guardar el límite. Revisa tu conexión e intenta de nuevo.')
       return
     }
     setEditing(null)
@@ -128,7 +150,7 @@ export default function Expenses({
     setBusy(false)
     setArchiveId(null)
     if (err) {
-      setError('No se pudo quitar la categoría')
+      setError('No se pudo quitar la categoría. Revisa tu conexión e intenta de nuevo.')
       return
     }
     setEditing(null)
@@ -139,7 +161,7 @@ export default function Expenses({
   async function addCategory() {
     const name = newName.trim()
     if (!name) {
-      setError('Ponle un nombre a la categoría')
+      setError('Escribe un nombre para la categoría')
       return
     }
     setBusy(true)
@@ -176,22 +198,22 @@ export default function Expenses({
   async function saveEdit(id: string) {
     const amount = Number(eAmount)
     if (!eDate || eDate > todayISO()) {
-      setError('Elige una fecha que no sea futura')
+      setError('Elige una fecha de hoy o anterior')
       return
     }
     if (!amount || amount <= 0) {
-      setError('Ingresa un monto mayor a cero')
+      setError('Escribe un monto mayor a cero')
       return
     }
     setBusy(true)
     setError(null)
     const { error: err } = await supabase
       .from('expenses')
-      .update({ amount, note: eNote.trim() || null, category_id: eCat, shared: eShared, paid_by: ePaidBy, spent_on: eDate })
+      .update({ amount, note: eNote.trim() || null, category_id: eCat, shared: eShared, paid_by: eShared ? ePaidBy : hh.me.user_id, spent_on: eDate })
       .eq('id', id)
     setBusy(false)
     if (err) {
-      setError('No se pudo guardar el cambio')
+      setError('No se pudo guardar el cambio. Revisa tu conexión e intenta de nuevo.')
       return
     }
     setEditExp(null)
@@ -208,7 +230,7 @@ export default function Expenses({
     const { error: err } = await supabase.from('expenses').delete().eq('id', id)
     setConfirmId(null)
     if (err) {
-      setError('No se pudo borrar el gasto')
+      setError('No se pudo borrar el gasto. Revisa tu conexión e intenta de nuevo.')
       return
     }
     onToast('Gasto eliminado\nSe quitó de los **totales** del mes.', 'info')
@@ -536,11 +558,35 @@ export default function Expenses({
 
       <section className="card wide">
         <strong>Historial de {monthName(month)}</strong>
-        <span className="muted small-text">
+        <span className="muted small-text" role="status">
           {visible.length === 0
             ? 'Sin gastos para mostrar con este filtro.'
             : `${visible.length} ${visible.length === 1 ? 'gasto' : 'gastos'} por ${money(visible.reduce((s, e) => s + e.amount, 0))}. Toca uno para ver el detalle, corregirlo o borrarlo.`}
         </span>
+        <div className="filter-row">
+          <label className="filter-label" htmlFor="f-q">Buscar un gasto</label>
+          <input
+            id="f-q"
+            className="input"
+            type="search"
+            placeholder="Ej. pan, bencina, almuerzo"
+            maxLength={60}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setShowAll(false)
+            }}
+          />
+        </div>
+        <div className="filter-row">
+          <label className="filter-label" htmlFor="f-sort">Ordenar por</label>
+          <select id="f-sort" className="input" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+            <option value="recent">Más recientes primero</option>
+            <option value="oldest">Más antiguos primero</option>
+            <option value="big">Mayor monto primero</option>
+            <option value="small">Menor monto primero</option>
+          </select>
+        </div>
         <div className="filter-row">
           <label className="filter-label" htmlFor="f-cat">Ver gastos de la categoría</label>
           <select
@@ -584,7 +630,34 @@ export default function Expenses({
             )}
           </div>
         </div>
+        {filtering && (
+          <button type="button" className="btn ghost small" onClick={clearFilters}>
+            Quitar filtros
+          </button>
+        )}
       </section>
+
+      {list.length === 0 && (
+        <section className="card empty" aria-labelledby="exp-empty">
+          <strong id="exp-empty">Todavía no hay gastos en {monthName(month)}</strong>
+          <span className="muted">Cuando anotes uno, aparecerá aquí para repasarlo, corregirlo o borrarlo.</span>
+          {onRegister && (
+            <button type="button" className="btn wide" onClick={onRegister}>
+              Registrar un gasto
+            </button>
+          )}
+        </section>
+      )}
+
+      {list.length > 0 && visible.length === 0 && filtering && (
+        <section className="card empty" aria-labelledby="exp-nores">
+          <strong id="exp-nores">No encontramos gastos con eso</strong>
+          <span className="muted">Prueba con otra palabra o quita los filtros.</span>
+          <button type="button" className="btn ghost wide" onClick={clearFilters}>
+            Quitar filtros
+          </button>
+        </section>
+      )}
 
       <div className="fixed-grid wide">
             {shown.map((e) => (
@@ -667,14 +740,14 @@ export default function Expenses({
                       </button>
                     ))}
                   </div>
-                  <span className="line-help">Quién pagó</span>
-                  <div className="seg" role="group" aria-label="Quién pagó">
+                  {eShared && <span className="line-help">Quién pagó</span>}
+                  {eShared && <div className="seg" role="group" aria-label="Quién pagó">
                     {hh.members.map((m) => (
                       <button key={m.user_id} type="button" aria-pressed={ePaidBy === m.user_id} onClick={() => setEPaidBy(m.user_id)}>
                         {m.display_name}
                       </button>
                     ))}
-                  </div>
+                  </div>}
                   <label className="line-help" htmlFor="ee-date">Fecha del gasto</label>
                   <input
                     id="ee-date"
@@ -742,12 +815,18 @@ export default function Expenses({
                   </p>
                 )}
                 <div className="stack tight">
-                  <button type="button" className="btn" onClick={() => startEdit(selExpRow)}>
-                    Editar información
-                  </button>
-                  <button type="button" className={confirmId === selExpRow.id ? 'btn danger' : 'btn ghost'} onClick={() => void remove(selExpRow.id)}>
-                    {confirmId === selExpRow.id ? 'Toca otra vez para borrar' : 'Borrar gasto'}
-                  </button>
+                  {selExpRow.shared || selExpRow.paid_by === hh.me.user_id ? (
+                    <>
+                      <button type="button" className="btn" onClick={() => startEdit(selExpRow)}>
+                        Editar información
+                      </button>
+                      <button type="button" className={confirmId === selExpRow.id ? 'btn danger' : 'btn ghost'} onClick={() => void remove(selExpRow.id)}>
+                        {confirmId === selExpRow.id ? 'Toca otra vez para borrar' : 'Borrar gasto'}
+                      </button>
+                    </>
+                  ) : (
+                    <p className="muted small-text">Es un gasto personal de {members.get(selExpRow.paid_by)?.display_name ?? 'tu pareja'}: solo esa persona puede cambiarlo o borrarlo.</p>
+                  )}
                 </div>
               </>
             )}

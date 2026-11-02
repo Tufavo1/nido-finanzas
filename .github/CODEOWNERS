@@ -1,0 +1,7 @@
+# Cambios sensibles: requieren revisión de la persona responsable de seguridad
+/supabase/migrations/ @Tufavo1
+/supabase/functions/ @Tufavo1
+/web/worker/ @Tufavo1
+/web/public/_headers @Tufavo1
+/.github/ @Tufavo1
+/docs/iso27001/ @Tufavo1

@@ -23,7 +23,7 @@ export const WELCOME_SLIDES: Slide[] = [
   },
   {
     title: 'Registra un gasto en segundos',
-    text: 'Toca **Registrar**, escribe el monto, elige la categoría y guarda. Cada gasto queda con la persona que lo pagó, y puedes marcar si hubo descuento.',
+    text: 'Toca **Registrar**, elige en qué se gastó (o qué deuda pagas o meta alimentas), escribe el monto y guarda. Cada gasto queda con la persona que lo pagó, y puedes marcar si hubo descuento.',
     art: (
       <div className="tour-art tour-add">
         <span className="tour-amount">$12.500</span>

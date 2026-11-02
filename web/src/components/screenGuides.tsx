@@ -127,28 +127,28 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
     label: 'Ayuda de Registrar',
     slides: [
       {
-        title: 'Anotar un gasto, paso a paso',
-        text: 'Son **4 pasos cortos**. La barrita de arriba muestra en cuál van, y el botón **Volver** los lleva al paso anterior.',
+        title: 'Un solo lugar para todo',
+        text: 'Desde **Registrar** anotas un **gasto**, el **pago de una deuda** o un **aporte a una meta**. No hace falta ir a Finanzas ni a Metas.',
         art: plus,
       },
       {
-        title: '1. Personal o compartido',
-        text: '**Compartido** si lo pagan entre los dos; **Personal** si es solo suyo. Así cada gasto queda en el lugar correcto.',
-        art: badge('user'),
-      },
-      {
-        title: '2. Descuento',
-        text: 'Si el precio venía **rebajado**, toque el porcentaje (10, 20, 30 o 50) o escriba otro. La app **calcula lo que realmente pagó**.',
-        art: badge('target'),
-      },
-      {
-        title: '3. En qué se gastó',
-        text: 'Toque el botón de la **categoría**, por ejemplo Supermercado o Transporte. Al tocarlo pasa solo al siguiente paso.',
+        title: '1. ¿En qué se gastó o qué vas a pagar?',
+        text: 'Toca una **categoría** (Supermercado, Transporte…), una de tus **deudas** para pagarla o una **meta** para aportarle. Si eliges deuda o meta, pasas directo al monto.',
         art: badge('list'),
       },
       {
+        title: '2. Personal o compartido',
+        text: 'Solo para gastos: **Compartido** si lo pagan entre los dos; **Personal** si es solo tuyo.',
+        art: badge('user'),
+      },
+      {
+        title: '3. Descuento',
+        text: 'Solo para gastos: si el precio venía **rebajado**, toca el porcentaje o escribe otro. La app **calcula lo que realmente pagaste**.',
+        art: badge('target'),
+      },
+      {
         title: '4. Monto y guardar',
-        text: 'Toque los **números** para escribir el monto y luego **Guardar**. Cuéntenos **de qué es el gasto** (obligatorio). En **Más** puede cambiar quién pagó o la fecha.',
+        text: 'Toca los **números** y luego **Guardar**, **Pagar** o **Aportar**. En un gasto cuenta **de qué es** (obligatorio). En **Cambiar quién pagó o la fecha** puedes ajustar esos datos.',
         art: plus,
       },
     ],
@@ -163,7 +163,7 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
       },
       {
         title: 'Crear una meta',
-        text: 'Toque **Agregar meta**, póngale un nombre, cuánto quieren juntar y para cuándo. La app calcula **cuánto aportar al mes**.',
+        text: 'Toca **Agregar meta**, ponle un nombre, di cuánto quieren juntar y para cuándo. La app calcula **cuánto aportar al mes**.',
         art: plus,
       },
       {
