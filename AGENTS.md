@@ -9,11 +9,11 @@ PWA de finanzas para hogares de 1 o 2 personas, en español y pesos chilenos. Pr
 - `dinovance-ai/` — servicio Python aparte (aún sin versionar).
 - `docs/iso27001/` — marco de seguridad. `SECURITY.md` — política.
 
-## Comandos (ejecutar dentro de `web/`)
-- `npm run lint` (oxlint) · `npx tsc -b` · `npm test` (vitest). Esto es lo que corre el CI; debe pasar antes de entregar.
-- `npm run build` — compila.
-- `npm run test:db` — pruebas SQL de RLS; requiere el contenedor local `supabase_db_nido`.
-- `npm run test:e2e` — Playwright; solo si el entorno local está levantado.
+## Comandos (ejecutar desde la RAÍZ del repo con `--prefix web`)
+- `npm --prefix web run lint` (oxlint) · `npm --prefix web exec -- tsc -b` · `npm --prefix web test` (vitest). Esto es lo que corre el CI; debe pasar antes de entregar.
+- `npm --prefix web run build` — compila.
+- `npm --prefix web run test:db` — pruebas SQL de RLS; requiere el contenedor local `supabase_db_nido`.
+- `npm --prefix web run test:e2e` — Playwright; solo si el entorno local está levantado.
 - **Nunca** ejecutes `npm run deploy`, `wrangler deploy`, `supabase db push/reset` ni `git push`: despliegue y publicación los hace el humano.
 
 ## Reglas
@@ -25,4 +25,11 @@ PWA de finanzas para hogares de 1 o 2 personas, en español y pesos chilenos. Pr
 - Los commits siguen el estilo `feat: ...`, `fix: ...`.
 
 ## Flujo de agentes
+El humano coordina: ningún agente llama a otro. Se elige con Tab. Un paso pequeño por vez; entre pasos el humano revisa `git diff`.
 `planner` planifica → `dev` implementa → `qa` prueba (solo edita tests) → `auditor` revisa seguridad (solo lectura). Reporta siempre qué pruebas corriste y su resultado real; si no corriste algo, dilo.
+
+## Reglas de honestidad
+- Reporta solo lo verificado en la sesión: archivos cambiados (`git status`), comandos corridos y su resultado real, y lo que NO se hizo.
+- No escribas "completado" ni "tests pasan" sin haberlo comprobado.
+- Antes de crear algo, busca si ya existe (p. ej. los gastos ya tienen `note`).
+- SQL nuevo solo en `supabase/migrations/` como migración nueva; nunca en `supabase/functions/`.
