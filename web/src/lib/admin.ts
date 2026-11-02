@@ -52,7 +52,9 @@ export function useIsAdmin(): boolean {
 
 export interface AdminHousehold {
   id: string
-  /** Primeros caracteres del id: sirve para distinguirlos sin mostrar nombres */
+  /** Nombre del hogar */
+  name: string
+  /** Primeros caracteres del id: sirve para distinguir hogares con el mismo nombre */
   code: string
   created_at: string
   active_members: number
@@ -60,8 +62,8 @@ export interface AdminHousehold {
   expenses: number
   /** El hogar del propio administrador nunca aparece en la lista */
   deletable: boolean
-  /** Sin nombres ni ids de cuenta: cada persona se identifica con una referencia opaca */
-  members: { ref: string; joined_at: string }[]
+  /** Nombre con que cada persona aparece en su hogar. Sin correo ni id de cuenta: la referencia es opaca y solo sirve dentro del hogar */
+  members: { ref: string; name: string; joined_at: string }[]
 }
 
 export async function fetchEmptyHouseholds(): Promise<AdminHousehold[]> {

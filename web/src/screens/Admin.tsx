@@ -152,7 +152,11 @@ function Cleanup({ onChanged, onToast }: { onChanged: () => void; onToast: Notif
     }
   }
 
-  const deletable = (list ?? []).filter((h) => h.deletable)
+  const [query, setQuery] = useState('')
+  const norm = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const q = norm(query.trim())
+  const shown = (list ?? []).filter((h) => !q || norm(h.name).includes(q) || h.code.startsWith(q) || h.members.some((m) => norm(m.name).includes(q)))
+  const deletable = shown.filter((h) => h.deletable)
 
   async function kick(householdId: string, ref: string) {
     setBusy(true)
@@ -197,6 +201,19 @@ function Cleanup({ onChanged, onToast }: { onChanged: () => void; onToast: Notif
           {list.length === 0 && <p className="notice">No hay otros hogares.</p>}
           {list.length > 0 && (
             <>
+              <div className="field">
+                <label htmlFor="admin-search">Buscar por nombre del hogar o de una persona</label>
+                <input id="admin-search" className="input" type="search" maxLength={60} autoComplete="off" value={query} onChange={(e) => {
+                    // Al cambiar el filtro se limpia la elección: nunca se borra algo que ya no se ve en pantalla
+                    setQuery(e.target.value)
+                    setPicked(new Set())
+                    setConfirm(false)
+                  }}
+                />
+                <span className="hint" aria-live="polite">
+                  {q ? `${shown.length} de ${list.length} hogares` : `${list.length} ${list.length === 1 ? 'hogar' : 'hogares'}`}
+                </span>
+              </div>
               <div className="fixed-actions">
                 <button
                   type="button"
@@ -212,13 +229,16 @@ function Cleanup({ onChanged, onToast }: { onChanged: () => void; onToast: Notif
                   Quitar la elección
                 </button>
               </div>
+              {shown.length === 0 && <p className="notice">Ningún hogar coincide con esa búsqueda.</p>}
               <ul className="clean-list">
-                {list.map((h) => (
+                {shown.map((h) => (
                   <li key={h.id}>
                     <label className="clean-row">
                       <input type="checkbox" disabled={busy} checked={picked.has(h.id)} onChange={() => toggle(h.id)} />
                       <span className="grow">
-                        <span className="strong">Hogar {h.code}</span>
+                        <span className="strong">
+                          {h.name} <span className="muted">· {h.code}</span>
+                        </span>
                         <span className="line-help">
                           {h.active_members === 0 ? 'Sin personas' : h.active_members === 1 ? '1 persona' : `${h.active_members} personas`} ·{' '}
                           {nf.format(h.expenses)} gastos · creado el {dmy(h.created_at)} · último movimiento hace {daysAgo(h.last_activity)} días
@@ -227,7 +247,9 @@ function Cleanup({ onChanged, onToast }: { onChanged: () => void; onToast: Notif
                     </label>
                     {h.members.map((m, i) => (
                       <div key={m.ref} className="row between small-text">
-                        <span>Persona {i + 1} <span className="muted">· desde {dmy(m.joined_at)}</span></span>
+                        <span>
+                          {m.name || `Persona ${i + 1}`} <span className="muted">· desde {dmy(m.joined_at)}</span>
+                        </span>
                         {kicking === m.ref ? (
                           <span className="row">
                             <button type="button" className="btn danger small" disabled={busy} onClick={() => void kick(h.id, m.ref)}>
@@ -484,8 +506,9 @@ function AdminPanel({ onBack, onToast }: { onBack: () => void; onToast: Notify }
           <section className="card explain">
             <strong>Privacidad</strong>
             <p>
-              Este panel solo muestra números agregados. Nunca aparecen montos, nombres ni correos de nadie, y entrar exige además un
-              código de tu app de autenticación.
+              Las estadísticas son solo números agregados. En «Gestionar hogares» ves el nombre de cada hogar y el nombre con que cada
+              persona aparece en él, nada más: nunca montos, deudas, sueldos ni correos. Cada vez que abres esa lista queda un registro, y
+              entrar al panel exige un código de tu app de autenticación.
             </p>
           </section>
         </>

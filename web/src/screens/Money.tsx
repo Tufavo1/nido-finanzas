@@ -1,5 +1,5 @@
 import ScreenHelp from '../components/ScreenHelp'
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
@@ -15,7 +15,7 @@ import { isCustomSplit, percentOf, splitOf } from '../lib/split'
 import ScopeBar from '../components/ScopeBar'
 import { resolveScope, scopeDebts, scopeDebtShares } from '../lib/scope'
 import type { Scope } from '../lib/scope'
-import { monthIncome, monthsToPayoff, summarizeDebts } from '../lib/finance'
+import { debtView, monthIncome, monthsToPayoff, summarizeDebts } from '../lib/finance'
 import type { DebtView } from '../lib/finance'
 import { money, todayISO } from '../lib/format'
 import { computeMetrics } from '../lib/metrics'
@@ -68,11 +68,11 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
   /** Guarda el sueldo y el día de pago; devuelve si se pudo */
   async function persist(n: number, d: number, ok: string): Promise<boolean> {
     if (!n || n <= 0) {
-      setError('Ingresa un sueldo mayor a cero')
+      setError('Escribe un sueldo mayor a cero')
       return false
     }
     if (!Number.isInteger(d) || d < 1 || d > 31) {
-      setError('El día de pago debe estar entre 1 y 31')
+      setError('El día de pago va de 1 a 31')
       return false
     }
     setBusy(true)
@@ -287,7 +287,11 @@ function DebtCard({
     e.preventDefault()
     const n = Number(value)
     if (!n || n <= 0) {
-      setError('Ingresa un monto mayor a cero')
+      setError('Escribe un monto mayor a cero')
+      return
+    }
+    if (n > v.remaining) {
+      setError(`No puedes pagar más de lo que debes: el saldo de esta deuda es ${money(v.remaining)}`)
       return
     }
     setBusy(true)
@@ -295,17 +299,17 @@ function DebtCard({
     const { error: err } = await supabase.from('debt_payments').insert({
       household_id: hh.household.id,
       debt_id: d.id,
-      amount: Math.min(n, v.remaining),
+      amount: n,
       paid_by: hh.me.user_id,
       paid_on: todayISO(),
     })
     setBusy(false)
     if (err) {
-      setError('No se pudo registrar el pago')
+      setError('No se pudo registrar el pago. Revisa tu conexión e intenta de nuevo.')
       return
     }
     setPaying(false)
-    onToast(`Pago registrado\nSe abonaron **${money(Math.min(n, v.remaining))}** a la deuda.`)
+    onToast(`Pago registrado\nSe abonaron **${money(n)}** a la deuda.`)
     await data.refresh()
   }
 
@@ -317,7 +321,7 @@ function DebtCard({
     const { error: err } = await supabase.from('debts').delete().eq('id', d.id)
     setConfirm(false)
     if (err) {
-      setError('No se pudo borrar la deuda')
+      setError('No se pudo borrar la deuda. Revisa tu conexión e intenta de nuevo.')
       return
     }
     onToast('Deuda eliminada\nSe quitó junto con su **historial** de pagos.', 'info')
@@ -327,7 +331,13 @@ function DebtCard({
   async function savePayment(id: string) {
     const n = Number(pAmt)
     if (!n || n <= 0 || !pDate || pDate > todayISO()) {
-      setError('Revisa el monto y que la fecha no sea futura')
+      setError('Revisa el monto y elige una fecha de hoy o anterior')
+      return
+    }
+    // Al corregir un pago, el tope es el saldo más lo que ese mismo pago ya había abonado
+    const before = myPays.find((p) => p.id === id)?.amount ?? 0
+    if (n > v.remaining + before) {
+      setError(`No puedes pagar más de lo que debes: como máximo ${money(v.remaining + before)}`)
       return
     }
     setBusy(true)
@@ -335,7 +345,7 @@ function DebtCard({
     const { error: err } = await supabase.from('debt_payments').update({ amount: n, paid_on: pDate }).eq('id', id)
     setBusy(false)
     if (err) {
-      setError('No se pudo corregir el pago')
+      setError('No se pudo corregir el pago. Revisa tu conexión e intenta de nuevo.')
       return
     }
     setEditPay(null)
@@ -350,7 +360,7 @@ function DebtCard({
     const { error: err } = await supabase.from('debt_payments').delete().eq('id', id)
     setPayConfirm(null)
     if (err) {
-      setError('No se pudo borrar el pago')
+      setError('No se pudo borrar el pago. Revisa tu conexión e intenta de nuevo.')
       return
     }
     onToast('Pago eliminado\nEl **saldo** de la deuda se recalculó.', 'info')
@@ -360,7 +370,7 @@ function DebtCard({
   async function archive() {
     const { error: err } = await supabase.from('debts').update({ archived: true }).eq('id', d.id)
     if (err) {
-      setError('No se pudo archivar')
+      setError('No se pudo archivar. Revisa tu conexión e intenta de nuevo.')
       return
     }
     onToast('Deuda archivada\nYa no cuenta en tus **cuotas** mensuales.', 'info')
@@ -533,6 +543,7 @@ function DebtCard({
                       </div>
                     ) : (
                       <div className="item" key={p.id}>
+                        {p.paid_by === hh.me.user_id ? (
                         <button
                           type="button"
                           className="item-main grow muted small-text"
@@ -545,7 +556,13 @@ function DebtCard({
                         >
                           {hh.everyone.find((m) => m.user_id === p.paid_by)?.display_name ?? ''} · {p.paid_on.slice(8, 10)}/{p.paid_on.slice(5, 7)} · toca para corregir
                         </button>
+                        ) : (
+                          <span className="grow muted small-text">
+                            {hh.everyone.find((m) => m.user_id === p.paid_by)?.display_name ?? ''} · {p.paid_on.slice(8, 10)}/{p.paid_on.slice(5, 7)}
+                          </span>
+                        )}
                         <span className="num">{money(p.amount)}</span>
+                        {p.paid_by === hh.me.user_id && (
                         <button
                           type="button"
                           className={payConfirm === p.id ? 'txt-btn warn' : 'txt-btn'}
@@ -554,6 +571,7 @@ function DebtCard({
                         >
                           {payConfirm === p.id ? '¿Seguro?' : 'Borrar'}
                         </button>
+                        )}
                       </div>
                     ),
                   )}
@@ -594,8 +612,8 @@ function DebtEditForm({
     const orig = Number(total)
     const r = Number(rate.replace(',', '.') || '0')
     const dueDay = due ? Number(due) : null
-    if (!name.trim()) return setError('Ponle un nombre a la deuda')
-    if (!orig || orig <= 0) return setError('Ingresa cuánto deben en total')
+    if (!name.trim()) return setError('Escribe un nombre para la deuda')
+    if (!orig || orig <= 0) return setError('Escribe cuánto deben en total')
     if (Number.isNaN(r) || r < 0 || r > 30) return setError('El interés mensual debe estar entre 0 y 30 %')
     if (dueDay !== null && (dueDay < 1 || dueDay > 31)) return setError('El día de vencimiento va de 1 a 31')
     setBusy(true)
@@ -614,7 +632,7 @@ function DebtEditForm({
       : await supabase.from('debts').insert({ household_id: hh.household.id, ...fields })
     setBusy(false)
     if (err) {
-      setError('No se pudo guardar la deuda')
+      setError('No se pudo guardar la deuda. Revisa tu conexión e intenta de nuevo.')
       return
     }
     onToast(existing ? 'Deuda actualizada\nSus **cuotas** y saldo se recalcularon.' : 'Deuda agregada\nYa aparece en tu plan de **pago**.')
@@ -823,6 +841,182 @@ function SplitSetting({ hh, data, split, custom, onToast }: Pick<Props, 'hh' | '
   )
 }
 
+/** Deudas archivadas (casi siempre ya pagadas): se abren para ver todo y ahí se restauran o eliminan */
+function ArchivedDebts({ hh, data, who, onToast }: { hh: Household; data: HouseholdData; who: ReturnType<typeof resolveScope>; onToast: Notify }) {
+  const [list, setList] = useState<HouseholdData['debts']>([])
+  const [open, setOpen] = useState(false)
+  const [sel, setSel] = useState<string | null>(null)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const setError = useToastError(onToast)
+  const householdId = hh.household.id
+
+  const load = useCallback(async () => {
+    const { data: rows } = await supabase.from('debts').select('*').eq('household_id', householdId).eq('archived', true).order('created_at', { ascending: false })
+    setList(rows ?? [])
+  }, [householdId])
+
+  // Se vuelve a leer cuando cambian las deudas activas (por ejemplo, al archivar una)
+  useEffect(() => {
+    void load()
+  }, [load, data.debts.length])
+
+  const shown = scopeDebts(list, who)
+  if (shown.length === 0) return null
+
+  const now = new Date()
+  const chosen = shown.find((d) => d.id === sel)
+  const closeDetail = () => {
+    setSel(null)
+    setConfirmDel(false)
+  }
+
+  async function restore(id: string) {
+    setBusy(true)
+    const { error: err } = await supabase.from('debts').update({ archived: false }).eq('id', id)
+    setBusy(false)
+    if (err) {
+      setError('No se pudo restaurar la deuda. Revisa tu conexión e intenta de nuevo.')
+      return
+    }
+    closeDetail()
+    onToast('Deuda restaurada\nVuelve a estar entre tus **deudas activas**.', 'info')
+    await data.refresh()
+    await load()
+  }
+
+  async function remove(id: string) {
+    if (!confirmDel) {
+      setConfirmDel(true)
+      return
+    }
+    setBusy(true)
+    const { error: err } = await supabase.from('debts').delete().eq('id', id)
+    setBusy(false)
+    if (err) {
+      setError('No se pudo eliminar la deuda. Revisa tu conexión e intenta de nuevo.')
+      return
+    }
+    closeDetail()
+    onToast('Deuda eliminada\nSe quitó junto con su **historial** de pagos.', 'info')
+    await data.refresh()
+    await load()
+  }
+
+  function detail(d: HouseholdData['debts'][number]) {
+    const v = debtView(d, data.debtPayments, now)
+    const pays = data.debtPayments.filter((p) => p.debt_id === d.id)
+    const owner = d.owner_id ? hh.everyone.find((m) => m.user_id === d.owner_id) : null
+    const kindLabel = KINDS.find((k) => k.key === d.kind)?.label ?? 'Otra'
+    const paidOff = v.remaining === 0
+    return (
+      <Modal label={`Detalle de ${d.name}`} onClose={closeDetail}>
+        <div className="card cat-sheet">
+          <div className="stack cat-detail">
+            <div className="row between">
+              <span className="pill">{kindLabel} · {owner ? owner.display_name : 'De los dos'}</span>
+              <button type="button" className="btn ghost small" onClick={closeDetail}>
+                Cerrar
+              </button>
+            </div>
+
+            <div className="stack tight">
+              <strong className="cat-title">{d.name}</strong>
+              <span className="muted">{paidOff ? '✔ Deuda pagada y archivada' : 'Archivada con saldo pendiente'}</span>
+              <span className="cat-big num">{money(v.remaining)}</span>
+              <span className="muted">La deuda era de {money(d.original_amount)}</span>
+            </div>
+
+            <div className="stack tight">
+              <div className="bar cat-bar" role="img" aria-label={`${v.progressPct} % pagado`}>
+                <span style={{ width: `${Math.min(100, v.progressPct)}%`, background: 'var(--accent)' }} />
+              </div>
+              <span className="muted small-text">{v.progressPct} % pagado · en total pagaste {money(v.paid)}</span>
+            </div>
+
+            <div className="tiles">
+              <div className="tile">
+                <span className="muted small-text">Cuota al mes</span>
+                <span className="amount-sm num">{d.monthly_payment > 0 ? money(d.monthly_payment) : 'Sin definir'}</span>
+              </div>
+              <div className="tile">
+                <span className="muted small-text">Interés</span>
+                <span className="amount-sm num">{d.monthly_rate > 0 ? `${d.monthly_rate} % al mes` : 'Sin interés'}</span>
+              </div>
+            </div>
+
+            <div className="stack tight">
+              <strong>Pagos anotados ({pays.length})</strong>
+              {pays.length === 0 && <span className="muted small-text">No hay pagos anotados.</span>}
+              {pays.map((p) => (
+                <div className="item" key={p.id}>
+                  <span className="grow muted small-text">
+                    {hh.everyone.find((m) => m.user_id === p.paid_by)?.display_name ?? ''} · {p.paid_on.slice(8, 10)}/{p.paid_on.slice(5, 7)}/{p.paid_on.slice(0, 4)}
+                  </span>
+                  <span className="num">{money(p.amount)}</span>
+                </div>
+              ))}
+            </div>
+
+            {confirmDel && (
+              <p className="muted" role="alert">
+                Se borrará la deuda y todos sus pagos. Esto no se puede deshacer.
+              </p>
+            )}
+            <div className="row">
+              <button type="button" className="btn small" disabled={busy} onClick={() => void restore(d.id)}>
+                {busy && !confirmDel ? <Spin label="Restaurando…" /> : 'Restaurar deuda'}
+              </button>
+              <button type="button" className="btn ghost small" disabled={busy} onClick={() => void remove(d.id)}>
+                {busy && confirmDel ? <Spin label="Eliminando…" /> : confirmDel ? 'Sí, eliminar para siempre' : 'Eliminar deuda'}
+              </button>
+              {confirmDel && (
+                <button type="button" className="btn ghost small" disabled={busy} onClick={() => setConfirmDel(false)}>
+                  No, conservar
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </Modal>
+    )
+  }
+
+  return (
+    <section className="stack">
+      <button type="button" className="btn ghost small wide" aria-expanded={open} aria-controls="archived-debts" onClick={() => setOpen((v) => !v)}>
+        {open ? 'Ocultar deudas pagadas y archivadas' : `Ver deudas pagadas y archivadas (${shown.length})`}
+      </button>
+      {open && (
+        <div id="archived-debts" className="fixed-grid wide">
+          {shown.map((d) => {
+            const v = debtView(d, data.debtPayments, now)
+            return (
+              <button
+                key={d.id}
+                type="button"
+                className="fixed-card paused"
+                aria-haspopup="dialog"
+                aria-label={`${d.name}, ${v.remaining === 0 ? 'pagada' : `quedaban ${money(v.remaining)}`}. Toca para ver el detalle`}
+                onClick={() => setSel(d.id)}
+              >
+                <span className="fixed-top">
+                  <span className="grow fixed-name">
+                    <strong>{d.name}</strong>
+                    <span className="muted small-text">Pagaste {money(v.paid)} de {money(d.original_amount)}</span>
+                  </span>
+                  <span className="fixed-amount">{v.remaining === 0 ? '✔ Pagada' : money(v.remaining)}</span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {chosen && detail(chosen)}
+    </section>
+  )
+}
+
 function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
   const [adding, setAdding] = useState(false)
   const [showAll, setShowAll] = useState(false)
@@ -876,6 +1070,11 @@ function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
           <span className="muted">
             {person && data.debts.length > 0 ? 'Cambia a Hogar para ver todas.' : 'Si tienen una tarjeta, un crédito o un préstamo, agrégalo para llevar el control.'}
           </span>
+          {!(person && data.debts.length > 0) && (
+            <button type="button" className="btn wide" onClick={() => setAdding(true)}>
+              Agregar mi primera deuda
+            </button>
+          )}
         </section>
       )}
 
@@ -895,9 +1094,12 @@ function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
         </>
       )}
 
-      <button type="button" className="btn small wide" onClick={() => setAdding(true)}>
-        Agregar deuda
-      </button>
+      {!empty && (
+        <button type="button" className="btn small wide" onClick={() => setAdding(true)}>
+          Agregar deuda
+        </button>
+      )}
+      <ArchivedDebts hh={hh} data={data} who={who} onToast={onToast} />
       {adding && (
         <Modal label="Agregar una deuda" onClose={() => setAdding(false)}>
           <DebtForm hh={hh} data={data} onClose={() => setAdding(false)} onToast={onToast} defaultOwner={who === 'all' ? '' : who} />
@@ -908,8 +1110,28 @@ function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
 }
 
 /* ------------------------------- Pantalla ------------------------------ */
+const SECTIONS: [MoneySection, string][] = [
+  ['analysis', 'Análisis'],
+  ['salary', 'Sueldo'],
+  ['fixed', 'Fijos'],
+  ['debts', 'Deudas'],
+]
+
 export default function Money(props: Props) {
   const [tab, setTab] = useState<MoneySection>(props.section ?? 'analysis')
+  /** Flechas, Inicio y Fin cambian de pestaña (patrón Module Tabs) */
+  function onTabKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    const i = SECTIONS.findIndex(([k]) => k === tab)
+    let next = i
+    if (e.key === 'ArrowRight') next = (i + 1) % SECTIONS.length
+    else if (e.key === 'ArrowLeft') next = (i - 1 + SECTIONS.length) % SECTIONS.length
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = SECTIONS.length - 1
+    else return
+    e.preventDefault()
+    setTab(SECTIONS[next]![0])
+    e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus()
+  }
   const { data } = props
   const who = resolveScope(props.scope, props.hh.members)
   const partner = who !== 'all' && who !== props.hh.me.user_id ? props.hh.members.find((m) => m.user_id === who) : undefined
@@ -952,20 +1174,23 @@ export default function Money(props: Props) {
               </button>
             </p>
           )}
-          <div className="seg" role="group" aria-label="Sección">
-            <button type="button" aria-pressed={tab === 'analysis'} onClick={() => setTab('analysis')}>
-              Análisis
-            </button>
-            <button type="button" aria-pressed={tab === 'salary'} onClick={() => setTab('salary')}>
-              Sueldo
-            </button>
-            <button type="button" aria-pressed={tab === 'fixed'} onClick={() => setTab('fixed')}>
-              Fijos
-            </button>
-            <button type="button" aria-pressed={tab === 'debts'} onClick={() => setTab('debts')}>
-              Deudas
-            </button>
+          <div className="seg" role="tablist" aria-label="Secciones de finanzas" onKeyDown={onTabKey}>
+            {SECTIONS.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                id={`money-tab-${key}`}
+                aria-selected={tab === key}
+                aria-controls="money-panel"
+                tabIndex={tab === key ? 0 : -1}
+                onClick={() => setTab(key)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
+          <div id="money-panel" role="tabpanel" aria-labelledby={`money-tab-${tab}`} className="stack">
           {tab === 'analysis' &&
             (privateNotice ?? (
               <AnalysisPanel {...props} onGoSalary={() => setTab('salary')} />
@@ -988,6 +1213,7 @@ export default function Money(props: Props) {
             ))}
           {tab === 'fixed' && <RecurringPanel {...props} />}
           {tab === 'debts' && <DebtsPanel {...props} />}
+          </div>
         </>
       )}
     </main>

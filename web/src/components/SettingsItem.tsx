@@ -11,15 +11,23 @@ interface Props {
   open: boolean
   onToggle: (id: string) => void
   tone?: 'default' | 'danger'
-  children: ReactNode
+  /** Si se da, la fila no se despliega: lleva a otra pantalla */
+  onGo?: () => void
+  children?: ReactNode
 }
 
 /** Una fila de ajustes que se despliega en su lugar, como un acordeón */
-export default function SettingsItem({ id, icon, title, summary, open, onToggle, tone = 'default', children }: Props) {
+export default function SettingsItem({ id, icon, title, summary, open, onToggle, tone = 'default', onGo, children }: Props) {
+  const go = onGo !== undefined
   return (
-    <div className={`set-item${open ? ' open' : ''}${tone === 'danger' ? ' danger' : ''}`}>
+    <div className={`set-item${open && !go ? ' open' : ''}${tone === 'danger' ? ' danger' : ''}`}>
       <h2 className="set-head">
-        <button type="button" id={`set-btn-${id}`} aria-expanded={open} aria-controls={`set-panel-${id}`} onClick={() => onToggle(id)}>
+        <button
+          type="button"
+          id={`set-btn-${id}`}
+          {...(go ? {} : { 'aria-expanded': open, 'aria-controls': `set-panel-${id}` })}
+          onClick={() => (go ? onGo() : onToggle(id))}
+        >
           <span className="set-icon" aria-hidden="true">
             <Icon name={icon} size={20} />
           </span>
@@ -28,11 +36,11 @@ export default function SettingsItem({ id, icon, title, summary, open, onToggle,
             {summary && <span className="muted small-text">{summary}</span>}
           </span>
           <span className="set-chev" aria-hidden="true">
-            <Icon name="chevD" size={20} />
+            <Icon name={go ? 'chevR' : 'chevD'} size={20} />
           </span>
         </button>
       </h2>
-      {open && (
+      {open && !go && (
         <div className="set-body" id={`set-panel-${id}`} role="region" aria-labelledby={`set-btn-${id}`}>
           {children}
         </div>

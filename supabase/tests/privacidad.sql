@@ -59,9 +59,14 @@ begin
   assert (select count(*) from public.recurring_expenses) = 1, 'B solo ve el fijo compartido';
   assert (select count(*) from public.contributions) = 0, 'B no ve el aporte de A';
 
-  -- B anota un gasto personal pagado por A y puede leerlo de vuelta (insert ... returning)
-  insert into public.expenses (household_id, category_id, amount, paid_by, shared) values (h1, cat, 700, a, false);
+  -- B anota un gasto personal suyo y puede leerlo de vuelta (insert ... returning)
+  insert into public.expenses (household_id, category_id, amount, paid_by, shared) values (h1, cat, 700, b, false);
   assert (select count(*) from public.expenses where amount = 700) = 1, 'B ve lo que él mismo anotó';
+  -- ... pero ya no puede anotar uno personal a nombre de A (seguridad.sql lo cubre a fondo)
+  begin
+    insert into public.expenses (household_id, category_id, amount, paid_by, shared) values (h1, cat, 701, a, false);
+    assert false, 'B no anota gastos personales a nombre de A';
+  exception when insufficient_privilege then null; end;
 
   -- Solo se cambia lo propio
   perform public.como(b);

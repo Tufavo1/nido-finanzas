@@ -11,7 +11,7 @@ import ProfileCard from '../components/ProfileCard'
 import SettingsItem from '../components/SettingsItem'
 import type { Notify } from '../components/Toast'
 
-/** Perfil: quién eres con la plata, tu cuenta, tu hogar y qué ve tu pareja de lo tuyo */
+/** Mi perfil, hogar y privacidad: quién eres con la plata, tu cuenta, tu hogar y qué ve tu pareja de lo tuyo */
 export default function Profile({
   hh,
   data,

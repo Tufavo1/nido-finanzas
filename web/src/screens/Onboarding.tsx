@@ -1,16 +1,24 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import DeleteAccountInline from '../components/DeleteAccountInline'
 import { supabase } from '../lib/supabase'
 import Spin from '../components/Spin'
 
-export default function Onboarding({ onDone }: { onDone: () => Promise<void> }) {
+export default function Onboarding({ onDone, step }: { onDone: () => Promise<void>; step?: string }) {
   const [mode, setMode] = useState<'create' | 'join'>('create')
   const [name, setName] = useState('')
   const [hhName, setHhName] = useState('Nuestro hogar')
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Quien entró con Google ya trae su nombre: se sugiere (puede cambiarlo)
+  useEffect(() => {
+    void supabase.auth.getUser().then(({ data }) => {
+      const n = data.user?.user_metadata?.full_name ?? data.user?.user_metadata?.name
+      if (typeof n === 'string' && n.trim()) setName((cur) => cur || n.trim().slice(0, 40))
+    })
+  }, [])
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -32,8 +40,8 @@ export default function Onboarding({ onDone }: { onDone: () => Promise<void> }) 
 
   return (
     <div className="app">
-      <main className="screen">
-        <span className="eyebrow">Bienvenida</span>
+      <main className="screen auth-screen">
+        <span className="eyebrow">{step ?? 'Bienvenida'}</span>
         <h1 className="title">Armemos tu hogar</h1>
         <p className="muted">A solas o en pareja (máximo 2 personas). Cada hogar ve solo sus propios datos.</p>
 

@@ -6,6 +6,7 @@ import { friendlyError } from '../lib/security'
 import { confirmPassword } from '../lib/reauth'
 import { supabase } from '../lib/supabase'
 import Spin from './Spin'
+import { useAccount } from '../lib/account'
 
 /** El correo de la cuenta y cómo cambiarlo: pide la contraseña y confirma desde el correo nuevo */
 export default function EmailCard({ onToast }: { onToast: Notify }) {
@@ -15,6 +16,7 @@ export default function EmailCard({ onToast }: { onToast: Notify }) {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const setError = useToastError(onToast)
+  const account = useAccount()
 
   useEffect(() => {
     void supabase.auth.getUser().then(({ data }) => setCurrent(data.user?.email ?? null))
@@ -52,13 +54,14 @@ export default function EmailCard({ onToast }: { onToast: Notify }) {
       <strong>Correo de la cuenta</strong>
       <div className="row between">
         <span className="muted small-text">Con este correo entras a Contigo</span>
-        {!editing && (
+        {!editing && account.hasPassword && (
           <button type="button" className="btn ghost small" onClick={() => setEditing(true)}>
             Cambiar
           </button>
         )}
       </div>
       <span className="strong">{current ?? 'Cargando…'}</span>
+      {!account.hasPassword && <span className="hint">Tu correo viene de Google. Para cambiarlo, primero crea una contraseña en la tarjeta de abajo.</span>}
       {editing && (
         <form className="stack tight" onSubmit={(e) => void submit(e)}>
           <div className="field">

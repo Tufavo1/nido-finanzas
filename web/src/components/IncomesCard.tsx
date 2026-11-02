@@ -36,7 +36,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
     e.preventDefault()
     const n = Number(amount)
     if (!source.trim() || n <= 0) {
-      setError('Pon de dónde viene y un monto mayor a cero')
+      setError('Escribe de dónde viene y un monto mayor a cero')
       return
     }
     setBusy(true)
@@ -78,7 +78,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
     e.preventDefault()
     const n = Number(amount)
     if (!source.trim() || n <= 0) {
-      setError('Pon de dónde viene y un monto mayor a cero')
+      setError('Escribe de dónde viene y un monto mayor a cero')
       return
     }
     setBusy(true)
@@ -109,7 +109,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
     setConfirmId(null)
     const { error: err } = await supabase.from('incomes').delete().eq('id', id)
     if (err) {
-      setError('No se pudo borrar el ingreso')
+      setError('No se pudo borrar el ingreso. Revisa tu conexión e intenta de nuevo.')
       return
     }
     closeDetail()

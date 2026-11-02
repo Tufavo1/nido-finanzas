@@ -22,6 +22,18 @@ const money = (n: number) =>
   new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(n)
 
 const FIVE_MIN = 5 * 60 * 1000
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Solo servicios de push conocidos, por https y sin puerto ni usuario (misma regla que la base): evita que la función haga pedidos a direcciones internas */
+const PUSH_HOST = /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9-]+\.push\.services\.mozilla\.com|web\.push\.apple\.com|[a-z0-9-]+\.push\.apple\.com|[a-z0-9-]+\.notify\.windows\.com)$/
+function isKnownPushEndpoint(endpoint: string): boolean {
+  try {
+    const u = new URL(endpoint)
+    return u.protocol === 'https:' && u.port === '' && u.username === '' && u.password === '' && PUSH_HOST.test(u.hostname)
+  } catch {
+    return false
+  }
+}
 
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin') ?? ''
@@ -70,7 +82,7 @@ Deno.serve(async (req) => {
       body = 'Si ves esto, las notificaciones funcionan.'
       recipients = [uid]
     } else {
-      if (typeof id !== 'string') return reply(400, { error: 'id' })
+      if (typeof id !== 'string' || !UUID.test(id)) return reply(400, { error: 'id' })
       const { data: others } = await me
         .from('members')
         .select('user_id')
@@ -83,12 +95,14 @@ Deno.serve(async (req) => {
       if (kind === 'expense') {
         const { data: e } = await me
           .from('expenses')
-          .select('amount, shared, category_id, created_by, created_at')
+          .select('amount, shared, category_id, created_by, created_at, notified_at')
           .eq('id', id)
           .maybeSingle()
         if (!e || e.created_by !== uid || Date.now() - Date.parse(e.created_at) > FIVE_MIN) {
           return reply(403, { error: 'gasto no válido' })
         }
+        // Cada gasto avisa una sola vez
+        if (e.notified_at) return reply(200, { sent: 0 })
         const { data: c } = await me.from('categories').select('name').eq('id', e.category_id).maybeSingle()
         // Un gasto personal escondido a la pareja tampoco se le avisa por el celular
         if (!e.shared && meRow.share_personal === false) return reply(200, { sent: 0 })
@@ -97,12 +111,13 @@ Deno.serve(async (req) => {
       } else {
         const { data: k } = await me
           .from('contributions')
-          .select('amount, user_id, goal_id, created_at')
+          .select('amount, user_id, goal_id, created_at, notified_at')
           .eq('id', id)
           .maybeSingle()
         if (!k || k.user_id !== uid || Date.now() - Date.parse(k.created_at) > FIVE_MIN) {
           return reply(403, { error: 'aporte no válido' })
         }
+        if (k.notified_at) return reply(200, { sent: 0 })
         const { data: g } = await me.from('goals').select('name').eq('id', k.goal_id).maybeSingle()
         if (meRow.share_savings === false) return reply(200, { sent: 0 })
         title = `${meRow.display_name} aportó a una meta`
@@ -115,6 +130,17 @@ Deno.serve(async (req) => {
     const admin = createClient(url, pickKey('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEYS'), {
       auth: { persistSession: false },
     })
+    // Se marca antes de enviar y de forma atómica: dos llamadas a la vez no avisan dos veces
+    if (kind !== 'test') {
+      const { data: claimed } = await admin
+        .from(kind === 'expense' ? 'expenses' : 'contributions')
+        .update({ notified_at: new Date().toISOString() })
+        .eq('id', id as string)
+        .is('notified_at', null)
+        .select('id')
+      if (!claimed || claimed.length === 0) return reply(200, { sent: 0 })
+    }
+
     const { data: subs } = await admin
       .from('push_subscriptions')
       .select('id, endpoint, p256dh, auth_key')
@@ -131,6 +157,10 @@ Deno.serve(async (req) => {
 
     await Promise.all(
       (subs ?? []).map(async (s: { id: string; endpoint: string; p256dh: string; auth_key: string }) => {
+        if (!isKnownPushEndpoint(s.endpoint)) {
+          dead.push(s.id) // no debería existir (la base ya lo impide); se descarta sin contactarlo
+          return
+        }
         try {
           await webpush.sendNotification(
             { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth_key } },

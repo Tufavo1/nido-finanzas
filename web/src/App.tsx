@@ -5,11 +5,16 @@ import { supabase } from './lib/supabase'
 import type { Tables } from './lib/database.types'
 import Logo from './components/Logo'
 import Shell from './Shell'
+import { consumeOAuthCallback } from './lib/oauth'
 import { consumeRecoveryLink } from './lib/recovery'
+import { hasPassword, usesGoogle } from './lib/account'
+import { useMfaGate } from './lib/mfa'
 
 const AuthScreen = lazy(() => import('./screens/AuthScreen'))
 const Onboarding = lazy(() => import('./screens/Onboarding'))
 const ResetPassword = lazy(() => import('./screens/ResetPassword'))
+const MfaChallenge = lazy(() => import('./screens/MfaChallenge'))
+const SetupPassword = lazy(() => import('./screens/SetupPassword'))
 
 export interface Household {
   household: Tables<'households'>
@@ -68,7 +73,11 @@ export default function App() {
       if (event === 'SIGNED_OUT') wipeSessionData()
       setSession(s)
     })
-    void consumeRecoveryLink().then(async (r) => {
+    void (async () => {
+      const g = await consumeOAuthCallback()
+      if (g === 'failed') setAuthNotice('No pudimos entrar con Google. Vuelve a intentarlo o usa tu correo y contraseña.')
+      return g === 'none' ? consumeRecoveryLink() : 'none'
+    })().then(async (r) => {
       if (r === 'ready') setRecovering(true)
       if (r === 'invalid') setAuthNotice('El enlace del correo venció o ya se usó. Pide uno nuevo con la opción Olvidé mi contraseña.')
       const { data: cur } = await supabase.auth.getSession()
@@ -78,6 +87,7 @@ export default function App() {
   }, [])
 
   const userId = session?.user.id
+  const mfa = useMfaGate(userId, !recovering)
 
   const reload = useCallback(async () => {
     if (!userId) return
@@ -107,12 +117,29 @@ export default function App() {
         <ResetPassword onDone={() => setRecovering(false)} />
       </Suspense>
     )
+  // Activó la verificación en dos pasos: sin el código no se ve nada
+  if (!recovering && mfa.checking) return <Splash />
+  if (mfa.required)
+    return (
+      <Suspense fallback={<Splash />}>
+        <MfaChallenge onVerified={() => void mfa.recheck()} />
+      </Suspense>
+    )
+  // Entró con Google y aún no tiene contraseña: paso 1 de 2, antes de crear el hogar
+  if (!hasPassword(session.user)) {
+    const full = session.user.user_metadata?.full_name
+    return (
+      <Suspense fallback={<Splash />}>
+        <SetupPassword name={typeof full === 'string' ? full.trim().split(/\s+/)[0] : undefined} />
+      </Suspense>
+    )
+  }
   if (loadError) return <Splash text={loadError} onRetry={() => void reload()} />
   if (hh === undefined) return <Splash />
   if (hh === null)
     return (
       <Suspense fallback={<Splash />}>
-        <Onboarding onDone={reload} />
+        <Onboarding onDone={reload} step={usesGoogle(session.user) ? 'Paso 2 de 2' : undefined} />
       </Suspense>
     )
   return <Shell hh={hh} reload={reload} />

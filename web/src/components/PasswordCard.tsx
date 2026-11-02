@@ -5,6 +5,8 @@ import type { FormEvent } from 'react'
 import { STRENGTH_LABEL, friendlyError, passwordStrength } from '../lib/security'
 import { confirmPassword } from '../lib/reauth'
 import { supabase } from '../lib/supabase'
+import { useAccount } from '../lib/account'
+import CreatePassword from './CreatePassword'
 
 /** Cambiar la contraseña (pide la actual) y cerrar sesión en los otros dispositivos */
 export default function PasswordCard({ title = false, onToast }: { title?: boolean; onToast: Notify }) {
@@ -13,6 +15,7 @@ export default function PasswordCard({ title = false, onToast }: { title?: boole
   const [currentPw, setCurrentPw] = useState('')
   const [busy, setBusy] = useState(false)
   const strength = passwordStrength(pw)
+  const account = useAccount()
 
   async function changePassword(e: FormEvent) {
     e.preventDefault()
@@ -52,6 +55,9 @@ export default function PasswordCard({ title = false, onToast }: { title?: boole
     <>
     <section className="card">
       {title && <strong>Contraseña</strong>}
+      {!account.hasPassword ? (
+        <CreatePassword reason="Entraste con Google, así que tu cuenta aún no tiene contraseña. Créala para poder confirmar acciones delicadas, como borrar la cuenta o bloquear la app." />
+      ) : (
       <form className="stack tight" onSubmit={(e) => void changePassword(e)}>
         <div className="field">
           <label htmlFor="curpw">Contraseña actual</label>
@@ -93,6 +99,7 @@ export default function PasswordCard({ title = false, onToast }: { title?: boole
           Cambiar contraseña
         </button>
       </form>
+      )}
       <button type="button" className="btn ghost small" onClick={() => void signOutOthers()}>
         Cerrar sesión en otros dispositivos
       </button>

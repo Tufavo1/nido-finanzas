@@ -78,7 +78,7 @@ begin
     values (h1, cat1, 20000, 'Arriendo', a, 5);
   insert into public.incomes (household_id, amount, source) values (h1, 100000, 'Extra');
   insert into public.profiles (user_id, household_id) values (a, h1);
-  insert into public.push_subscriptions (endpoint, p256dh, auth_key) values ('https://push.test/a', 'k', 'k');
+  insert into public.push_subscriptions (endpoint, p256dh, auth_key) values ('https://fcm.googleapis.com/fcm/send/a', 'k', 'k');
 
   -- C tiene su propio hogar, vacío
   perform set_config('request.jwt.claims', json_build_object('sub', c)::text, true);

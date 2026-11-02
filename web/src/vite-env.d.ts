@@ -10,4 +10,6 @@ interface ImportMetaEnv {
   /** Clave de sitio de Cloudflare Turnstile (opcional; sin ella no hay CAPTCHA) */
   readonly VITE_TURNSTILE_SITE_KEY?: string
   readonly VITE_VAPID_PUBLIC_KEY: string
+  /** ID de cliente de Google (público). Vacío = entrar con Google por redirección */
+  readonly VITE_GOOGLE_CLIENT_ID?: string
 }

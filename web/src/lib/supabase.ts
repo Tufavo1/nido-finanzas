@@ -7,7 +7,7 @@ import type { Database } from './database.types'
  * proyecto y la clave pública viven solo en el servidor; aquí va una clave de relleno que el proxy cambia.
  */
 export const PROXY_PREFIX = '/supabase'
-const PLACEHOLDER_KEY = 'sb_publishable_via_proxy'
+export const PLACEHOLDER_KEY = 'sb_publishable_via_proxy'
 
 export const supabase = createClient<Database>(`${globalThis.location?.origin ?? 'http://localhost'}${PROXY_PREFIX}`, PLACEHOLDER_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'contigo-auth' },

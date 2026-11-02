@@ -102,11 +102,11 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
     const n = Number(amount)
     const d = Number(day)
     if (!note.trim() || n <= 0 || !catId) {
-      setError('Completa qué es, cuánto cuesta y el tipo de gasto')
+      setError('Falta contar qué es, cuánto cuesta y si es compartido o personal')
       return
     }
     if (!Number.isInteger(d) || d < 1 || d > 31) {
-      setError('El día debe estar entre 1 y 31')
+      setError('El día va de 1 a 31')
       return
     }
     const saved = await run(
@@ -116,7 +116,7 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
           category_id: catId,
           amount: n,
           note: note.trim(),
-          paid_by: solo ? hh.me.user_id : paidBy,
+          paid_by: solo || !shared ? hh.me.user_id : paidBy,
           shared: solo ? false : shared,
           day_of_month: d,
         }),
@@ -163,18 +163,18 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
     const n = Number(eAmount)
     const d = Number(eDay)
     if (!eNote.trim() || n <= 0 || !eCat) {
-      setError('Completa qué es, cuánto cuesta y el tipo de gasto')
+      setError('Falta contar qué es, cuánto cuesta y si es compartido o personal')
       return
     }
     if (!Number.isInteger(d) || d < 1 || d > 31) {
-      setError('El día debe estar entre 1 y 31')
+      setError('El día va de 1 a 31')
       return
     }
     const saved = await run(
       () =>
         supabase
           .from('recurring_expenses')
-          .update({ note: eNote.trim(), amount: n, day_of_month: d, category_id: eCat, paid_by: solo ? r.paid_by : ePaidBy, shared: solo ? false : eShared })
+          .update({ note: eNote.trim(), amount: n, day_of_month: d, category_id: eCat, paid_by: solo ? r.paid_by : eShared ? ePaidBy : hh.me.user_id, shared: solo ? false : eShared })
           .eq('id', r.id),
       'Gasto fijo actualizado\nLos cambios valen desde el **próximo** pago.',
     )
@@ -222,6 +222,16 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
         <section className="card">
           <strong>{who === hh.me.user_id ? 'No tienes' : `${person.display_name} no tiene`} gastos fijos a su nombre</strong>
           <span className="muted">Cambia a Hogar para ver todos.</span>
+        </section>
+      )}
+
+      {data.recurring.length === 0 && (
+        <section className="card" aria-labelledby="rec-empty">
+          <strong id="rec-empty">Todavía no hay gastos fijos</strong>
+          <span className="muted">Arriendo, internet, luz… lo que se paga igual todos los meses. Anótalo una vez y la app lo tendrá en cuenta.</span>
+          <button type="button" className="btn wide" onClick={() => setOpen(true)}>
+            Agregar mi primer gasto fijo
+          </button>
         </section>
       )}
 
@@ -275,9 +285,11 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
         </>
       )}
 
-      <button type="button" className="btn small wide" onClick={() => setOpen(true)}>
-        Agregar gasto fijo
-      </button>
+      {data.recurring.length > 0 && (
+        <button type="button" className="btn small wide" onClick={() => setOpen(true)}>
+          Agregar gasto fijo
+        </button>
+      )}
 
       {open && (
         <Modal label="Agregar gasto fijo" onClose={() => setOpen(false)}>
@@ -432,15 +444,21 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
                   )}
                 </div>
                 <div className="stack tight">
-                  <button type="button" className="btn" onClick={() => startEdit(selected)}>
-                    Editar información
-                  </button>
-                  <button type="button" className="btn ghost" disabled={busy} onClick={() => toggle(selected)}>
-                    {selected.active ? 'Pausar gasto fijo' : 'Volver a activar'}
-                  </button>
-                  <button type="button" className={confirmId === selected.id ? 'btn danger' : 'btn ghost'} onClick={() => remove(selected)}>
-                    {confirmId === selected.id ? 'Toca otra vez para borrar' : 'Borrar gasto fijo'}
-                  </button>
+                  {selected.shared || selected.paid_by === hh.me.user_id ? (
+                    <>
+                      <button type="button" className="btn" onClick={() => startEdit(selected)}>
+                        Editar información
+                      </button>
+                      <button type="button" className="btn ghost" disabled={busy} onClick={() => toggle(selected)}>
+                        {selected.active ? 'Pausar gasto fijo' : 'Volver a activar'}
+                      </button>
+                      <button type="button" className={confirmId === selected.id ? 'btn danger' : 'btn ghost'} onClick={() => remove(selected)}>
+                        {confirmId === selected.id ? 'Toca otra vez para borrar' : 'Borrar gasto fijo'}
+                      </button>
+                    </>
+                  ) : (
+                    <p className="muted small-text">Es un gasto fijo personal de {people.get(selected.paid_by)?.display_name ?? 'tu pareja'}: solo esa persona puede cambiarlo.</p>
+                  )}
                 </div>
               </div>
             ) : (

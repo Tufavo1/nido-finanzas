@@ -5,6 +5,8 @@ import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import { confirmPassword } from '../lib/reauth'
 import { supabase } from '../lib/supabase'
+import { useAccount } from '../lib/account'
+import CreatePassword from './CreatePassword'
 
 type Action = 'leave' | 'delete'
 
@@ -14,6 +16,7 @@ export default function LeaveAccount({ hh, reload, onToast }: { hh: Household; r
   const [pw, setPw] = useState('')
   const [busy, setBusy] = useState(false)
   const setError = useToastError(onToast)
+  const account = useAccount()
   const partner = hh.members.find((m) => m.user_id !== hh.me.user_id)
 
   const explain: Record<Action, string> = partner
@@ -61,6 +64,11 @@ export default function LeaveAccount({ hh, reload, onToast }: { hh: Household; r
           <button type="button" className="btn danger small" onClick={() => setAction('delete')}>
             Borrar mi cuenta
           </button>
+        </>
+      ) : !account.hasPassword ? (
+        <>
+          <CreatePassword reason="Para salir del hogar o borrar la cuenta pedimos una contraseña, y la tuya entra con Google. Créala primero." />
+          <button type="button" className="btn ghost small" onClick={() => setAction(null)}>Cancelar</button>
         </>
       ) : (
         <form className="stack tight" onSubmit={(e) => void submit(e)}>

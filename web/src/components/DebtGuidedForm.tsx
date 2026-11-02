@@ -86,8 +86,8 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, defaultOwne
   async function submit(e: FormEvent) {
     e.preventDefault()
     const dueDay = due ? Number(due) : null
-    if (!ready) return setError('Completa los pasos de arriba')
-    if (!amount || amount <= 0) return setError('Ingresa cuánto se debe hoy')
+    if (!ready) return setError('Responde las preguntas de arriba para continuar')
+    if (!amount || amount <= 0) return setError('Escribe cuánto se debe hoy')
     if (Number.isNaN(rateNum) || rateNum < 0 || rateNum > 30) return setError('El interés mensual debe estar entre 0 y 30 %')
     if (dueDay !== null && (dueDay < 1 || dueDay > 31)) return setError('El día de vencimiento va de 1 a 31')
     const name = isPerson ? `Préstamo de ${person.trim()}` : `${bank ? bank.name : inst.trim()} · ${typeInfo?.label ?? ''}`
@@ -105,7 +105,7 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, defaultOwne
     })
     setBusy(false)
     if (err) {
-      setError('No se pudo guardar la deuda')
+      setError('No se pudo guardar la deuda. Revisa tu conexión e intenta de nuevo.')
       return
     }
     onToast('Deuda agregada\nYa aparece en tu plan de **pago**.')

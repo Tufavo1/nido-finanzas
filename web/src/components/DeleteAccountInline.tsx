@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { confirmPassword } from '../lib/reauth'
 import { supabase } from '../lib/supabase'
+import { useAccount } from '../lib/account'
+import CreatePassword from './CreatePassword'
 
 /** Borrar la cuenta cuando no se pertenece a ningún hogar (por ejemplo, después de salir de uno) */
 export default function DeleteAccountInline() {
@@ -9,6 +11,7 @@ export default function DeleteAccountInline() {
   const [pw, setPw] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const account = useAccount()
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -35,6 +38,12 @@ export default function DeleteAccountInline() {
     )
   }
   return (
+    !account.hasPassword ? (
+      <div className="card stack tight danger-zone">
+        <CreatePassword reason="Para borrar tu cuenta pedimos una contraseña, y la tuya entra con Google. Créala primero." />
+        <button type="button" className="btn ghost small" onClick={() => setOpen(false)}>Cancelar</button>
+      </div>
+    ) : (
     <form className="card stack tight danger-zone" onSubmit={(e) => void submit(e)}>
       <span className="muted small-text">Se borra tu cuenta para siempre. No se puede deshacer.</span>
       <div className="field">
@@ -56,5 +65,6 @@ export default function DeleteAccountInline() {
         </button>
       </div>
     </form>
+    )
   )
 }

@@ -12,7 +12,7 @@ import { monthKey, myShare } from './analysis'
 import { splitOf } from './split'
 
 export type AlertLevel = 'bad' | 'warn' | 'info' | 'ok'
-export type AlertTab = 'home' | 'expenses' | 'money' | 'goals' | 'security'
+export type AlertTab = 'home' | 'expenses' | 'add' | 'money' | 'goals' | 'security'
 export type MoneySection = 'analysis' | 'salary' | 'fixed' | 'debts'
 
 export interface Alert {

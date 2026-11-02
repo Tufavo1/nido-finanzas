@@ -48,8 +48,10 @@ export default {
     // Límite por persona (IP): más estricto en las puertas de entrada de la cuenta
     const ip = request.headers.get('cf-connecting-ip')
     const limiter = isSensitive(path) ? env.RL_AUTH : env.RL_GENERAL
-    if (limiter && ip) {
-      const { success } = await limiter.limit({ key: `${isSensitive(path) ? 'a' : 'g'}:${ip}` })
+    if (!limiter) console.warn('Proxy sin límite de intentos: falta el binding RL_GENERAL / RL_AUTH (ver wrangler.jsonc)')
+    if (limiter) {
+      // Sin IP (no debería pasar en Cloudflare) todos comparten un mismo cupo: nunca se salta el límite
+      const { success } = await limiter.limit({ key: `${isSensitive(path) ? 'a' : 'g'}:${ip ?? 'sin-ip'}` })
       if (!success) return json(429, 'Demasiados intentos. Espera un momento.', { 'retry-after': '30' })
     }
 
