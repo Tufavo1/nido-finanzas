@@ -61,6 +61,10 @@
       "*pg_restore*": "deny",
 
       "*git push*": "deny",
+      "git *push*": "deny",
+      "git -C*": "deny",
+      "git --git-dir*": "deny",
+      "git -c *": "deny",
       "*git remote*": "deny",
       "*git pull*": "deny",
       "*git fetch*": "deny",
