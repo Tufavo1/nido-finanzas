@@ -34,6 +34,8 @@
       "bash scripts/verificar.sh*": "allow",
       "./scripts/verificar.sh*": "allow",
       "npm --prefix web test*": "allow",
+      "npm --prefix web run test": "allow",
+      "npm --prefix web run test *": "allow",
       "npm --prefix web run lint*": "allow",
       "npm --prefix web run build*": "allow",
       "npm --prefix web exec -- tsc*": "allow",
