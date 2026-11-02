@@ -16,7 +16,7 @@ PWA de finanzas para hogares de 1 o 2 personas, en español y pesos chilenos. Pr
 - `docs/iso27001/` — marco de seguridad. `SECURITY.md` — política.
 
 ## Comandos (ejecutar desde la RAÍZ del repo con `--prefix web`)
-- `npm --prefix web run lint` (oxlint) · `npm --prefix web exec -- tsc -b` · `npm --prefix web test` (vitest). Esto es lo que corre el CI; debe pasar antes de entregar.
+- `npm --prefix web run lint` (oxlint) · `npm --prefix web exec -- tsc -b web` · `npm --prefix web test` (vitest). Esto es lo que corre el CI; debe pasar antes de entregar.
 - `npm --prefix web run build` — compila.
 - `npm --prefix web run test:db` — pruebas SQL de RLS; requiere el contenedor local `supabase_db_nido`.
 - `npm --prefix web run test:e2e` — Playwright; solo si el entorno local está levantado.
