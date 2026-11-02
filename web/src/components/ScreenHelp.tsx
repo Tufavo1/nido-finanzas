@@ -11,9 +11,14 @@ export default function ScreenHelp({ screen }: { screen: GuideScreen }) {
   const guide = SCREEN_GUIDES[screen]
   return (
     <>
-      <button type="button" className="help-btn" aria-label={`${guide.label}: cómo funciona esta pantalla`} onClick={() => setOpen(true)}>
+      <button
+        type="button"
+        className="help-btn"
+        aria-label={`Ayuda de ${guide.label}: cómo funciona esta pantalla`}
+        title="Ayuda"
+        onClick={() => setOpen(true)}
+      >
         <Icon name="help" />
-        <span>Ayuda</span>
       </button>
       {open &&
         // En el body, para quedar por encima de todo (las pantallas tienen animaciones que atrapan lo fijo)

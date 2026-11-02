@@ -1728,3 +1728,6 @@ button.setup-item:focus-visible { outline: 3px solid var(--accent-ink); outline-
 .google-slot { display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 44px; width: 100%; }
 .google-btn { width: 100%; display: flex; justify-content: center; min-height: 44px; }
 .google-btn.busy { opacity: 0.5; pointer-events: none; }
+
+/* Ayuda de cada pestaña: solo el ícono, en un círculo de 44 px (tamaño táctil mínimo) */
+.help-btn { width: 44px; height: 44px; min-height: 44px; padding: 0; justify-content: center; gap: 0; }
