@@ -1,21 +1,29 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "permission": {
+    "webfetch": "deny",
     "read": {
       "*": "allow",
       "*.env": "deny",
       "*.env.*": "deny",
-      "!*.env.production.example": "allow",
+      "*/.env*": "deny",
+      ".env*": "deny",
       ".dev.vars": "deny",
+      "*/.dev.vars": "deny",
       "respaldo-*.sql": "deny",
+      "*/respaldo-*.sql": "deny",
       "nido-respaldos/**": "deny",
-      "*.dump": "deny"
+      "*.dump": "deny",
+      "*.dump.gpg": "deny",
+      "*.gpg": "deny"
     },
     "edit": {
       "*": "allow",
       "supabase/migrations/**": "ask",
       ".github/workflows/**": "ask",
-      "SECURITY.md": "ask"
+      "SECURITY.md": "ask",
+      "web/wrangler.jsonc": "deny",
+      "scripts/**": "deny"
     },
     "bash": {
       "*": "ask",
@@ -27,15 +35,53 @@
       "npm --prefix web run lint*": "allow",
       "npm --prefix web run build*": "allow",
       "npm --prefix web exec -- tsc*": "allow",
-      "*wrangler deploy*": "deny",
+
+      "*wrangler*": "deny",
       "*npm run deploy*": "deny",
+      "*npm --prefix web run deploy*": "deny",
       "*supabase db push*": "deny",
       "*supabase db reset*": "deny",
+      "*supabase db remote*": "deny",
+      "*supabase db pull*": "deny",
+      "*supabase db dump*": "deny",
       "*supabase link*": "deny",
-      "git push*": "deny",
+      "*supabase login*": "deny",
+      "*supabase functions deploy*": "deny",
+      "*supabase functions serve*": "ask",
+      "*supabase secrets*": "deny",
+      "*supabase migration up*": "deny",
+      "*supabase migration repair*": "deny",
+      "*supabase projects*": "deny",
+      "*--linked*": "deny",
+      "*--remote*": "deny",
+      "*--db-url*": "deny",
+      "*SUPABASE_DB_URL*": "deny",
+      "*scripts/backup.sh*": "deny",
+      "*pg_dump*": "deny",
+      "*pg_restore*": "deny",
+
+      "*git push*": "deny",
+      "*git remote*": "deny",
+      "*git pull*": "deny",
+      "*git fetch*": "deny",
+      "*git clone*": "deny",
       "git reset --hard*": "deny",
       "git checkout main*": "deny",
       "git switch main*": "deny",
+      "*gh *": "deny",
+      "gh*": "deny",
+
+      "curl*": "deny",
+      "*curl *": "deny",
+      "wget*": "deny",
+      "*wget *": "deny",
+      "ssh*": "deny",
+      "scp*": "deny",
+      "rsync*": "deny",
+      "nc *": "deny",
+      "*dinovance.cl*": "deny",
+      "*supabase.co*": "deny",
+      "*cloudflare*": "deny",
       "*rm -rf*": "deny"
     }
   }
