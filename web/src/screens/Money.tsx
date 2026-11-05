@@ -25,7 +25,6 @@ import { daysUntil, digitsOnly, inDays, longDate, monthName, nextOccurrence, dot
 import type { Notify } from '../components/Toast'
 import type { MoneySection } from '../lib/engine'
 import Spin from '../components/Spin'
-import DebtGuidedForm from '../components/DebtGuidedForm'
 
 interface Props {
   hh: Household
@@ -119,7 +118,7 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
     <>
       <SectionHead title="Tu sueldo" hint="Lo que te depositan cada mes" />
 
-      <div className="fixed-grid wide">
+      <div className="fixed-grid wide salary-pair">
         <button
           type="button"
           className="fixed-card"
@@ -144,6 +143,7 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
             {salary ? 'Toca para ver el detalle' : 'Toca para agregarlo'} <Icon name="chevR" size={16} />
           </span>
         </button>
+        <SalaryCalculator onUse={applyCalculated} busy={busy} />
       </div>
 
       {viewing && salary && (
@@ -243,8 +243,6 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
         </Modal>
       )}
 
-      <SalaryCalculator onUse={applyCalculated} busy={busy} />
-
       {salary && (
         <>
           <SectionHead title="Tu ahorro" hint="Lo que apartas de tu sueldo este mes" />
@@ -282,6 +280,8 @@ function DebtCard({
   const setError = useToastError(onToast)
   const myPays = data.debtPayments.filter((p) => p.debt_id === d.id)
   const owner = d.owner_id ? hh.everyone.find((m) => m.user_id === d.owner_id) : null
+  // Las deudas personales de la pareja solo se ven: la base de datos tampoco deja tocarlas
+  const canManage = d.owner_id === null || d.owner_id === hh.me.user_id
 
   async function pay(e: FormEvent) {
     e.preventDefault()
@@ -422,7 +422,7 @@ function DebtCard({
       <>
         {card}
         <Modal label={`Editar ${d.name}`} onClose={close}>
-          <DebtForm hh={hh} data={data} existing={d} onClose={() => setEditing(false)} onToast={onToast} />
+          <DebtEditForm hh={hh} data={data} existing={d} onClose={() => setEditing(false)} onToast={onToast} />
         </Modal>
       </>
     )
@@ -501,6 +501,10 @@ function DebtCard({
                   Cancelar
                 </button>
               </form>
+            ) : !canManage ? (
+              <p className="muted">
+                Solo {owner?.display_name ?? 'la otra persona'} puede anotar pagos, editar o borrar esta deuda.
+              </p>
             ) : (
               <div className="stack tight">
                 {done ? (
@@ -673,11 +677,9 @@ function DebtEditForm({
               <button type="button" aria-pressed={owner === ''} onClick={() => setOwner('')}>
                 Los dos
               </button>
-              {hh.members.map((m) => (
-                <button key={m.user_id} type="button" aria-pressed={owner === m.user_id} onClick={() => setOwner(m.user_id)}>
-                  {m.user_id === hh.me.user_id ? 'Yo' : m.display_name}
-                </button>
-              ))}
+              <button type="button" aria-pressed={owner === hh.me.user_id} onClick={() => setOwner(hh.me.user_id)}>
+                Yo
+              </button>
             </div>
           </div>
         )}
@@ -712,11 +714,6 @@ function DebtEditForm({
       </form>
     </div>
   )
-}
-
-/** Deuda nueva: flujo guiado. Editar una existente: el formulario completo. */
-function DebtForm(props: { hh: Household; data: HouseholdData; onClose: () => void; onToast: Notify; existing?: HouseholdData['debts'][number]; defaultOwner?: string }) {
-  return props.existing ? <DebtEditForm {...props} /> : <DebtGuidedForm hh={props.hh} data={props.data} onClose={props.onClose} onToast={props.onToast} defaultOwner={props.defaultOwner} />
 }
 
 /** Cuánto se deben entre ustedes por los gastos compartidos del mes (quién puso más plata). */
@@ -909,6 +906,7 @@ function ArchivedDebts({ hh, data, who, onToast }: { hh: Household; data: Househ
     const owner = d.owner_id ? hh.everyone.find((m) => m.user_id === d.owner_id) : null
     const kindLabel = KINDS.find((k) => k.key === d.kind)?.label ?? 'Otra'
     const paidOff = v.remaining === 0
+    const canManage = d.owner_id === null || d.owner_id === hh.me.user_id
     return (
       <Modal label={`Detalle de ${d.name}`} onClose={closeDetail}>
         <div className="card cat-sheet">
@@ -963,7 +961,11 @@ function ArchivedDebts({ hh, data, who, onToast }: { hh: Household; data: Househ
                 Se borrará la deuda y todos sus pagos. Esto no se puede deshacer.
               </p>
             )}
+            {!canManage && (
+              <p className="muted">Solo {owner?.display_name ?? 'la otra persona'} puede restaurar o eliminar esta deuda.</p>
+            )}
             <div className="row">
+              {canManage && (<>
               <button type="button" className="btn small" disabled={busy} onClick={() => void restore(d.id)}>
                 {busy && !confirmDel ? <Spin label="Restaurando…" /> : 'Restaurar deuda'}
               </button>
@@ -975,6 +977,7 @@ function ArchivedDebts({ hh, data, who, onToast }: { hh: Household; data: Househ
                   No, conservar
                 </button>
               )}
+              </>)}
             </div>
           </div>
         </div>
@@ -1018,7 +1021,6 @@ function ArchivedDebts({ hh, data, who, onToast }: { hh: Household; data: Househ
 }
 
 function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
-  const [adding, setAdding] = useState(false)
   const [showAll, setShowAll] = useState(false)
   const who = resolveScope(scope, hh.members)
   const debts = scopeDebts(data.debts, who)
@@ -1068,13 +1070,8 @@ function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
         <section className="card wide">
           <strong>{person && data.debts.length > 0 ? `${who === hh.me.user_id ? 'No tienes' : `${person.display_name} no tiene`} deudas anotadas` : 'Todavía no hay deudas anotadas'}</strong>
           <span className="muted">
-            {person && data.debts.length > 0 ? 'Cambia a Hogar para ver todas.' : 'Si tienen una tarjeta, un crédito o un préstamo, agrégalo para llevar el control.'}
+            {person && data.debts.length > 0 ? 'Cambia a Hogar para ver todas.' : 'Si tienen una tarjeta, un crédito o un préstamo, anótalo desde «Registrar» para llevar el control.'}
           </span>
-          {!(person && data.debts.length > 0) && (
-            <button type="button" className="btn wide" onClick={() => setAdding(true)}>
-              Agregar mi primera deuda
-            </button>
-          )}
         </section>
       )}
 
@@ -1086,25 +1083,17 @@ function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
               <DebtCard key={v.debt.id} v={v} hh={hh} data={data} onToast={onToast} />
             ))}
           </div>
-          {views.length > PAGE && (
-            <button type="button" className="btn ghost small wide" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
-              {showAll ? 'Ver menos deudas' : `Ver más (${views.length - PAGE} deudas más)`}
-            </button>
-          )}
         </>
       )}
 
-      {!empty && (
-        <button type="button" className="btn small wide" onClick={() => setAdding(true)}>
-          Agregar deuda
-        </button>
-      )}
-      <ArchivedDebts hh={hh} data={data} who={who} onToast={onToast} />
-      {adding && (
-        <Modal label="Agregar una deuda" onClose={() => setAdding(false)}>
-          <DebtForm hh={hh} data={data} onClose={() => setAdding(false)} onToast={onToast} defaultOwner={who === 'all' ? '' : who} />
-        </Modal>
-      )}
+      <div className="cat-actions">
+        {!empty && views.length > PAGE && (
+          <button type="button" className="btn ghost small wide" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
+            {showAll ? 'Ver menos deudas' : `Ver más (${views.length - PAGE} deudas más)`}
+          </button>
+        )}
+        <ArchivedDebts hh={hh} data={data} who={who} onToast={onToast} />
+      </div>
     </>
   )
 }

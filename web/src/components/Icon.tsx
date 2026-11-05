@@ -62,6 +62,38 @@ const PATHS = {
       <path d="M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.9-1.1 1.8M12 16.5h.01" />
     </>
   ),
+  card: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 10h18M7 15h3" />
+    </>
+  ),
+  users: (
+    <>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20c0-3.5 3-5.5 6.5-5.5s6.5 2 6.5 5.5M16 4.8a3.5 3.5 0 0 1 0 6.4M18.5 14.8c1.8.7 3 2.2 3 5.2" />
+    </>
+  ),
+  tag: (
+    <>
+      <path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z" />
+      <path d="M7.5 7.5h.01" />
+    </>
+  ),
+  cart: (
+    <>
+      <path d="M3 4h2l2.4 11h10.2L20 8H6.2" />
+      <path d="M9 20h.01M17 20h.01" />
+    </>
+  ),
+  check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-4-4" />
+    </>
+  ),
+  close: <path d="M6 6l12 12M18 6L6 18" />,
   chevD: <path d="M6 9l6 6 6-6" />,
   pause: <path d="M9 5v14M15 5v14" />,
   play: <path d="M7 5l12 7-12 7z" />,

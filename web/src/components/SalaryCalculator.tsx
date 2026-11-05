@@ -33,19 +33,17 @@ export default function SalaryCalculator({ onUse, busy = false }: { onUse: (liqu
 
   return (
     <>
-      <div className="fixed-grid wide">
-        <button type="button" className="fixed-card" aria-haspopup="dialog" onClick={() => setOpen(true)}>
-          <span className="fixed-top">
-            <span className="grow fixed-name">
-              <strong>¿Solo sabes tu sueldo bruto?</strong>
-              <span className="muted small-text">Calcula cuánto te llega después de descuentos</span>
-            </span>
+      <button type="button" className="fixed-card" aria-haspopup="dialog" onClick={() => setOpen(true)}>
+        <span className="fixed-top">
+          <span className="grow fixed-name">
+            <strong>¿Solo sabes tu sueldo bruto?</strong>
+            <span className="muted small-text">Calcula cuánto te llega después de descuentos</span>
           </span>
-          <span className="card-cta" aria-hidden="true">
-            Toca para calcularlo <Icon name="chevR" size={16} />
-          </span>
-        </button>
-      </div>
+        </span>
+        <span className="card-cta" aria-hidden="true">
+          Toca para calcularlo <Icon name="chevR" size={16} />
+        </span>
+      </button>
       {open && (
         <Modal label="Calculadora de sueldo líquido" onClose={() => setOpen(false)}>
           <div className="card cat-sheet">

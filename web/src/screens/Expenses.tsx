@@ -58,9 +58,6 @@ export default function Expenses({
   const [eDate, setEDate] = useState('')
   const [nameValue, setNameValue] = useState('')
   const [archiveId, setArchiveId] = useState<string | null>(null)
-  const [newCat, setNewCat] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [newBudget, setNewBudget] = useState('')
   const [catFilter, setCatFilter] = useState<string>('all')
   const [showAll, setShowAll] = useState(false)
   const [showAllCats, setShowAllCats] = useState(false)
@@ -155,32 +152,6 @@ export default function Expenses({
     }
     setEditing(null)
     onToast('Categoría quitada\nSus **gastos** se conservan en el historial.', 'info')
-    await data.refresh()
-  }
-
-  async function addCategory() {
-    const name = newName.trim()
-    if (!name) {
-      setError('Escribe un nombre para la categoría')
-      return
-    }
-    setBusy(true)
-    setError(null)
-    const { error: err } = await supabase.from('categories').insert({
-      household_id: hh.household.id,
-      name,
-      monthly_budget: Number(newBudget || '0'),
-      position: data.categories.reduce((mx, c) => Math.max(mx, c.position), 0) + 1,
-    })
-    setBusy(false)
-    if (err) {
-      setError(err.code === '23505' ? 'Ya existe una categoría con ese nombre' : 'No se pudo crear la categoría')
-      return
-    }
-    setNewCat(false)
-    setNewName('')
-    setNewBudget('')
-    onToast('Categoría creada\nYa puedes **registrar** gastos en ella.')
     await data.refresh()
   }
 
@@ -515,39 +486,17 @@ export default function Expenses({
           })}
       </div>
 
-      {sortedCats.length > CAT_PAGE && (
-        <button type="button" className="btn ghost small wide" aria-expanded={showAllCats} onClick={() => setShowAllCats((v) => !v)}>
-          {showAllCats ? 'Ver menos categorías' : `Ver más (${sortedCats.length - CAT_PAGE} categorías más)`}
-        </button>
-      )}
-
-      <button type="button" className="btn small wide" onClick={() => setNewCat(true)}>
-        Agregar categoría
-      </button>
+      <div className="cat-actions">
+        {sortedCats.length > CAT_PAGE && (
+          <button type="button" className="btn ghost small wide" aria-expanded={showAllCats} onClick={() => setShowAllCats((v) => !v)}>
+            {showAllCats ? 'Ver menos categorías' : `Ver más (${sortedCats.length - CAT_PAGE} categorías más)`}
+          </button>
+        )}
+      </div>
 
       {selCatRow && (
         <Modal label={`Detalle de ${selCatRow.name}`} onClose={closeCat}>
           <div className="card cat-sheet">{renderCat(selCatRow)}</div>
-        </Modal>
-      )}
-
-      {newCat && (
-        <Modal label="Nueva categoría" onClose={() => setNewCat(false)}>
-          <div className="card stack tight">
-            <strong className="fixed-title">Nueva categoría</strong>
-            <label className="line-help" htmlFor="nc-name">Nombre de la nueva categoría</label>
-            <input id="nc-name" className="input" maxLength={40} placeholder="Ej. Mascotas, Educación" value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <label className="line-help" htmlFor="nc-budget">Límite al mes (opcional)</label>
-            <input id="nc-budget" className="input" inputMode="numeric" placeholder="Ej. 80000" value={dots(newBudget)} onChange={(e) => setNewBudget(digitsOnly(e.target.value))} />
-            <div className="row">
-              <button type="button" className="btn small" disabled={busy} onClick={() => void addCategory()}>
-                {busy ? <Spin label="Creando categoría…" /> : 'Crear categoría'}
-              </button>
-              <button type="button" className="btn ghost small" onClick={() => setNewCat(false)}>
-                Cancelar
-              </button>
-            </div>
-          </div>
         </Modal>
       )}
 
@@ -556,61 +505,60 @@ export default function Expenses({
         hint={isMe ? 'La lista de cada gasto tuyo, para repasar en qué se fue la plata' : person ? `La lista de cada gasto de ${person.display_name}, para repasar en qué se fue la plata` : 'La lista de cada gasto que anotaron, para repasar en qué se fue la plata'}
       />
 
-      <section className="card wide">
-        <strong>Historial de {monthName(month)}</strong>
-        <span className="muted small-text" role="status">
-          {visible.length === 0
-            ? 'Sin gastos para mostrar con este filtro.'
-            : `${visible.length} ${visible.length === 1 ? 'gasto' : 'gastos'} por ${money(visible.reduce((s, e) => s + e.amount, 0))}. Toca uno para ver el detalle, corregirlo o borrarlo.`}
-        </span>
-        <div className="filter-row">
-          <label className="filter-label" htmlFor="f-q">Buscar un gasto</label>
-          <input
-            id="f-q"
-            className="input"
-            type="search"
-            placeholder="Ej. pan, bencina, almuerzo"
-            maxLength={60}
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value)
-              setShowAll(false)
-            }}
-          />
+      <section className="card wide filter-card" aria-label={`Filtros del historial de ${monthName(month)}`}>
+        <div className="filter-head">
+          <strong>Historial de {monthName(month)}</strong>
+          <span className="muted small-text" role="status">
+            {visible.length === 0
+              ? 'Sin gastos para mostrar con este filtro.'
+              : `${visible.length} ${visible.length === 1 ? 'gasto' : 'gastos'} por ${money(visible.reduce((s, e) => s + e.amount, 0))}. Toca uno para ver el detalle, corregirlo o borrarlo.`}
+          </span>
         </div>
-        <div className="filter-row">
-          <label className="filter-label" htmlFor="f-sort">Ordenar por</label>
-          <select id="f-sort" className="input" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
-            <option value="recent">Más recientes primero</option>
-            <option value="oldest">Más antiguos primero</option>
-            <option value="big">Mayor monto primero</option>
-            <option value="small">Menor monto primero</option>
-          </select>
-        </div>
-        <div className="filter-row">
-          <label className="filter-label" htmlFor="f-cat">Ver gastos de la categoría</label>
-          <select
-            id="f-cat"
-            className="input"
-            value={catFilter}
-            onChange={(e) => {
-              setCatFilter(e.target.value)
-              setShowAll(false)
-            }}
-          >
-            <option value="all">Todas las categorías</option>
-            {sortedCats
-              .filter((c) => (spent.get(c.id) ?? 0) > 0)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} · {money(spent.get(c.id) ?? 0)}
-                </option>
-              ))}
-          </select>
-        </div>
-        <div className="filter-row">
-          <label className="filter-label" htmlFor="f-date">Ver gastos de un día</label>
-          <div className="row">
+
+        <div className="filter-bar">
+          <div className="search-field">
+            <Icon name="search" size={20} />
+            <label className="sr-only" htmlFor="f-q">Buscar un gasto</label>
+            <input
+              id="f-q"
+              type="search"
+              placeholder="Buscar: pan, bencina, almuerzo…"
+              maxLength={60}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value)
+                setShowAll(false)
+              }}
+            />
+            {query && (
+              <button type="button" className="search-clear" aria-label="Borrar búsqueda" onClick={() => setQuery('')}>
+                <Icon name="close" size={18} />
+              </button>
+            )}
+          </div>
+          <div className="filter-field">
+            <label htmlFor="f-cat">Categoría</label>
+            <select
+              id="f-cat"
+              className="input"
+              value={catFilter}
+              onChange={(e) => {
+                setCatFilter(e.target.value)
+                setShowAll(false)
+              }}
+            >
+              <option value="all">Todas las categorías</option>
+              {sortedCats
+                .filter((c) => (spent.get(c.id) ?? 0) > 0)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} · {money(spent.get(c.id) ?? 0)}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="filter-field">
+            <label htmlFor="f-date">Día</label>
             <input
               id="f-date"
               className="input"
@@ -623,17 +571,28 @@ export default function Expenses({
                 setShowAll(false)
               }}
             />
-            {activeDay !== 'all' && (
-              <button type="button" className="btn ghost small" onClick={() => setDayFilter('all')}>
-                Ver todo el mes
-              </button>
-            )}
+          </div>
+          <div className="filter-field">
+            <label htmlFor="f-sort">Orden</label>
+            <select id="f-sort" className="input" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+              <option value="recent">Más recientes</option>
+              <option value="oldest">Más antiguos</option>
+              <option value="big">Mayor monto</option>
+              <option value="small">Menor monto</option>
+            </select>
           </div>
         </div>
+
         {filtering && (
-          <button type="button" className="btn ghost small" onClick={clearFilters}>
-            Quitar filtros
-          </button>
+          <div className="filter-active">
+            <span className="muted small-text">Filtros puestos:</span>
+            {catFilter !== 'all' && <span className="pill">{catName.get(catFilter) ?? 'Categoría'}</span>}
+            {activeDay !== 'all' && <span className="pill">{dayHeading(activeDay)}</span>}
+            {q !== '' && <span className="pill">«{query.trim()}»</span>}
+            <button type="button" className="link-btn" onClick={clearFilters}>
+              Quitar filtros
+            </button>
+          </div>
         )}
       </section>
 

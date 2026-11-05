@@ -6,6 +6,8 @@ export default function ScopeBar({ hh, scope, onScope, label = 'Ver los datos de
   const mine = hh.members.find((m) => m.user_id === hh.me.user_id) ?? hh.me
   const partner = hh.members.find((m) => m.user_id !== hh.me.user_id)
   return (
+    <div className="scope">
+    <span className="scope-label" aria-hidden="true">{label}:</span>
     <div className="seg" role="group" aria-label={label}>
       <button type="button" aria-pressed={scope === 'all'} onClick={() => onScope('all')}>
         Hogar
@@ -15,6 +17,7 @@ export default function ScopeBar({ hh, scope, onScope, label = 'Ver los datos de
           {m.user_id === hh.me.user_id ? 'Yo' : m.display_name}
         </button>
       ))}
+    </div>
     </div>
   )
 }

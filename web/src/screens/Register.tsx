@@ -6,12 +6,16 @@ import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import Icon from '../components/Icon'
 import { money, todayISO } from '../lib/format'
+import { digitsOnly, dots } from '../lib/ui'
 import { finalAmount, initialDraft, resolveSpentOn, saveBlocker, saveLabel } from '../lib/register'
 import type { TargetKind } from '../lib/register'
 import { debtView } from '../lib/finance'
 import { supabase } from '../lib/supabase'
 import { notifyPartner } from '../lib/push'
 import Spin from '../components/Spin'
+import RecurringCreateForm from '../components/RecurringCreateForm'
+import GoalCreateForm from '../components/GoalCreateForm'
+import DebtGuidedForm from '../components/DebtGuidedForm'
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', 'back'] as const
 
@@ -23,7 +27,7 @@ export default function Register({
 }: {
   hh: Household
   data: HouseholdData
-  onSaved: (message: string) => void
+  onSaved: (message?: string) => void
   onToast: Notify
 }) {
   const [digits, setDigits] = useState('')
@@ -33,6 +37,10 @@ export default function Register({
   // 1: ¿en qué se gastó o qué se paga? · 2: ¿personal o compartido? · 3: ¿descuento? · 4: monto y guardar
   // Si en el paso 1 se elige una deuda o una meta, se salta directo al 4 (no hay compartido ni descuento).
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
+  // Primera pregunta: ¿registrar un pago (gasto, deuda, meta) o dar de alta una deuda nueva?
+  const [mode, setMode] = useState<'choose' | 'pay' | 'debt' | 'category' | 'goal' | 'fixed'>('choose')
+  const [newName, setNewName] = useState('')
+  const [newBudget, setNewBudget] = useState('')
   const [kind, setKind] = useState<TargetKind>('expense')
   const [debtId, setDebtId] = useState('')
   const [goalId, setGoalId] = useState('')
@@ -73,6 +81,32 @@ export default function Register({
       const next = (d + k).replace(/^0+/, '')
       return next.length > 9 ? d : next
     })
+  }
+
+  async function addCategory() {
+    const name = newName.trim()
+    if (!name) {
+      setError('Escribe un nombre para la categoría')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    const { error: err } = await supabase.from('categories').insert({
+      household_id: hh.household.id,
+      name,
+      monthly_budget: Number(newBudget || '0'),
+      position: data.categories.reduce((mx, c) => Math.max(mx, c.position), 0) + 1,
+    })
+    if (err) {
+      setError(err.code === '23505' ? 'Ya existe una categoría con ese nombre' : 'No se pudo crear la categoría')
+      setBusy(false)
+      return
+    }
+    await data.refresh()
+    setBusy(false)
+    setNewName('')
+    setNewBudget('')
+    onSaved(`Categoría creada\nYa puedes **registrar** gastos en **${name}**.`)
   }
 
   async function save() {
@@ -161,6 +195,7 @@ export default function Register({
     setKind('expense')
     setDebtId('')
     setGoalId('')
+    setMode('choose')
   }
 
   function chooseShared(v: boolean) {
@@ -205,14 +240,14 @@ export default function Register({
     <main className="screen reg">
       <h1 className="sr-only">Registrar</h1>
       <div className="reg-nav">
-        {step > first ? (
-          <button type="button" className="btn ghost small" onClick={back}>
+        {step > first || mode !== 'choose' ? (
+          <button type="button" className="btn ghost small" onClick={mode === 'pay' && step > first ? back : () => setMode('choose')}>
             Volver
           </button>
         ) : (
           <span />
         )}
-        <div className="reg-progress">
+        {mode === 'pay' ? <div className="reg-progress">
           <div className="reg-steps" aria-hidden="true">
             {stepList.map((n) => (
               <span key={n} className={n === step ? 'on' : n < step ? 'done' : ''} />
@@ -221,35 +256,105 @@ export default function Register({
           <span className="reg-stepsleft" role="status">
             {stepNo === stepList.length ? `Último paso (${stepNo} de ${stepList.length})` : `Paso ${stepNo} de ${stepList.length}`}
           </span>
-        </div>
+        </div> : <span />}
         <span className="reg-help"><ScreenHelp screen="add" /></span>
       </div>
 
       {step > first && (
         <div className="reg-sum" role="group" aria-label="Lo que elegiste (toca uno para cambiarlo)">
           <button type="button" className="chip" onClick={() => setStep(1)}>
-            <span aria-hidden="true">{kind === 'debt' ? '💳' : kind === 'goal' ? '🎯' : '🛒'}</span>{' '}
+            <Icon name={kind === 'debt' ? 'card' : kind === 'goal' ? 'target' : 'cart'} size={18} />{' '}
             {kind === 'debt' ? `Pago a ${label}` : kind === 'goal' ? `Aporte a ${label}` : (catName ?? 'Gasto')}
           </button>
           {isExpense && step > 2 && (
             <button type="button" className="chip" onClick={() => setStep(2)}>
-              {shared ? '👥 Compartido' : '👤 Personal'}
+              <Icon name={shared ? 'users' : 'user'} size={18} /> {shared ? 'Compartido' : 'Personal'}
             </button>
           )}
           {isExpense && step > 3 && (
             <button type="button" className="chip" onClick={() => { setHasDiscount(pct > 0); setStep(3) }}>
-              {pct > 0 ? `🏷️ ${pct}% desc.` : '🏷️ Sin descuento'}
+              <Icon name="tag" size={18} /> {pct > 0 ? `${pct}% desc.` : 'Sin descuento'}
             </button>
           )}
         </div>
       )}
 
-      {step === 1 && (
+      {mode === 'choose' && (
+        <section className="reg-ask" ref={askRef}>
+          <h2 className="reg-q" tabIndex={-1}>¿Qué quieres hacer?</h2>
+          <button type="button" className="reg-big" onClick={() => setMode('pay')}>
+            <span className="reg-emoji"><Icon name="cart" size={48} /></span>
+            <strong>REGISTRAR UN PAGO</strong>
+            <span>Un gasto, la cuota de una deuda o un aporte a una meta</span>
+          </button>
+          <button type="button" className="reg-big" onClick={() => setMode('debt')}>
+            <span className="reg-emoji"><Icon name="card" size={48} /></span>
+            <strong>REGISTRAR UNA DEUDA</strong>
+            <span>Anotar una deuda nueva para tu plan de pago</span>
+          </button>
+          <button type="button" className="reg-big" onClick={() => setMode('fixed')}>
+            <span className="reg-emoji"><Icon name="wallet" size={48} /></span>
+            <strong>REGISTRAR UN GASTO FIJO</strong>
+            <span>Arriendo, luz, internet… lo que se paga todos los meses</span>
+          </button>
+          <button type="button" className="reg-big" onClick={() => setMode('goal')}>
+            <span className="reg-emoji"><Icon name="target" size={48} /></span>
+            <strong>REGISTRAR UNA META</strong>
+            <span>Un objetivo para ahorrar, como un viaje o un fondo de emergencia</span>
+          </button>
+          <button type="button" className="reg-big" onClick={() => setMode('category')}>
+            <span className="reg-emoji"><Icon name="tag" size={48} /></span>
+            <strong>REGISTRAR UNA CATEGORÍA</strong>
+            <span>Un grupo nuevo para tus gastos, con límite si quieres</span>
+          </button>
+        </section>
+      )}
+      {mode === 'category' && (
+        <section className="reg-ask" ref={askRef}>
+          <h2 className="reg-q" tabIndex={-1}>¿Cómo se llama la categoría?</h2>
+          <form className="stack" onSubmit={(e) => { e.preventDefault(); void addCategory() }}>
+            <div className="field">
+              <label htmlFor="nc-name" className="strong">Nombre</label>
+              <input id="nc-name" className="input" maxLength={40} placeholder="Ej. Mascotas, Educación" value={newName} onChange={(e) => setNewName(e.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="nc-budget" className="strong">Límite al mes (opcional)</label>
+              <input id="nc-budget" className="input" inputMode="numeric" placeholder="Ej. 80000" value={dots(newBudget)} onChange={(e) => setNewBudget(digitsOnly(e.target.value))} />
+              <span className="hint">Te avisamos cuando te acerques a este monto.</span>
+            </div>
+            <button className="btn reg-save" type="submit" disabled={busy || !newName.trim()}>
+              {busy ? <Spin label="Creando categoría…" /> : 'Crear categoría'}
+            </button>
+          </form>
+        </section>
+      )}
+
+      {mode === 'fixed' && (
+        <section className="reg-ask" ref={askRef}>
+          <h2 className="reg-q" tabIndex={-1}>Nuevo gasto fijo</h2>
+          <RecurringCreateForm hh={hh} data={data} onToast={onToast} onSaved={() => onSaved()} />
+        </section>
+      )}
+
+      {mode === 'goal' && (
+        <section className="reg-ask" ref={askRef}>
+          <h2 className="reg-q" tabIndex={-1}>Nueva meta</h2>
+          <GoalCreateForm hh={hh} data={data} onToast={onToast} onSaved={() => onSaved()} />
+        </section>
+      )}
+
+      {mode === 'debt' && (
+        <section className="reg-ask" ref={askRef}>
+          <DebtGuidedForm embedded hh={hh} data={data} onClose={() => setMode('choose')} onToast={onToast} onSaved={() => onSaved()} />
+        </section>
+      )}
+
+      {mode === 'pay' && step === 1 && (
         <section className="reg-ask" ref={askRef}>
           <h2 className="reg-q" tabIndex={-1}>¿En qué se gastó o qué vas a pagar?</h2>
 
           <section className="reg-group" aria-labelledby="reg-g-exp">
-            <h3 className="reg-gtitle" id="reg-g-exp"><span aria-hidden="true">🛒</span> Un gasto</h3>
+            <h3 className="reg-gtitle" id="reg-g-exp"><Icon name="cart" size={20} /> Un gasto</h3>
             {data.categories.length === 0 && <p className="muted">Aún no hay categorías para elegir.</p>}
             <div className="reg-catgrid">
               {data.categories.map((c) => (
@@ -268,7 +373,7 @@ export default function Register({
 
           {myDebts.length > 0 && (
             <section className="reg-group" aria-labelledby="reg-g-debt">
-              <h3 className="reg-gtitle" id="reg-g-debt"><span aria-hidden="true">💳</span> Pagar una deuda</h3>
+              <h3 className="reg-gtitle" id="reg-g-debt"><Icon name="card" size={20} /> Pagar una deuda</h3>
               <div className="reg-rows">
                 {myDebts.map((v) => (
                   <button
@@ -288,7 +393,7 @@ export default function Register({
 
           {data.goals.length > 0 && (
             <section className="reg-group" aria-labelledby="reg-g-goal">
-              <h3 className="reg-gtitle" id="reg-g-goal"><span aria-hidden="true">🎯</span> Aportar a una meta</h3>
+              <h3 className="reg-gtitle" id="reg-g-goal"><Icon name="target" size={20} /> Aportar a una meta</h3>
               <div className="reg-rows">
                 {data.goals.map((g) => (
                   <button
@@ -308,34 +413,34 @@ export default function Register({
         </section>
       )}
 
-      {step === 2 && (
+      {mode === 'pay' && step === 2 && (
         <section className="reg-ask" ref={askRef}>
           <h2 className="reg-q" tabIndex={-1}>¿Es un gasto personal o compartido?</h2>
           <button type="button" className="reg-big" onClick={() => chooseShared(true)}>
-            <span className="reg-emoji" aria-hidden="true">👥</span>
+            <span className="reg-emoji"><Icon name="users" size={48} /></span>
             <strong>COMPARTIDO</strong>
             <span>Lo pagamos entre los dos</span>
           </button>
           <button type="button" className="reg-big" onClick={() => chooseShared(false)}>
-            <span className="reg-emoji" aria-hidden="true">👤</span>
+            <span className="reg-emoji"><Icon name="user" size={48} /></span>
             <strong>PERSONAL</strong>
             <span>Es solo mío</span>
           </button>
         </section>
       )}
 
-      {step === 3 && (
+      {mode === 'pay' && step === 3 && (
         <section className="reg-ask" ref={askRef}>
           <h2 className="reg-q" tabIndex={-1}>¿Tiene descuento?</h2>
           {!hasDiscount ? (
             <>
               <button type="button" className="reg-big" onClick={() => chooseDiscount(false)}>
-                <span className="reg-emoji" aria-hidden="true">✅</span>
+                <span className="reg-emoji"><Icon name="check" size={48} /></span>
                 <strong>NO, precio normal</strong>
                 <span>Pagué el precio completo</span>
               </button>
               <button type="button" className="reg-big" onClick={() => chooseDiscount(true)}>
-                <span className="reg-emoji" aria-hidden="true">🏷️</span>
+                <span className="reg-emoji"><Icon name="tag" size={48} /></span>
                 <strong>SÍ, con descuento</strong>
                 <span>Me rebajaron el precio</span>
               </button>
@@ -385,7 +490,7 @@ export default function Register({
         </section>
       )}
 
-      {step === 4 && (
+      {mode === 'pay' && step === 4 && (
         <>
           <div className="reg-top" ref={askRef as React.RefObject<HTMLDivElement>}>
             <div className="reg-amount" tabIndex={-1}>

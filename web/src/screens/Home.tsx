@@ -266,7 +266,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
             <span className={salaryCheck.realFree < 0 ? 'over num strong' : 'num strong'}>{money(salaryCheck.realFree)}</span>
           </span>
           <span className="card-cta" aria-hidden="true">
-            🔒 Solo tú · Toca para ver el detalle <Icon name="chevR" size={16} />
+            <Icon name="lock" size={14} /> Solo tú · Toca para ver el detalle <Icon name="chevR" size={16} />
           </span>
         </button>
       )}

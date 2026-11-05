@@ -124,7 +124,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
       <section className="card" aria-label="Otros ingresos">
         <div className="row between">
           <strong>Ingresos extra de {monthName(month)}</strong>
-          <span className="pill">🔒 Solo tú</span>
+          <span className="pill"><Icon name="lock" size={14} /> Solo tú</span>
         </div>
         {total > 0 ? <span className="cat-big num">{money(total)}</span> : <span className="muted">Sin ingresos extra este mes</span>}
         <span className="muted small-text">Bonos, ventas o trabajos aparte</span>
@@ -200,7 +200,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
             {!editing ? (
               <div className="stack cat-detail">
                 <div className="row between">
-                  <span className="pill">🔒 Solo tú</span>
+                  <span className="pill"><Icon name="lock" size={14} /> Solo tú</span>
                   <button type="button" className="btn ghost small" onClick={closeDetail}>
                     Cerrar
                   </button>

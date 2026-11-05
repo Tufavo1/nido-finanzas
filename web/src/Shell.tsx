@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import type { Household } from './App'
+import ScreenLoader from './components/ScreenLoader'
 import Icon from './components/Icon'
 import InstallBanner from './components/InstallBanner'
 import UpdateBanner from './components/UpdateBanner'
@@ -155,7 +156,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   } else if (!data.ready) {
     body = (
       <main className="screen center-y">
-        <p className="muted">Cargando…</p>
+        <ScreenLoader />
       </main>
     )
   } else if (tab === 'home') {
@@ -194,7 +195,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
       <Suspense
         fallback={
           <main className="screen center-y">
-            <p className="muted">Cargando…</p>
+            <ScreenLoader />
           </main>
         }
       >

@@ -71,7 +71,7 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
     slides: [
       {
         title: 'Aquí revisan lo gastado',
-        text: 'En **Gastos** ven cada compra del mes, cuánto llevan por categoría y si se están pasando. Para anotar un gasto nuevo usen el botón **Registrar**.',
+        text: 'En **Gastos** ven cada compra del mes, cuánto llevan por categoría y si se están pasando. Para anotar un gasto nuevo o crear una categoría usen el botón **Registrar**.',
         art: badge('list'),
       },
       {
@@ -112,12 +112,12 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
       },
       {
         title: 'Gastos fijos',
-        text: 'Arriendo, luz, internet, suscripciones: se anotan **una sola vez** y la app los agrega **solos cada mes**. Toca una tarjeta para editarla, pausarla o borrarla.',
+        text: 'Arriendo, luz, internet, suscripciones: se anotan **una sola vez** desde **Registrar** y la app los agrega **solos cada mes**. Toca una tarjeta para editarla, pausarla o borrarla.',
         art: badge('list'),
       },
       {
         title: 'Deudas',
-        text: 'Anota tarjetas, créditos o préstamos y verás **cuánto falta y cuándo terminas de pagar**. Toca una deuda para **anotar un pago**. También hay **tasas de bancos** para comparar.',
+        text: 'Verás tus tarjetas, créditos y préstamos y **cuánto falta y cuándo terminas de pagar**. Para sumar una deuda usa **Registrar**. Toca una deuda para **anotar un pago**; las de tu pareja solo las ves. También hay **tasas de bancos** para comparar.',
         art: badge('target'),
       },
       scope,
@@ -128,12 +128,12 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
     slides: [
       {
         title: 'Un solo lugar para todo',
-        text: 'Desde **Registrar** anotas un **gasto**, el **pago de una deuda** o un **aporte a una meta**. No hace falta ir a Finanzas ni a Metas.',
+        text: 'Desde **Registrar** eliges **qué quieres hacer**: anotar un **pago** (gasto, deuda o aporte a una meta) o crear una **deuda**, **categoría**, **gasto fijo** o **meta**. No hace falta ir a otras pantallas.',
         art: plus,
       },
       {
-        title: '1. ¿En qué se gastó o qué vas a pagar?',
-        text: 'Toca una **categoría** (Supermercado, Transporte…), una de tus **deudas** para pagarla o una **meta** para aportarle. Si eliges deuda o meta, pasas directo al monto.',
+        title: 'Registrar un pago: 1. ¿En qué fue?',
+        text: 'Elige **Registrar un pago** y toca una **categoría** (Supermercado, Transporte…), una de tus **deudas** o una **meta**. Si eliges deuda o meta, pasas directo al monto.',
         art: badge('list'),
       },
       {
@@ -151,6 +151,11 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
         text: 'Toca los **números** y luego **Guardar**, **Pagar** o **Aportar**. En un gasto cuenta **de qué es** (obligatorio). En **Cambiar quién pagó o la fecha** puedes ajustar esos datos.',
         art: plus,
       },
+      {
+        title: 'Crear algo nuevo',
+        text: 'Elige **Registrar una deuda**, **una categoría**, **un gasto fijo** o **una meta**, completa el formulario y guarda. Con **Volver** regresas a la pregunta anterior.',
+        art: plus,
+      },
     ],
   },
   goals: {
@@ -163,7 +168,7 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
       },
       {
         title: 'Crear una meta',
-        text: 'Toca **Agregar meta**, ponle un nombre, di cuánto quieren juntar y para cuándo. La app calcula **cuánto aportar al mes**.',
+        text: 'Usa **Registrar > Registrar una meta**, ponle un nombre, di cuánto quieren juntar y para cuándo. La app calcula **cuánto aportar al mes**.',
         art: plus,
       },
       {

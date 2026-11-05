@@ -18,8 +18,6 @@ interface Props {
 
 export default function ProfileCard({ hh, data, reload, onToast }: Props) {
   const mine = data.profiles.find((p) => p.user_id === hh.me.user_id)
-  const partner = hh.members.find((m) => m.user_id !== hh.me.user_id)
-  const partnerProfile = partner ? data.profiles.find((p) => p.user_id === partner.user_id) : undefined
 
   const [editing, setEditing] = useState(!mine)
   const [name, setName] = useState(hh.me.display_name)
@@ -159,11 +157,6 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
               {mine && mine.dependents > 0 ? ` · ${mine.dependents} a cargo` : ''}
             </div>
           </div>
-          {partner && partnerProfile?.profession && (
-            <div className="muted small-text">
-              {partner.display_name}: {partnerProfile.profession}
-            </div>
-          )}
         </>
       )}
 

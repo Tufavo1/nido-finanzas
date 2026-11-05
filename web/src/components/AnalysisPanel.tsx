@@ -535,7 +535,7 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
       {a.slices.length > 0 && (
         <>
           <SectionHead title="En qué se va tu plata" hint="Tus gastos por categoría" />
-          <section className="card" aria-label="En qué se va tu plata">
+          <section className="card donut-card" aria-label="En qué se va tu plata">
             <div className="donut-row">
               <Donut
                 amounts={a.slices.map((s) => s.amount)}

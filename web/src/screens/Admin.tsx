@@ -1,3 +1,4 @@
+import ScreenLoader from '../components/ScreenLoader'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FREE_LIMITS, adminNotes, adminRates, deleteHouseholds, fetchAdminStats, fetchAdminStorage, fetchEmptyHouseholds, removeMember, useAdminStatus } from '../lib/admin'
 import type { AdminHousehold, AdminStats, AdminStorage } from '../lib/admin'
@@ -614,9 +615,5 @@ export default function Admin({ onBack, onToast }: { onBack: () => void; onToast
   const { status, refresh } = useAdminStatus()
   if (status === 'ok') return <AdminPanel onBack={onBack} onToast={onToast} />
   if (status === 'needs_mfa') return <MfaStep onBack={onBack} onVerified={refresh} onToast={onToast} />
-  return (
-    <main className="screen center-y">
-      <p className="muted">Cargando…</p>
-    </main>
-  )
+  return <ScreenLoader />
 }
