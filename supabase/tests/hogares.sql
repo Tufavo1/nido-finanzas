@@ -178,6 +178,14 @@ begin
   assert n = 0, 'el hogar nuevo de B parte vacío';
 
   -- ---------- B borra su cuenta ----------
+  -- Sin haber iniciado sesión hace poco (por ejemplo, una sesión robada), el servidor no la borra
+  perform public.como(b);
+  perform public.debe_fallar($q$select public.delete_account()$q$);
+  reset role;
+  assert (select count(*) from auth.users where id = b) = 1, 'sin inicio de sesión reciente la cuenta de B sigue existiendo';
+  -- La pantalla pide la contraseña y vuelve a iniciar sesión: eso actualiza last_sign_in_at
+  update auth.users set last_sign_in_at = now() where id = b;
+  set local role authenticated;
   perform public.como(b);
   perform public.delete_account();
   reset role;
