@@ -197,7 +197,7 @@ export default function SavingsCheck({ hh, data, month, onToast, onGoals }: Prop
   return (
     <section className="card">
       <strong>¿Guardaste algo de ahorro este mes?</strong>
-      <div className="row">
+      <div className="row save-actions">
         <button type="button" className="btn small" aria-haspopup="dialog" onClick={() => setAdding(true)}>
           Sí, guardé
         </button>

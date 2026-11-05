@@ -1,3 +1,4 @@
+import ScreenLoader from '../components/ScreenLoader'
 import LegalModal from '../components/LegalModal'
 import { Suspense, lazy, useState } from 'react'
 import type { Household } from '../App'
@@ -42,7 +43,7 @@ export default function Security({
 
   if (showAdmin && isAdmin) {
     return (
-      <Suspense fallback={<main className="screen center-y"><p className="muted">Cargando…</p></main>}>
+      <Suspense fallback={<ScreenLoader />}>
         <Admin onBack={() => setShowAdmin(false)} onToast={onToast} />
       </Suspense>
     )

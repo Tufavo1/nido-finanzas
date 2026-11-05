@@ -31,7 +31,7 @@ const fmtRate = (n: number) => String(Math.round(n * 100) / 100).replace('.', ',
 const num = (s: string) => Number(s.replace(',', '.') || '0')
 
 /** Alta de una deuda en pasos: a quién se le debe, qué tipo es, y solo los datos que ese tipo necesita. */
-export default function DebtGuidedForm({ hh, data, onClose, onToast, defaultOwner = '' }: { hh: Household; data: HouseholdData; onClose: () => void; onToast: Notify; defaultOwner?: string }) {
+export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, embedded = false }: { hh: Household; data: HouseholdData; onClose: () => void; onToast: Notify; onSaved?: () => void; embedded?: boolean }) {
   const [who, setWho] = useState<Who>('')
   const [link, setLink] = useState<Link | null>(null)
   const [inst, setInst] = useState('')
@@ -42,7 +42,7 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, defaultOwne
   const [fee, setFee] = useState<string | null>(null)
   const [rate, setRate] = useState<string | null>(null)
   const [interest, setInterest] = useState(false)
-  const [owner, setOwner] = useState(defaultOwner)
+  const [owner, setOwner] = useState('')
   const [due, setDue] = useState('')
   const [busy, setBusy] = useState(false)
   const setError = useToastError(onToast)
@@ -111,6 +111,7 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, defaultOwne
     onToast('Deuda agregada\nYa aparece en tu plan de **pago**.')
     onClose()
     await data.refresh()
+    onSaved?.()
   }
 
   const range = suggestion?.range
@@ -170,14 +171,16 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, defaultOwne
   }
 
   return (
-    <div className="card cat-sheet">
+    <div className={embedded ? undefined : 'card cat-sheet'}>
       <form className="stack cat-detail" onSubmit={next}>
-        <div className="row between">
-          <strong className="cat-title">Agregar deuda</strong>
-          <button className="btn ghost small" type="button" onClick={onClose}>
-            Cerrar
-          </button>
-        </div>
+        {!embedded && (
+          <div className="row between">
+            <strong className="cat-title">Agregar deuda</strong>
+            <button className="btn ghost small" type="button" onClick={onClose}>
+              Cerrar
+            </button>
+          </div>
+        )}
         <div className="stack tight">
           <span className="muted small-text">Paso {Math.min(step, steps.length - 1) + 1} de {steps.length}</span>
           <div className="bar" aria-hidden="true">
@@ -305,11 +308,9 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, defaultOwne
               <button type="button" aria-pressed={owner === ''} onClick={() => setOwner('')}>
                 Los dos
               </button>
-              {hh.members.map((m) => (
-                <button key={m.user_id} type="button" aria-pressed={owner === m.user_id} onClick={() => setOwner(m.user_id)}>
-                  {m.user_id === hh.me.user_id ? 'Yo' : m.display_name}
-                </button>
-              ))}
+              <button type="button" aria-pressed={owner === hh.me.user_id} onClick={() => setOwner(hh.me.user_id)}>
+                Yo
+              </button>
             </div>
           </div>
         )}

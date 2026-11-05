@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Rich } from '../lib/rich'
 
 export type ToastKind = 'success' | 'info' | 'warn' | 'error'
@@ -22,7 +23,8 @@ export default function Toast({ toast, onDone }: { toast: ToastData; onDone: () 
 
   const [title, ...rest] = toast.text.split('\n')
   const detail = rest.join(' ').trim()
-  return (
+  // Va en document.body para quedar siempre arriba de ventanas y menús
+  return createPortal(
     <div className={`toast ${toast.kind}`} role={toast.kind === 'error' ? 'alert' : 'status'} key={toast.id}>
       <span className="toast-mark" aria-hidden="true">
         {MARK[toast.kind]}
@@ -41,6 +43,7 @@ export default function Toast({ toast, onDone }: { toast: ToastData; onDone: () 
         ×
       </button>
       <span className="toast-timer" style={{ animationDuration: `${MS[toast.kind]}ms` }} aria-hidden="true" />
-    </div>
+    </div>,
+    document.body,
   )
 }

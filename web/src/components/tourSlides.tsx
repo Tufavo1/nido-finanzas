@@ -86,6 +86,16 @@ export const NEWS_SLIDES: Slide[] = [
     art: badge('wallet'),
   },
   {
+    title: 'Todo se crea desde Registrar',
+    text: 'En **Registrar** eliges qué quieres hacer: un **pago**, una **deuda**, una **categoría**, un **gasto fijo** o una **meta**. Los botones de agregar de las otras pantallas ya no están.',
+    art: badge('plus'),
+  },
+  {
+    title: 'Cada quien sus deudas',
+    text: 'Las deudas **personales** solo las puede editar o borrar **su dueño**. Las de tu pareja las ves, pero no las cambias. Las **de los dos** las manejan ambos.',
+    art: badge('user'),
+  },
+  {
     title: 'Registrar con nota',
     text: 'Al **registrar un gasto** cuenta **de qué es**: así después sabes en qué se fue la plata. La fecha es opcional y, si no la pones, se anota **hoy**. Puedes **cancelar** cuando quieras.',
     art: badge('plus'),

@@ -1,6 +1,5 @@
 import ScreenHelp from '../components/ScreenHelp'
 import { useState } from 'react'
-import type { FormEvent } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import Avatar from '../components/Avatar'
@@ -35,10 +34,6 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
   const { goals, contributions } = data
   const who = resolveScope(scope, hh.members)
   const person = who === 'all' ? null : hh.members.find((m) => m.user_id === who)
-  const [creating, setCreating] = useState(false)
-  const [name, setName] = useState('')
-  const [target, setTarget] = useState('')
-  const [date, setDate] = useState('')
   const [openId, setOpenId] = useState<string | null>(null)
   const [amt, setAmt] = useState('')
   const [confirmId, setConfirmId] = useState<string | null>(null)
@@ -55,31 +50,6 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
   const setError = useToastError(onToast)
 
   const members = new Map(hh.everyone.map((m) => [m.user_id, m] as const))
-
-  async function createGoal(e: FormEvent) {
-    e.preventDefault()
-    const n = Number(target)
-    if (!name.trim() || n <= 0) return
-    setBusy(true)
-    setError(null)
-    const { error: err } = await supabase.from('goals').insert({
-      household_id: hh.household.id,
-      name: name.trim(),
-      target_amount: n,
-      target_date: date || null,
-    })
-    setBusy(false)
-    if (err) {
-      setError('No se pudo crear la meta. Revisa tu conexión e intenta de nuevo.')
-      return
-    }
-    setName('')
-    setTarget('')
-    setDate('')
-    setCreating(false)
-    onToast(`Meta creada\n**${name.trim()}** ya está en marcha. Hagan el primer aporte cuando quieran.`)
-    await data.refresh()
-  }
 
   async function contribute(goalId: string) {
     const n = Number(amt)
@@ -450,10 +420,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
       {goals.length === 0 && (
         <section className="card goal-empty" aria-labelledby="goal-empty">
           <strong id="goal-empty">Aún no tienen metas</strong>
-          <span className="muted">Creen la primera y empiecen a ahorrar con un objetivo claro: un viaje, un fondo de emergencia, un auto…</span>
-          <button type="button" className="btn wide" onClick={() => setCreating(true)}>
-            Crear mi primera meta
-          </button>
+          <span className="muted">Creen la primera desde «Registrar» y empiecen a ahorrar con un objetivo claro: un viaje, un fondo de emergencia, un auto…</span>
         </section>
       )}
 
@@ -526,59 +493,6 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
             </button>
           )}
         </>
-      )}
-
-      {goals.length > 0 && (
-        <button type="button" className="btn small wide" onClick={() => setCreating(true)}>
-          Agregar meta
-        </button>
-      )}
-
-      {creating && (
-        <Modal label="Nueva meta" onClose={() => setCreating(false)}>
-          <div className="card cat-sheet">
-            <form className="stack cat-detail" onSubmit={(e) => void createGoal(e)}>
-              <div className="row between">
-                <strong className="cat-title">Agregar meta</strong>
-                <button type="button" className="btn ghost small" onClick={() => setCreating(false)}>
-                  Cerrar
-                </button>
-              </div>
-              <div className="field">
-                <label htmlFor="g-name">¿Qué quieren lograr?</label>
-                <input id="g-name" className="input" required maxLength={60} placeholder="Ej. Viaje al sur" value={name} onChange={(e) => setName(e.target.value)} />
-                <div className="chips" role="group" aria-label="Ideas de metas">
-                  {['Viaje', 'Fondo de emergencia', 'Pie de la casa', 'Auto', 'Vacaciones'].map((idea) => (
-                    <button key={idea} type="button" className="chip" aria-pressed={name === idea} onClick={() => setName(idea)}>
-                      {idea}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="field">
-                <label htmlFor="g-target">¿Cuánto necesitan juntar? (CLP)</label>
-                <input id="g-target" className="input" inputMode="numeric" required placeholder="Ej. 500000" value={dots(target)} onChange={(e) => setTarget(digitsOnly(e.target.value))} aria-describedby="g-target-hint" />
-                <div className="chips" role="group" aria-label="Montos sugeridos">
-                  {[100000, 500000, 1000000, 2000000].map((v) => (
-                    <button key={v} type="button" className="chip" aria-pressed={target === String(v)} onClick={() => setTarget(String(v))}>
-                      {money(v)}
-                    </button>
-                  ))}
-                </div>
-                <span id="g-target-hint" className={name.trim() && !(Number(target) > 0) ? 'reg-fb bad' : 'muted small-text'}>
-                  {name.trim() && !(Number(target) > 0) ? 'Escribe cuánto necesitan juntar' : 'Elige un monto o escribe el tuyo'}
-                </span>
-              </div>
-              <div className="field">
-                <label htmlFor="g-date">¿Para cuándo? (opcional)</label>
-                <input id="g-date" className="input" type="date" min={todayISO()} value={date} onChange={(e) => setDate(e.target.value)} />
-              </div>
-              <button className="btn" type="submit" disabled={busy || !name.trim() || !(Number(target) > 0)}>
-                {busy ? <Spin label="Creando meta…" /> : 'Crear meta'}
-              </button>
-            </form>
-          </div>
-        </Modal>
       )}
 
       {selRow && (
