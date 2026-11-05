@@ -127,12 +127,12 @@ begin
   select count(*) into n from public.debts;
   assert n = 0, 'C no debe ver deudas ajenas';
 
-  -- Perfil: lo ven los dos del hogar, solo el dueño lo edita, el ajeno no lo ve
+  -- Perfil: privado de su dueño (ni la pareja lo lee); solo él lo edita; el ajeno tampoco lo ve
   perform set_config('request.jwt.claims', json_build_object('sub', a)::text, true);
   insert into public.profiles (user_id, household_id, profession) values (a, h1, 'Enfermera');
   perform set_config('request.jwt.claims', json_build_object('sub', b)::text, true);
   select count(*) into n from public.profiles;
-  assert n = 1, 'B debe ver el perfil de A';
+  assert n = 0, 'B (la pareja) no debe ver el perfil de A';
   update public.profiles set profession = 'x' where user_id = a;
   get diagnostics n = row_count;
   assert n = 0, 'No se edita el perfil ajeno';
