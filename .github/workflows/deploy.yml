@@ -80,9 +80,9 @@ jobs:
       - name: Conectar con el proyecto
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
       - name: Migraciones pendientes
-        run: supabase db push --dry-run
+        run: supabase db push --remote --dry-run
       - name: Aplicar migraciones
-        run: supabase db push
+        run: supabase db push --remote
       - name: Publicar la función notify
         run: supabase functions deploy notify --project-ref "$SUPABASE_PROJECT_ID"
 
