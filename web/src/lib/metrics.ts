@@ -82,15 +82,23 @@ export function computeMetrics(
     catSpent.set(e.category_id, (catSpent.get(e.category_id) ?? 0) + e.amount)
   }
 
-  // Reparto exacto: lo compartido se reparte según lo acordado (por defecto, por igual) y si queda un peso suelto va a la primera persona
+  // Reparto exacto en pesos enteros: cada quien recibe su parte hacia abajo y los pesos sueltos van a quien
+  // le faltaba más para completar la suya (así 58 % de $100 es $58 y no $57 por los decimales del computador)
   const split = splitOf(members)
-  const parts = members.map((m) => Math.floor(portion(shared, split, m.user_id)))
+  const exact = members.map((m) => portion(shared, split, m.user_id))
+  const parts = exact.map((x) => Math.floor(x + 1e-6))
   let remainder = members.length > 0 ? shared - parts.reduce((t, x) => t + x, 0) : 0
+  const byGap = exact.map((x, i) => ({ i, gap: x - (parts[i] ?? 0) })).sort((x, y) => y.gap - x.gap || x.i - y.i)
+  for (const { i } of byGap) {
+    if (remainder <= 0) break
+    parts[i] = (parts[i] ?? 0) + 1
+    remainder -= 1
+  }
   const people: PersonStats[] = members.map((m) => {
     const mine = expenses.filter((e) => e.paid_by === m.user_id)
     const paidShared = sum(mine.filter((e) => e.shared))
     const paidPersonal = sum(mine.filter((e) => !e.shared))
-    const fairShare = (parts[members.indexOf(m)] ?? 0) + (remainder-- > 0 ? 1 : 0)
+    const fairShare = parts[members.indexOf(m)] ?? 0
     return {
       userId: m.user_id,
       name: m.display_name,

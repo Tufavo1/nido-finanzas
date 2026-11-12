@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:db": "docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/rls.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/hogares.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/admin.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/aislamiento.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/deudas_perfil_invitacion.sql",
+    "test:db": "docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/rls.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/hogares.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/admin.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/aislamiento.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/deudas_perfil_invitacion.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/fecha_nacimiento.sql",
     "test:db:mutacion": "docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 -v mutar=1 < ../supabase/tests/aislamiento.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/deudas_perfil_invitacion.sql",
     "test:e2e": "node e2e/e2e.cjs && node e2e/mfa.cjs && node e2e/google-setup.cjs",
     "deploy": "npm run build && npx wrangler deploy"

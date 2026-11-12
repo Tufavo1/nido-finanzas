@@ -51,13 +51,32 @@ export function upstreamPath(pathname: string): string | null {
 
 export const isSensitive = (path: string): boolean => SENSITIVE_AUTH.test(path)
 
-/** Rechaza todo lo que venga de otro sitio (CSRF, usar el proxy desde páginas ajenas) */
-export function isSameSite(headers: Headers, selfOrigin: string): boolean {
+const isWrite = (method: string): boolean => !['GET', 'HEAD'].includes(method.toUpperCase())
+
+/**
+ * Rechaza todo lo que venga de otro sitio (CSRF, usar el proxy desde páginas ajenas).
+ * Leer acepta navegación directa. Escribir (POST, PATCH, PUT, DELETE) exige la prueba: el navegador
+ * siempre manda «Origin» en esas peticiones, y debe ser el de este mismo sitio.
+ */
+export function isSameSite(headers: Headers, selfOrigin: string, method = 'GET'): boolean {
   const origin = headers.get('origin')
-  if (origin !== null && origin !== selfOrigin) return false
   const site = headers.get('sec-fetch-site')
+  if (isWrite(method)) return origin === selfOrigin && (site === null || site === 'same-origin')
+  if (origin !== null && origin !== selfOrigin) return false
   return site === null || site === 'same-origin' || site === 'none'
 }
+
+/** Formatos que un formulario HTML de otro sitio puede enviar sin permiso previo del navegador */
+const FORM_TYPES = ['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain']
+
+/** Las escrituras solo se aceptan en JSON (lo único que usa la app): un formulario ajeno no puede fabricarlas */
+export function isAllowedContentType(method: string, contentType: string | null): boolean {
+  if (!isWrite(method) || contentType === null) return true
+  const type = contentType.split(';')[0]!.trim().toLowerCase()
+  return !FORM_TYPES.includes(type)
+}
+
+export const isWriteMethod = isWrite
 
 const FORWARD_REQUEST = new Set([
   'accept',

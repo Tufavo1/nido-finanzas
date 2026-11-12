@@ -26,12 +26,13 @@ export const HELP_GROUPS: HelpGroup[] = [
         id: 'registrar',
         title: 'Registrar: un solo lugar para anotar',
         hint: 'Gastos, pagos, deudas, categorías, gastos fijos y metas',
-        text: 'Todo lo que se anota o se crea en la app se hace desde el botón Registrar. Ahí eliges qué quieres hacer y la app te guía paso a paso. Las otras pantallas son para mirar, corregir o borrar.',
+        text: 'Todo lo que se anota o se crea en la app se hace desde el botón Registrar. Se abre directo en el monto, para anotar un gasto en segundos. Las otras pantallas son para mirar, corregir o borrar.',
         steps: [
-          'Toca el botón **Registrar**. Verás **¿Qué quieres hacer?**',
-          '**Registrar un pago**: un gasto, la cuota de una deuda o un aporte a una meta. Eliges en qué fue, el monto con el teclado y guardas.',
-          '**Registrar una deuda**, **una categoría**, **un gasto fijo** o **una meta**: se abre el formulario para crearla. Al guardar, vuelves al inicio.',
-          'En cualquier paso, el botón **Volver** te lleva a la pregunta anterior. Si te equivocas en un gasto, corrígelo o bórralo en **Gastos**.',
+          'Toca el botón **Registrar**, escribe el **monto** con el teclado y **de qué fue**.',
+          'La **categoría** y si es **compartido o personal** se marcan solos según lo que anotaste antes. Si no acierta, toca otra.',
+          'Toca **Guardar**. Para pagar una deuda o aportar a una meta, cambia arriba de **Gasto** a **Pagar deuda** o **Aportar a meta**.',
+          'En **Más opciones** cambias la fecha, quién pagó o el descuento. Con **Aviso del banco** pegas el mensaje de tu compra y se llena solo.',
+          'En **Crear otra cosa** agregas un **gasto fijo**, una **deuda**, una **meta** o una **categoría**. Si te equivocas en un gasto, corrígelo o bórralo en **Gastos**.',
         ],
       },
       {
@@ -40,7 +41,7 @@ export const HELP_GROUPS: HelpGroup[] = [
         hint: 'Ver, filtrar y corregir lo gastado; ponerle un límite mensual a cada categoría',
         text: 'Cada categoría agrupa un tipo de gasto: supermercado, transporte, ocio. Si le pones un límite de gasto al mes, la barra te muestra cuánto llevan gastado y cuánto les queda.',
         steps: [
-          'Para crear una categoría nueva usa **Registrar > Registrar una categoría**.',
+          'Para crear una categoría nueva usa **Registrar > Crear otra cosa > Categoría**.',
           'En **Límite por categoría**, toca una categoría y luego **Editar información**.',
           'Escribe cuánto quieren gastar **al mes** en ella y guarda.',
           'Mira la barra: mientras más llena, más cerca del límite. Si se pone roja, ya se pasaron.',
@@ -54,7 +55,7 @@ export const HELP_GROUPS: HelpGroup[] = [
         hint: 'Arriendo, luz, internet, suscripciones: se anotan solos',
         text: 'Son pagos que se repiten todos los meses con el mismo monto: arriendo, luz, internet, celular, suscripciones. Los anotas una sola vez y la app los agrega a tus gastos sola. Para compras que cambian, como el supermercado, usa el botón Registrar.',
         steps: [
-          'Toca **Registrar > Registrar un gasto fijo**.',
+          'Toca **Registrar > Crear otra cosa > Gasto fijo**.',
           'Elige qué es, por ejemplo **Arriendo**, y escribe cuánto pagas al mes.',
           'Elige el **día del mes** en que se paga y su categoría.',
           'Listo: cada mes aparecerá solo en tus gastos. Toca una tarjeta para editarlo, pausarlo o borrarlo.',
@@ -78,10 +79,10 @@ export const HELP_GROUPS: HelpGroup[] = [
         hint: 'Tarjetas, créditos y préstamos con su fecha de término',
         text: 'Una deuda es plata que todavía tienes que devolver: una tarjeta, un crédito del banco o un préstamo de un familiar. Al anotarla, la app te muestra cuánto falta y en cuántos meses terminas.',
         steps: [
-          'Toca **Registrar > Registrar una deuda**.',
+          'Toca **Registrar > Crear otra cosa > Deuda**.',
           'Ponle un nombre que reconozcas, por ejemplo Tarjeta Banco Estado, y escribe **cuánto falta pagar hoy**.',
           'Si lo sabes, agrega la **cuota mensual** y el **interés**. Con eso calculamos en cuántos meses terminas.',
-          'Cada vez que pagues una cuota, abre la deuda y toca **Anotar un pago** (o usa **Registrar > Registrar un pago**). El saldo baja solo.',
+          'Cada vez que pagues una cuota, abre la deuda y toca **Anotar un pago** (o usa **Registrar > Pagar deuda**). El saldo baja solo.',
           'Cada persona maneja **sus propias deudas**: las de tu pareja las ves, pero no puedes editarlas, borrarlas ni anotarles pagos. Las deudas **de los dos** las manejan ambos.',
         ],
       },
@@ -91,10 +92,10 @@ export const HELP_GROUPS: HelpGroup[] = [
         hint: 'Un viaje, un fondo de imprevistos, un electrodoméstico',
         text: 'Una meta es algo que quieren pagar con ahorro: un viaje, el ahorro para imprevistos, un electrodoméstico. Cada aporte que anotan acerca la barra al objetivo.',
         steps: [
-          'Toca **Registrar > Registrar una meta**.',
+          'Toca **Registrar > Crear otra cosa > Meta**.',
           'Escribe qué quieren lograr y **cuánto cuesta**.',
           'Si tienen una fecha límite, agrégala: la app calcula cuánto aportar **por mes**.',
-          'Cada vez que ahorren, abre la meta y toca **Aportar a esta meta**, o usa **Registrar > Registrar un pago** y elige la meta.',
+          'Cada vez que ahorren, abre la meta y toca **Aportar a esta meta**, o usa **Registrar > Aportar a meta**.',
         ],
       },
       {

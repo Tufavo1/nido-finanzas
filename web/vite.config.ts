@@ -105,6 +105,8 @@ export default defineConfig(({ command, mode }) => {
           categories: ['finance', 'productivity'],
           display_override: ['standalone', 'minimal-ui'],
           prefer_related_applications: false,
+          // Android: Contigo aparece al «Compartir» un texto (por ejemplo, el aviso de compra del banco) y abre Registrar con él
+          share_target: { action: '/', method: 'GET', params: { title: 'title', text: 'text' } },
           shortcuts: [
             { name: 'Registrar un gasto', short_name: 'Registrar', url: '/?tab=add', icons: [{ src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' }] },
             { name: 'Ver mis gastos', short_name: 'Gastos', url: '/?tab=expenses', icons: [{ src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' }] },

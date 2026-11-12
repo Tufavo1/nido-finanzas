@@ -41,3 +41,15 @@ describe('extraPaymentEffect: qué pasa si pagas más', () => {
     expect(extraPaymentEffect(100_000, 1_000, 2, 500)).toBeNull()
   })
 })
+
+describe('deudas que terminan justo en una cuota (decimales del computador)', () => {
+  // $210 al 10 % mensual con cuota de $121: mes 1 queda en 110, mes 2 queda en 0 exacto
+  it('payoffPlan no inventa un mes extra por un residuo de decimales', () => {
+    expect(payoffPlan(210, 121, 10)).toEqual({ months: 2, interest: 32 })
+    expect(payoffPlan(2_100_000, 1_210_000, 10)?.months).toBe(2)
+  })
+  it('monthsToPayoff da el mismo resultado', () => {
+    expect(monthsToPayoff(210, 121, 10)).toBe(2)
+    expect(monthsToPayoff(2_100_000, 1_210_000, 10)).toBe(2)
+  })
+})
