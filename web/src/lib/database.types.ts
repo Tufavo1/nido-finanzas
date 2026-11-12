@@ -293,14 +293,14 @@ isOneToOne: false
                   ]
                 },"profiles": {
                   Row: {
-                    "dependents": number,"employment": string,"household_id": string,"profession": string,"updated_at": string,"user_id": string
+                    "birth_date": string | null,"dependents": number,"employment": string,"household_id": string,"profession": string,"updated_at": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "dependents"?: number,"employment"?: string,"household_id": string,"profession"?: string,"updated_at"?: string,"user_id": string
+                    "birth_date"?: string | null,"dependents"?: number,"employment"?: string,"household_id": string,"profession"?: string,"updated_at"?: string,"user_id": string
                   }
                   Update: {
-                    "dependents"?: number,"employment"?: string,"household_id"?: string,"profession"?: string,"updated_at"?: string,"user_id"?: string
+                    "birth_date"?: string | null,"dependents"?: number,"employment"?: string,"household_id"?: string,"profession"?: string,"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
                     {

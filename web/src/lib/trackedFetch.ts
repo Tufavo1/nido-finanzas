@@ -1,4 +1,17 @@
 import { authLabel, beginRead, beginWait, beginWrite } from './activity'
+import { isIdempotentMethod, withResilience } from './resilience'
+
+/** Leer: hasta 20 s por intento y un reintento. El proxy ya reintenta por su lado y contesta antes de ese plazo. */
+const READ = { retries: 1, timeoutMs: 20_000, backoffMs: 400 }
+/** Guardar, editar, borrar o iniciar sesión: un solo intento de hasta 30 s. Repetirlo sin duplicar es tarea de lib/idempotency.ts. */
+const WRITE = { retries: 0, timeoutMs: 30_000 }
+
+type Input = Parameters<typeof fetch>[0]
+type Init = Parameters<typeof fetch>[1]
+
+/** fetch con tiempo máximo; las lecturas además se reintentan si la red o el servicio fallan un momento */
+const send = (method: string, input: Input, init: Init): Promise<Response> =>
+  withResilience((signal) => fetch(input, { ...init, signal }), { ...(isIdempotentMethod(method) ? READ : WRITE), signal: init?.signal })
 
 /** Cuánto espera una escritura a que vuelva el internet antes de intentarlo igual (y mostrar el error si falla) */
 const WAIT_ONLINE_MS = 20000
@@ -32,14 +45,14 @@ export const trackedFetch: typeof fetch = async (input, init) => {
 
   if (isAuth) {
     const label = authLabel(url, method)
-    if (label === null) return fetch(input, init)
+    if (label === null) return send(method, input, init)
     return track(method, label, input, init)
   }
 
   if (method === 'GET' || method === 'HEAD') {
     const end = beginRead()
     try {
-      return await fetch(input, init)
+      return await send(method, input, init)
     } finally {
       end()
     }
@@ -52,7 +65,7 @@ async function track(method: string, label: string, input: Parameters<typeof fet
   const end = beginWrite(method, label)
   try {
     await waitOnline()
-    return await fetch(input, init)
+    return await send(method, input, init)
   } finally {
     end()
   }

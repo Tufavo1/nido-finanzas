@@ -29,6 +29,7 @@ export default function Expenses({
   scope,
   onScope,
   onRegister,
+  initialCategory,
 }: {
   hh: Household
   data: HouseholdData
@@ -38,6 +39,8 @@ export default function Expenses({
   onScope: (s: Scope) => void
   /** Lleva a Registrar */
   onRegister?: () => void
+  /** Categoría que parte filtrada (cuando se llega tocando una en Inicio) */
+  initialCategory?: string
 }) {
   // En el celular, solo lo esencial; en el computador, todos los análisis
   const desktop = useDesktop()
@@ -58,7 +61,7 @@ export default function Expenses({
   const [eDate, setEDate] = useState('')
   const [nameValue, setNameValue] = useState('')
   const [archiveId, setArchiveId] = useState<string | null>(null)
-  const [catFilter, setCatFilter] = useState<string>('all')
+  const [catFilter, setCatFilter] = useState<string>(initialCategory ?? 'all')
   const [showAll, setShowAll] = useState(false)
   const [showAllCats, setShowAllCats] = useState(false)
   const [dayFilter, setDayFilter] = useState<string>('all')

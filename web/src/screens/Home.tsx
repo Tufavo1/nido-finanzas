@@ -21,7 +21,7 @@ import { compact, monthGrid } from '../lib/calendar'
 import { daysLeftInMonth, money } from '../lib/format'
 import { analyzeSalary, myDebtShare } from '../lib/finance'
 import { monthKey as monthKeyOf, myShare } from '../lib/analysis'
-import { dayExpenses, deltaText, latestExpenses, monthStatus } from '../lib/homeSummary'
+import { dayExpenses, deltaText, latestExpenses, monthStatus, topCategories } from '../lib/homeSummary'
 import { pendingFixedThisMonth } from '../lib/upcoming'
 import { computeMetrics } from '../lib/metrics'
 import type { AlertTab, MoneySection } from '../lib/engine'
@@ -35,6 +35,10 @@ interface Props {
   onMonth: (delta: number) => void
   onGo: (tab: AlertTab, section?: MoneySection) => void
   onSettings: () => void
+  /** Abre Gastos mostrando solo esa categoría */
+  onCategory: (categoryId: string) => void
+  /** Abre Mi perfil en «Mi cuenta» */
+  onProfile: () => void
   onToast: Notify
   scope: Scope
   onScope: (s: Scope) => void
@@ -51,7 +55,7 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
   )
 }
 
-export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSettings, onToast, scope, onScope }: Props) {
+export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSettings, onCategory, onProfile, onToast, scope, onScope }: Props) {
   const [day, setDay] = useState<number | null>(null)
   const [graphs, setGraphs] = useState(false)
   const [settle, setSettle] = useState(false)
@@ -128,6 +132,8 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
 
   const cats = sub.byCategory.filter((c) => c.spent > 0 || (view === 'all' && c.budget > 0)).slice(0, 6)
   const latest = latestExpenses(viewExpenses)
+  const top = topCategories(sub.byCategory, sub.total, view === 'all')
+  const myProfile = data.profiles.find((p) => p.user_id === hh.me.user_id)
   const dayList = dayExpenses(viewExpenses, day)
   const heroLabel = view === 'all' ? 'Gastado en el mes' : view === hh.me.user_id ? 'Te corresponde en el mes' : `Le corresponde a ${byId.get(view)?.display_name ?? ''}`
 
@@ -135,6 +141,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
     { key: 'expense', label: 'Anotar tu primer gasto', done: data.expenses.length > 0 || data.prevExpenses.length > 0, go: () => onGo('add') },
     { key: 'salary', label: 'Agregar tu sueldo', done: !!data.salary, go: () => onGo('money', 'salary') },
     { key: 'goal', label: 'Crear una meta de ahorro', done: data.goals.length > 0, go: () => onGo('goals') },
+    ...(data.profileReady ? [{ key: 'birth', label: 'Agregar tu fecha de nacimiento', done: !!myProfile?.birth_date, go: onProfile }] : []),
   ]
   const stepsDone = steps.filter((x) => x.done).length
 
@@ -216,6 +223,27 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
           </div>
         </div>
       </section>
+
+      {/* En qué se fue: pocas categorías, de mayor a menor; tocar una abre sus gastos */}
+      {top.length > 0 && (
+        <section className="card" aria-labelledby="home-top">
+          <strong id="home-top">En qué se fue</strong>
+          <div>
+            {top.map((c) => (
+              <button type="button" className="top-cat" key={c.id} onClick={() => onCategory(c.id)} aria-label={`${c.name}: ${money(c.spent)}. Ver sus gastos`}>
+                <span className="row between">
+                  <span className="ellipsis">{c.name}</span>
+                  <span className={c.over ? 'num strong over' : 'num strong'}>{money(c.spent)}</span>
+                </span>
+                <span className="bar" aria-hidden="true">
+                  <span style={{ width: `${c.pct}%`, background: c.over ? 'var(--warn)' : 'var(--accent)' }} />
+                </span>
+                {c.left !== null && <span className={c.over ? 'over small-text' : 'muted small-text'}>{c.left >= 0 ? `Quedan ${money(c.left)}` : `Se pasó por ${money(-c.left)}`}</span>}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {data.expenses.length === 0 && (
         <section className="card empty" aria-labelledby="home-empty">

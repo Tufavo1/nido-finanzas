@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import type { Tables } from './lib/database.types'
 import Logo from './components/Logo'
+import ErrorPage from './components/ErrorPage'
 import Shell from './Shell'
 import { consumeOAuthCallback } from './lib/oauth'
 import { consumeRecoveryLink } from './lib/recovery'
@@ -25,43 +26,53 @@ export interface Household {
   me: Tables<'members'>
 }
 
+/** Falla al cargar el hogar, con el código de la respuesta (0 = sin conexión) */
+class LoadError extends Error {
+  status: number
+  constructor(status: number) {
+    super('No se pudo cargar el hogar')
+    this.status = status
+  }
+}
+
 async function loadHousehold(userId: string): Promise<Household | null> {
-  const { data: me, error } = await supabase
+  const { data: me, error, status } = await supabase
     .from('members')
     .select('*')
     .eq('user_id', userId)
     .is('left_at', null)
     .maybeSingle()
-  if (error) throw error
+  if (error) throw new LoadError(status)
   if (!me) return null
 
   const [h, m] = await Promise.all([
     supabase.from('households').select('*').eq('id', me.household_id).single(),
     supabase.from('members').select('*').eq('household_id', me.household_id).order('joined_at'),
   ])
-  if (h.error) throw h.error
-  if (m.error) throw m.error
+  if (h.error) throw new LoadError(h.status)
+  if (m.error) throw new LoadError(m.status)
   return { household: h.data, members: m.data.filter((x) => !x.left_at), everyone: m.data, me }
 }
 
-function Splash({ text, onRetry }: { text?: string; onRetry?: () => void }) {
+function Splash() {
   return (
     <div className="splash">
       <Logo size={56} pulse />
-      {text && <p className="muted">{text}</p>}
-      {onRetry && (
-        <button className="btn" type="button" onClick={onRetry}>
-          Reintentar
-        </button>
-      )}
     </div>
   )
+}
+
+/** Solo en desarrollo: «/?error=403» muestra la pantalla de ese error para revisarla */
+function previewStatus(): number | null {
+  if (!import.meta.env.DEV) return null
+  const v = new URLSearchParams(location.search).get('error')
+  return v !== null && /^\d{1,3}$/.test(v) ? Number(v) : null
 }
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [hh, setHh] = useState<Household | null | undefined>(undefined)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<number | null>(null)
 
   // Entró desde el correo de recuperación: debe elegir su contraseña nueva antes de usar la app
   const [recovering, setRecovering] = useState(false)
@@ -95,7 +106,7 @@ export default function App() {
       setLoadError(null)
       setHh(await loadHousehold(userId))
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'No se pudo cargar el hogar')
+      setLoadError(e instanceof LoadError ? e.status : 0)
     }
   }, [userId])
 
@@ -104,6 +115,8 @@ export default function App() {
     void reload()
   }, [reload])
 
+  const preview = previewStatus()
+  if (preview !== null) return <ErrorPage status={preview} onRetry={() => location.reload()} onExit={() => location.assign('/')} />
   if (session === undefined) return <Splash />
   if (!session)
     return (
@@ -134,7 +147,15 @@ export default function App() {
       </Suspense>
     )
   }
-  if (loadError) return <Splash text={loadError} onRetry={() => void reload()} />
+  if (loadError !== null)
+    return (
+      <ErrorPage
+        status={loadError}
+        onRetry={() => void reload()}
+        onExit={() => void supabase.auth.signOut()}
+        exitLabel="Cerrar sesión"
+      />
+    )
   if (hh === undefined) return <Splash />
   if (hh === null)
     return (
