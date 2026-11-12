@@ -127,33 +127,33 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
     label: 'Ayuda de Registrar',
     slides: [
       {
-        title: 'Un solo lugar para todo',
-        text: 'Desde **Registrar** eliges **qué quieres hacer**: anotar un **pago** (gasto, deuda o aporte a una meta) o crear una **deuda**, **categoría**, **gasto fijo** o **meta**. No hace falta ir a otras pantallas.',
+        title: 'Primero el monto',
+        text: 'Toca los **números**, escribe **de qué fue** y toca **Guardar**. Eso es todo.',
         art: plus,
       },
       {
-        title: 'Registrar un pago: 1. ¿En qué fue?',
-        text: 'Elige **Registrar un pago** y toca una **categoría** (Supermercado, Transporte…), una de tus **deudas** o una **meta**. Si eliges deuda o meta, pasas directo al monto.',
+        title: 'La categoría se elige sola',
+        text: 'La app recuerda **dónde anotaste antes** ese gasto y marca la categoría y si es **compartido o personal**. Si no acierta, toca otra.',
         art: badge('list'),
       },
       {
-        title: '2. Personal o compartido',
-        text: 'Solo para gastos: **Compartido** si lo pagan entre los dos; **Personal** si es solo tuyo.',
-        art: badge('user'),
-      },
-      {
-        title: '3. Descuento',
-        text: 'Solo para gastos: si el precio venía **rebajado**, toca el porcentaje o escribe otro. La app **calcula lo que realmente pagaste**.',
+        title: 'Pagar una deuda o aportar a una meta',
+        text: 'Arriba cambia de **Gasto** a **Pagar deuda** o **Aportar a meta**, elige cuál y escribe el monto.',
         art: badge('target'),
       },
       {
-        title: '4. Monto y guardar',
-        text: 'Toca los **números** y luego **Guardar**, **Pagar** o **Aportar**. En un gasto cuenta **de qué es** (obligatorio). En **Cambiar quién pagó o la fecha** puedes ajustar esos datos.',
+        title: 'Más opciones',
+        text: 'Ahí cambias la **fecha**, **quién pagó** o anotas un **descuento**. Si no tocas nada, queda con fecha de hoy.',
+        art: badge('user'),
+      },
+      {
+        title: 'Aviso del banco',
+        text: 'Copia el mensaje de tu compra y toca **Aviso del banco**: el monto y el comercio se llenan solos.',
         art: plus,
       },
       {
-        title: 'Crear algo nuevo',
-        text: 'Elige **Registrar una deuda**, **una categoría**, **un gasto fijo** o **una meta**, completa el formulario y guarda. Con **Volver** regresas a la pregunta anterior.',
+        title: 'Crear otra cosa',
+        text: 'Al final está **Crear otra cosa**: un **gasto fijo**, una **deuda**, una **meta** o una **categoría**.',
         art: plus,
       },
     ],
@@ -168,7 +168,7 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
       },
       {
         title: 'Crear una meta',
-        text: 'Usa **Registrar > Registrar una meta**, ponle un nombre, di cuánto quieren juntar y para cuándo. La app calcula **cuánto aportar al mes**.',
+        text: 'Usa **Registrar > Crear otra cosa > Meta**, ponle un nombre, di cuánto quieren juntar y para cuándo. La app calcula **cuánto aportar al mes**.',
         art: plus,
       },
       {

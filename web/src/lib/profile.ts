@@ -1,4 +1,5 @@
 import type { Profile } from './data'
+import { ageOn, lifeStageTip } from './birth'
 
 export type Employment = 'dependiente' | 'independiente' | 'honorarios' | 'estudiante' | 'otro'
 
@@ -155,7 +156,10 @@ export interface ProfileAdvice {
   tips: string[]
 }
 
-export function adviceFor(p: Pick<Profile, 'profession' | 'employment' | 'dependents'> | null | undefined): ProfileAdvice {
+export function adviceFor(
+  p: (Pick<Profile, 'profession' | 'employment' | 'dependents'> & { birth_date?: string | null }) | null | undefined,
+  now: Date = new Date(),
+): ProfileAdvice {
   const employment = (p?.employment ?? 'dependiente') as Employment
   const group = professionGroup(p?.profession ?? '')
   const dependents = p?.dependents ?? 0
@@ -188,6 +192,9 @@ export function adviceFor(p: Pick<Profile, 'profession' | 'employment' | 'depend
       `Con ${dependents} ${dependents === 1 ? 'persona a cargo' : 'personas a cargo'} suma un mes extra de ahorro para imprevistos y revisa un seguro de vida o de salud.`,
     )
   }
+  const age = p?.birth_date ? ageOn(p.birth_date, now) : null
+  const stage = age === null ? null : lifeStageTip(age)
+  if (stage) tips.push(stage)
   if (tips.length === 0) {
     tips.push('Cuéntanos tu profesión y situación laboral para darte consejos a tu medida.')
   }

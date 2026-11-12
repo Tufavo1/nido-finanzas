@@ -20,6 +20,7 @@ export default function Profile({
   onToast,
   onGoSalary,
   onBack,
+  initialOpen = 'fin',
 }: {
   hh: Household
   data: HouseholdData
@@ -28,10 +29,12 @@ export default function Profile({
   onToast: Notify
   onGoSalary: () => void
   onBack?: () => void
+  /** Sección que parte abierta: el perfil financiero o «Mi cuenta» (cuando se viene a completar un dato) */
+  initialOpen?: 'fin' | 'account'
 }) {
   const partner = hh.members.find((m) => m.user_id !== hh.me.user_id)
   // Se pueden abrir varios a la vez; parte abierto el perfil financiero
-  const [open, setOpen] = useState<Set<string>>(new Set(['fin']))
+  const [open, setOpen] = useState<Set<string>>(new Set([initialOpen]))
   const toggle = (id: string) =>
     setOpen((cur) => {
       const next = new Set(cur)

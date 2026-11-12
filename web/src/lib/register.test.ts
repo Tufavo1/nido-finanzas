@@ -79,7 +79,9 @@ describe('pagos de deuda y aportes a metas', () => {
     expect(saveBlocker(bare, TODAY, 'goal')).toBeNull()
   })
   it('un gasto igual sí las exige', () => {
-    expect(saveBlocker(bare, TODAY)).toBe('category')
+    // Se pide en el orden de la pantalla: primero de qué fue, después la categoría
+    expect(saveBlocker(bare, TODAY)).toBe('note')
+    expect(saveBlocker({ ...bare, note: 'Pan' }, TODAY)).toBe('category')
   })
   it('sin monto bloquea también en un pago', () => {
     expect(saveBlocker({ ...bare, digits: '' }, TODAY, 'debt')).toBe('amount')
@@ -135,5 +137,14 @@ describe('initialDraft (R7)', () => {
   })
   it('sin categorías el borrador queda sin categoría elegida', () => {
     expect(initialDraft(undefined, 'ana').catId).toBe('')
+  })
+})
+
+describe('saveLabel: registrar con el monto primero', () => {
+  it('sin categoría reconocida pide elegirla', () => {
+    expect(saveLabel('category', 5000)).toBe('Elige la categoría')
+  })
+  it('una fecha futura se avisa en el botón', () => {
+    expect(saveLabel('date', 5000)).toBe('La fecha no puede ser futura')
   })
 })

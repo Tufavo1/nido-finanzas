@@ -1,6 +1,8 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import type { Household } from './App'
 import ScreenLoader from './components/ScreenLoader'
+import ErrorPage from './components/ErrorPage'
+import { supabase } from './lib/supabase'
 import Icon from './components/Icon'
 import InstallBanner from './components/InstallBanner'
 import UpdateBanner from './components/UpdateBanner'
@@ -17,6 +19,7 @@ const Expenses = lazy(() => import('./screens/Expenses'))
 const Goals = lazy(() => import('./screens/Goals'))
 import Home from './screens/Home'
 import { resolveScope } from './lib/scope'
+import { readSharedNotice } from './lib/bankNotice'
 import type { Scope } from './lib/scope'
 const Money = lazy(() => import('./screens/Money'))
 const Register = lazy(() => import('./screens/Register'))
@@ -46,12 +49,22 @@ function warmScreens() {
 
 export default function Shell({ hh, reload }: { hh: Household; reload: () => Promise<void> }) {
   // Los accesos directos de la app instalada abren con ?tab=add, ?tab=expenses, etc.
+  // Aviso del banco con que otra app abrió Contigo (compartir en Android o una automatización)
+  const [notice, setNotice] = useState<string | null>(() => readSharedNotice(location.search, location.hash))
+  useEffect(() => {
+    // El texto no se queda en la dirección ni en el historial del navegador
+    if (notice) history.replaceState(null, '', '/?tab=add')
+  }, [notice])
   const [tab, setTab] = useState<Tab>(() => {
+    if (readSharedNotice(location.search, location.hash)) return 'add'
     const t = new URLSearchParams(location.search).get('tab')
     return TABS.some((x) => x.key === t) ? (t as Tab) : 'home'
   })
   // De quién se ven los datos (hogar, yo o mi pareja): se mantiene al cambiar de pestaña
   const [scopeRaw, setScope] = useState<Scope>('all')
+  // Categoría con la que se abre Gastos al tocarla en Inicio, y sección con la que se abre Mi perfil
+  const [expCat, setExpCat] = useState<string | undefined>(undefined)
+  const [profileOpen, setProfileOpen] = useState<'fin' | 'account'>('fin')
   const scope = resolveScope(scopeRaw, hh.members)
   const { locked, unlock } = useAppLock()
   // Al cambiar de pestaña: título del documento y foco en la pantalla nueva (no al abrir la app)
@@ -136,6 +149,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
 
   function backToNow(message?: string) {
     if (message) setToast(message)
+    setNotice(null)
     const n = new Date()
     setYm({ y: n.getFullYear(), m: n.getMonth() })
     setTab('home')
@@ -145,12 +159,12 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   if (data.error) {
     body = (
       <main className="screen center-y">
-        <p className="error" role="alert">
-          {data.error}
-        </p>
-        <button className="btn" type="button" onClick={() => void data.refresh()}>
-          Reintentar
-        </button>
+        <ErrorPage
+          status={data.errorStatus}
+          onRetry={() => void data.refresh()}
+          onExit={data.errorStatus === 401 || data.errorStatus === 403 ? () => void supabase.auth.signOut() : undefined}
+          exitLabel="Cerrar sesión"
+        />
       </main>
     )
   } else if (!data.ready) {
@@ -160,21 +174,39 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
       </main>
     )
   } else if (tab === 'home') {
-    body = <Home hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} onGo={goTo} onSettings={() => setTab('security')} onToast={setToast} scope={scope} onScope={setScope} />
+    body = (
+      <Home
+        hh={hh} data={data} month={month} isCurrent={isCurrent} onMonth={shiftMonth} onGo={goTo} onSettings={() => setTab('security')}
+        onCategory={(id) => {
+          setExpCat(id)
+          setTab('expenses')
+        }}
+        onProfile={() => {
+          setProfileOpen('account')
+          setTab('profile')
+        }}
+        onToast={setToast}
+        scope={scope}
+        onScope={setScope}
+      />
+    )
   } else if (tab === 'expenses') {
-    body = <Expenses hh={hh} data={data} month={month} onToast={setToast} scope={scope} onScope={setScope} onRegister={() => setTab('add')} />
+    body = <Expenses hh={hh} data={data} month={month} onToast={setToast} scope={scope} onScope={setScope} onRegister={() => setTab('add')} initialCategory={expCat} />
   } else if (tab === 'add') {
-    body = <Register hh={hh} data={data} onSaved={backToNow} onToast={setToast} />
+    body = <Register hh={hh} data={data} onSaved={backToNow} onToast={setToast} notice={notice} />
   } else if (tab === 'money') {
     body = <Money key={moneyNav.n} hh={hh} data={data} month={month} onToast={setToast} section={moneyNav.section} scope={scope} onScope={setScope} />
   } else if (tab === 'goals') {
     body = <Goals hh={hh} data={data} onToast={setToast} scope={scope} onScope={setScope} />
   } else if (tab === 'profile') {
-    body = <Profile hh={hh} data={data} month={month} reload={reload} onToast={setToast} onGoSalary={() => goTo('money', 'salary')} onBack={() => setTab('security')} />
+    body = <Profile hh={hh} data={data} month={month} reload={reload} onToast={setToast} onGoSalary={() => goTo('money', 'salary')} onBack={() => setTab('security')} initialOpen={profileOpen} />
   } else if (tab === 'help') {
     body = <Help onBack={() => setTab('security')} />
   } else {
-    body = <Security hh={hh} reload={reload} onToast={setToast} onHelp={() => setTab('help')} onProfile={() => setTab('profile')} />
+    body = <Security hh={hh} reload={reload} onToast={setToast} onHelp={() => setTab('help')} onProfile={() => {
+      setProfileOpen('fin')
+      setTab('profile')
+    }} />
   }
 
   if (locked) return <LockScreen onUnlock={unlock} />
@@ -208,7 +240,11 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
             type="button"
             className={t.key === 'add' ? 'tab add' : 'tab'}
             aria-current={tab === t.key ? 'page' : undefined}
-            onClick={() => setTab(t.key)}
+            onClick={() => {
+              setExpCat(undefined)
+              setNotice(null)
+              setTab(t.key)
+            }}
           >
             {t.key === 'add' ? (
               <span className="plus">
