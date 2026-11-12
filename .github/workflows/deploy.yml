@@ -1,3 +1,4 @@
+
 name: Despliegue
 
 on:
@@ -9,11 +10,11 @@ on:
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
-# Sin permisos de escritura sobre el repositorio
+# Solo lectura del repositorio
 permissions:
   contents: read
 
-# Un despliegue a la vez, y nunca se corta uno a medias
+# Evita despliegues simultáneos
 concurrency:
   group: despliegue-produccion
   cancel-in-progress: false
@@ -23,51 +24,77 @@ jobs:
     name: Verificar (lint, tipos y pruebas)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
     defaults:
       run:
         working-directory: web
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Descargar código
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
-      - run: npx tsc -b
-      - run: npm run lint
-      - run: npm test
-      - name: Vulnerabilidades en dependencias de producción
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Verificar TypeScript
+        run: npx tsc -b
+
+      - name: Ejecutar ESLint
+        run: npm run lint
+
+      - name: Ejecutar pruebas
+        run: npm test
+
+      - name: Auditar dependencias de producción
         run: npm audit --omit=dev --audit-level=high
 
   base-de-datos:
-    name: Migraciones y función (Supabase)
+    name: Migraciones y funciones (Supabase)
     needs: verificar
     if: github.ref == 'refs/heads/main' && github.event.repository.fork == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
+
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Descargar código
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: supabase/setup-cli@v1
+
+      - name: Instalar Supabase CLI
+        uses: supabase/setup-cli@v1
         with:
           version: latest
-      - name: Conectar con el proyecto en IPv4
-        run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --network 4
-      - name: Migraciones pendientes
-        run: supabase db push --remote --dry-run
+
+      - name: Validar configuración
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN" || (echo "Falta SUPABASE_ACCESS_TOKEN" && exit 1)
+          test -n "$SUPABASE_DB_PASSWORD" || (echo "Falta SUPABASE_DB_PASSWORD" && exit 1)
+          test -n "$SUPABASE_PROJECT_ID" || (echo "Falta SUPABASE_PROJECT_ID" && exit 1)
+
+      - name: Verificar migraciones pendientes
+        run: supabase db push --dry-run --remote="$SUPABASE_PROJECT_ID"
+
       - name: Aplicar migraciones
-        run: supabase db push --remote
-      - name: Publicar la función notify
-        run: supabase functions deploy notify --project-ref "$SUPABASE_PROJECT_ID"
+        run: supabase db push --remote="$SUPABASE_PROJECT_ID" --yes
+
+      - name: Publicar función notify
+        run: supabase functions deploy notify --remote="$SUPABASE_PROJECT_ID" --yes
 
   app:
     name: App y proxy (Cloudflare)
@@ -75,25 +102,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
+
     defaults:
       run:
         working-directory: web
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Descargar código
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
-      - name: Compilar
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar aplicación
         run: npm run build
         env:
           VITE_TURNSTILE_SITE_KEY: ${{ vars.VITE_TURNSTILE_SITE_KEY }}
           VITE_VAPID_PUBLIC_KEY: ${{ vars.VITE_VAPID_PUBLIC_KEY }}
           VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+
       - name: Publicar en Cloudflare
         run: npx --yes wrangler@4 deploy
         env:
