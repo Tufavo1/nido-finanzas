@@ -6,11 +6,11 @@ name: Despliegue
 # Antes de usarlo, una sola vez, en GitHub:
 #   1. Settings → Environments → crear «production» con «Required reviewers» (tú) y limitado a la rama main.
 #   2. En ese environment, Secrets:
-#        SUPABASE_ACCESS_TOKEN   token personal de Supabase (Account → Access Tokens)
-#        SUPABASE_DB_PASSWORD    contraseña de la base de datos del proyecto
-#        SUPABASE_PROJECT_ID     identificador del proyecto (las letras antes de .supabase.co)
-#        CLOUDFLARE_API_TOKEN    token con permiso «Edit Cloudflare Workers» solo para esta cuenta
-#        CLOUDFLARE_ACCOUNT_ID   identificador de la cuenta de Cloudflare
+#        SUPABASE_ACCESS_TOKEN    token personal de Supabase (Account → Access Tokens)
+#        SUPABASE_DB_PASSWORD     contraseña de la base de datos del proyecto
+#        SUPABASE_PROJECT_ID      identificador del proyecto (las letras antes de .supabase.co)
+#        CLOUDFLARE_API_TOKEN     token con permiso «Edit Cloudflare Workers» solo para esta cuenta
+#        CLOUDFLARE_ACCOUNT_ID    identificador de la cuenta de Cloudflare
 #      y Variables (son públicas, viajan en la app):
 #        VITE_TURNSTILE_SITE_KEY, VITE_VAPID_PUBLIC_KEY, VITE_GOOGLE_CLIENT_ID
 #   3. Si las migraciones anteriores se aplicaron a mano (pegando el SQL), hay que marcarlas como ya
@@ -80,9 +80,9 @@ jobs:
       - name: Conectar con el proyecto
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
       - name: Migraciones pendientes
-        run: supabase db push --dry-run
+        run: supabase db push --remote --dry-run
       - name: Aplicar migraciones
-        run: supabase db push
+        run: supabase db push --remote
       - name: Publicar la función notify
         run: supabase functions deploy notify --project-ref "$SUPABASE_PROJECT_ID"
 
