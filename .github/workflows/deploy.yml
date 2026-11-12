@@ -60,8 +60,8 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
-      - name: Conectar con el proyecto
-        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+      - name: Conectar con el proyecto en IPv4
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --network 4
       - name: Migraciones pendientes
         run: supabase db push --remote --dry-run
       - name: Aplicar migraciones
