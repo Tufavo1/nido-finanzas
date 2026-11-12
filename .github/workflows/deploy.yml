@@ -85,6 +85,7 @@ jobs:
       - name: Validar configuración
         run: |
           test -n "$SUPABASE_ACCESS_TOKEN" || (echo "Falta SUPABASE_ACCESS_TOKEN" && exit 1)
+          test -n "$SUPABASE_DB_PASSWORD" || (echo "Falta SUPABASE_DB_PASSWORD" && exit 1)
           test -n "$SUPABASE_DB_URL" || (echo "Falta SUPABASE_DB_URL" && exit 1)
           test -n "$SUPABASE_PROJECT_ID" || (echo "Falta SUPABASE_PROJECT_ID" && exit 1)
 
@@ -95,7 +96,7 @@ jobs:
         run: supabase db push --remote="$SUPABASE_DB_URL" --yes
 
       - name: Publicar función notify
-        run: supabase functions deploy notify --project-ref "$SUPABASE_PROJECT_ID"
+        run: supabase functions deploy notify --remote="$SUPABASE_PROJECT_ID" --yes
 
   app:
     name: App y proxy (Cloudflare)
