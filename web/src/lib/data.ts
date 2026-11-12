@@ -45,6 +45,8 @@ export interface HouseholdData {
   /** Se está cargando el mes seleccionado */
   loading: boolean
   error: string | null
+  /** Código de la respuesta que falló (403, 502…); 0 = sin conexión */
+  errorStatus: number
   refresh: () => Promise<void>
 }
 
@@ -95,6 +97,7 @@ export function useData(
   const [financeStale, setFinanceStale] = useState(false)
   const [loadedKey, setLoadedKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [errorStatus, setErrorStatus] = useState(0)
   const [staticReady, setStaticReady] = useState(false)
   const monthSeq = useRef(0)
   const staticSeq = useRef(0)
@@ -126,6 +129,7 @@ export function useData(
     ])
     if (mine !== monthSeq.current) return
     if (exps.error) {
+      setErrorStatus(exps.status)
       setError(exps.error.message)
       return
     }
@@ -156,6 +160,8 @@ export function useData(
     if (mine !== staticSeq.current) return
     const err = cats.error ?? gls.error ?? cons.error
     if (err) {
+      // Las metas y categorías traen el código; si falló otra cosa se trata como falla del servicio
+      setErrorStatus(cats.error ? cats.status : gls.error ? gls.status : 502)
       setError(err.message)
       return
     }
@@ -299,6 +305,7 @@ export function useData(
     ready: loadedKey !== null && staticReady,
     loading: loadedKey !== key,
     error,
+    errorStatus,
     refresh,
   }
 }

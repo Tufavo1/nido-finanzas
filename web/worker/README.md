@@ -20,8 +20,13 @@ Desarrollo: no hace falta Worker. `npm run dev` reenvía `/supabase` al Supabase
 
 - Solo deja pasar `auth`, `rest` (tablas y funciones), `realtime` y la función `notify`. Bloquea el esquema
   de la API, `auth/admin`, storage, graphql y cualquier ruta rara.
-- Rechaza peticiones de otros orígenes (`Origin` / `Sec-Fetch-Site`).
-- Límite por IP (más estricto en login, registro y recuperación) y tope de 1 MB por petición.
+- Rechaza peticiones de otros orígenes (`Origin` / `Sec-Fetch-Site`). Para escribir (POST, PATCH, PUT, DELETE)
+  exige que `Origin` sea el de este sitio y no acepta cuerpos de formulario: solo JSON.
+- Límite por IP: general (240/min), escrituras (90/min) y login, registro y recuperación (20/min). Tope de 1 MB por petición.
+- Tiempo máximo por petición: leer 8 s por intento con un reintento (solo GET/HEAD); escribir 25 s y un solo intento.
+  Sin respuesta contesta 504; sin conexión, 502. Si el servidor real devuelve 502/503/504 se responde con un mensaje propio.
+- Páginas de error: quien abre una dirección con error en el navegador ve una página clara (403, 404, 429, 502, 503, 504…);
+  la app recibe JSON. Los textos viven en `src/lib/httpErrors.ts`.
 - Reenvía solo los encabezados necesarios; no pasa cookies ni `Referer`.
 - Responde sin cookies, sin caché y sin pistas del servidor real; los errores no revelan la dirección.
 

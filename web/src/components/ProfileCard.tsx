@@ -4,6 +4,8 @@ import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
 import { EMPLOYMENT, adviceFor } from '../lib/profile'
 import type { Employment } from '../lib/profile'
+import { BIRTH_WHY, MIN_AGE, ageOn, birthError } from '../lib/birth'
+import { toISO } from '../lib/format'
 import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
 import type { Notify } from './Toast'
@@ -25,15 +27,22 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
   const [profession, setProfession] = useState(mine?.profession ?? '')
   const [employment, setEmployment] = useState<Employment>((mine?.employment as Employment) ?? 'dependiente')
   const [dependents, setDependents] = useState(mine?.dependents ?? 0)
+  const [birth, setBirth] = useState(mine?.birth_date ?? '')
   const [busy, setBusy] = useState(false)
   const setError = useToastError(onToast)
 
-  const advice = adviceFor(editing ? { profession, employment, dependents } : mine)
+  const advice = adviceFor(editing ? { profession, employment, dependents, birth_date: birth || null } : mine)
+  const today = new Date()
+  /** La fecha más reciente que se puede elegir: hoy hace 18 años */
+  const maxBirth = toISO(new Date(today.getFullYear() - MIN_AGE, today.getMonth(), today.getDate()))
+  const age = mine?.birth_date ? ageOn(mine.birth_date, today) : null
 
   async function save(e: FormEvent) {
     e.preventDefault()
     if (!name.trim()) return setError('Tu nombre no puede quedar vacío')
     if (!hhName.trim()) return setError('El hogar necesita un nombre')
+    const birthProblem = data.profileReady ? birthError(birth, new Date()) : null
+    if (birthProblem) return setError(birthProblem)
     setBusy(true)
     setError(null)
 
@@ -48,7 +57,7 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
         ? mine
           ? supabase
               .from('profiles')
-              .update({ profession: profession.trim(), employment, dependents, updated_at: new Date().toISOString() })
+              .update({ profession: profession.trim(), employment, dependents, birth_date: birth, updated_at: new Date().toISOString() })
               .eq('user_id', hh.me.user_id)
           : supabase.from('profiles').insert({
               user_id: hh.me.user_id,
@@ -56,6 +65,7 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
               profession: profession.trim(),
               employment,
               dependents,
+              birth_date: birth,
             })
         : null,
     ])
@@ -95,6 +105,24 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
           </div>
           {data.profileReady ? (
             <>
+              <div className="field">
+                <label htmlFor="p-birth">Fecha de nacimiento</label>
+                <input
+                  id="p-birth"
+                  className="input"
+                  type="date"
+                  required
+                  autoComplete="bday"
+                  min="1900-01-01"
+                  max={maxBirth}
+                  aria-describedby="p-birth-why"
+                  value={birth}
+                  onChange={(e) => setBirth(e.target.value)}
+                />
+                <span className="hint" id="p-birth-why">
+                  {BIRTH_WHY}
+                </span>
+              </div>
               <div className="field">
                 <label htmlFor="p-job">¿A qué te dedicas?</label>
                 <input
@@ -155,6 +183,7 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
             <div className="muted small-text">
               {mine?.profession || 'Sin profesión'} · {EMPLOYMENT.find((o) => o.key === mine?.employment)?.label ?? ''}
               {mine && mine.dependents > 0 ? ` · ${mine.dependents} a cargo` : ''}
+              {age !== null ? ` · ${age} años` : ''}
             </div>
           </div>
         </>

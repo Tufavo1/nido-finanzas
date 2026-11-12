@@ -23,7 +23,7 @@ export const WELCOME_SLIDES: Slide[] = [
   },
   {
     title: 'Registra un gasto en segundos',
-    text: 'Toca **Registrar**, elige en qué se gastó (o qué deuda pagas o meta alimentas), escribe el monto y guarda. Cada gasto queda con la persona que lo pagó, y puedes marcar si hubo descuento.',
+    text: 'Toca **Registrar**, escribe el monto y de qué fue, y guarda. La categoría se marca sola según lo que anotaste antes. Ahí mismo pagas una deuda o aportas a una meta.',
     art: (
       <div className="tour-art tour-add">
         <span className="tour-amount">$12.500</span>
@@ -87,7 +87,7 @@ export const NEWS_SLIDES: Slide[] = [
   },
   {
     title: 'Todo se crea desde Registrar',
-    text: 'En **Registrar** eliges qué quieres hacer: un **pago**, una **deuda**, una **categoría**, un **gasto fijo** o una **meta**. Los botones de agregar de las otras pantallas ya no están.',
+    text: '**Registrar** se abre en el monto para anotar rápido. Al final, en **Crear otra cosa**, agregas una **deuda**, una **categoría**, un **gasto fijo** o una **meta**.',
     art: badge('plus'),
   },
   {
