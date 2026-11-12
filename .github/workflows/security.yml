@@ -3,7 +3,15 @@ name: Seguridad
 on:
   push:
     branches: [main]
+    paths:
+      - 'web/**'
+      - 'supabase/**'
+      - '.github/workflows/security.yml'
   pull_request:
+    paths:
+      - 'web/**'
+      - 'supabase/**'
+      - '.github/workflows/security.yml'
   schedule:
     - cron: '23 5 * * 1' # cada lunes
 
