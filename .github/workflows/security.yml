@@ -3,7 +3,7 @@ name: Seguridad
 on:
   push:
     branches: [main]
-  pull_request:
+  pull_request: read
   schedule:
     - cron: '23 5 * * 1' # cada lunes
 
