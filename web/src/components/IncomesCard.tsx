@@ -10,6 +10,7 @@ import type { Notify } from './Toast'
 import Icon from './Icon'
 import Modal from './Modal'
 import Spin from './Spin'
+import { logError } from '../lib/safeLog'
 
 interface Props {
   hh: Household
@@ -46,7 +47,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
       .insert({ household_id: hh.household.id, amount: n, source: source.trim(), received_on: date || todayISO() })
     setBusy(false)
     if (err) {
-      console.error(err)
+      logError(err, 'IncomesCard')
       setError('No se pudo guardar el ingreso. Intenta de nuevo.')
       return
     }
@@ -89,7 +90,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
       .eq('id', id)
     setBusy(false)
     if (err) {
-      console.error(err)
+      logError(err, 'IncomesCard')
       setError('No se pudo guardar el cambio. Intenta de nuevo.')
       return
     }

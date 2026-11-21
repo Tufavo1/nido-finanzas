@@ -1,0 +1,85 @@
+// Copyright (c) 2026 Dinovance
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace = "cl.dinovance.contigo"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "cl.dinovance.contigo"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    kotlinOptions {
+        jvmTarget = '21'
+    }
+    // Firma de release: la llave vive FUERA del repo (~/.nido-signing/, montada en /signing por docker-android-build.sh).
+    def ksPath = System.getenv('NIDO_KEYSTORE_PROPERTIES')
+    def ksProps = new Properties()
+    if (ksPath && file(ksPath).exists()) file(ksPath).withInputStream { ksProps.load(it) }
+    signingConfigs {
+        release {
+            if (ksProps['storeFile']) {
+                storeFile file(ksProps['storeFile'])
+                storePassword ksProps['storePassword']
+                keyAlias ksProps['keyAlias']
+                keyPassword ksProps['keyPassword']
+            }
+        }
+    }
+    buildTypes {
+        release {
+            debuggable false
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig ksProps['storeFile'] ? signingConfigs.release : null
+        }
+    }
+    // Sin llave no se produce un release: nada de APK sin firmar ni firmado con la llave de depuracion.
+    gradle.taskGraph.whenReady { graph ->
+        if (graph.allTasks.any { it.name == 'assembleRelease' || it.name == 'packageRelease' } && !ksProps['storeFile']) {
+            throw new GradleException('Release sin llave de firma: define NIDO_KEYSTORE_PROPERTIES (ver docs/mobile/release.md)')
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    implementation "androidx.core:core-ktx:$androidxCoreVersion"
+    implementation 'cl.nido:core'
+    testImplementation "junit:junit:$junitVersion"
+    testImplementation 'org.json:json:20240303'
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

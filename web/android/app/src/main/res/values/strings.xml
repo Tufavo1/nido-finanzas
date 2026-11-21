@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- Copyright (c) 2026 Dinovance -->
+<resources>
+    <string name="app_name">Contigo</string>
+    <string name="title_activity_main">Contigo</string>
+    <string name="package_name">cl.dinovance.contigo</string>
+    <string name="custom_url_scheme">cl.dinovance.contigo</string>
+    <string name="capture_service_label">Contigo: detectar gastos</string>
+    <string name="capture_channel_name">Gastos detectados</string>
+    <string name="capture_channel_description">Avisa cuando Contigo detecta un gasto en las notificaciones de tu banco.</string>
+    <string name="capture_notification_title">Gasto detectado</string>
+    <string name="capture_notification_locked">Desbloquea el teléfono para verlo</string>
+    <string name="capture_action_save">Guardar</string>
+    <string name="capture_action_category">Cambiar categoría</string>
+    <string name="capture_action_ignore">Ignorar</string>
+    <string name="guide_title">Permitir que Contigo detecte tus gastos</string>
+    <string name="guide_intro">Contigo solo lee las notificaciones de las apps que tú elijas, solo en tu teléfono. El texto del aviso nunca sale de aquí. Sigue estos pasos en orden.</string>
+    <string name="guide_step_restricted">Paso 1 (Android 13 o más): si instalaste Contigo desde un archivo, abre la ficha de la app, toca los tres puntos de arriba a la derecha y elige «Permitir ajustes restringidos».</string>
+    <string name="guide_open_app_info">Abrir la ficha de Contigo</string>
+    <string name="guide_step_listener">Activa «Contigo» en «Acceso a notificaciones» y confirma el aviso del sistema.</string>
+    <string name="guide_open_listener">Abrir Acceso a notificaciones</string>
+    <string name="guide_step_battery">Si tu teléfono cierra apps para ahorrar batería, deja a Contigo sin restricciones para no perder avisos.</string>
+    <string name="guide_open_battery">Abrir ajustes de batería</string>
+    <string name="guide_close">Listo</string>
+    <string name="capture_possible_duplicate"> · posible duplicado</string>
+    <string name="capture_reminder_title">Gastos pendientes</string>
+    <string name="capture_queue_full">No pude guardar un gasto: la bandeja está llena. Abre Contigo y revísala.</string>
+</resources>

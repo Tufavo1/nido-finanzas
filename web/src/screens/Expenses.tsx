@@ -1,3 +1,4 @@
+import EmptyState from '../components/EmptyState'
 import ScreenHelp from '../components/ScreenHelp'
 import { useMemo, useState } from 'react'
 import type { Household } from '../App'
@@ -599,17 +600,7 @@ export default function Expenses({
         )}
       </section>
 
-      {list.length === 0 && (
-        <section className="card empty" aria-labelledby="exp-empty">
-          <strong id="exp-empty">Todavía no hay gastos en {monthName(month)}</strong>
-          <span className="muted">Cuando anotes uno, aparecerá aquí para repasarlo, corregirlo o borrarlo.</span>
-          {onRegister && (
-            <button type="button" className="btn wide" onClick={onRegister}>
-              Registrar un gasto
-            </button>
-          )}
-        </section>
-      )}
+      {list.length === 0 && <EmptyState section="expenses" count={0} onCta={() => onRegister?.()} />}
 
       {list.length > 0 && visible.length === 0 && filtering && (
         <section className="card empty" aria-labelledby="exp-nores">

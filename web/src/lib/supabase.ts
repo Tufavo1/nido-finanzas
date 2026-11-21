@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from './database.types'
+import { nativeFetch, resolveApiBase } from './nativeApi'
+import { ContigoNative, createPluginSecureBackend, isNativeApp } from './nativeBridge'
+import { createSecureStorage } from './secureSession'
 import { trackedFetch } from './trackedFetch'
 
 /**
@@ -10,7 +13,24 @@ import { trackedFetch } from './trackedFetch'
 export const PROXY_PREFIX = '/supabase'
 export const PLACEHOLDER_KEY = 'sb_publishable_via_proxy'
 
-export const supabase = createClient<Database>(`${globalThis.location?.origin ?? 'http://localhost'}${PROXY_PREFIX}`, PLACEHOLDER_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'contigo-auth' },
-  global: { fetch: trackedFetch },
+const native = isNativeApp()
+
+/**
+ * En la app nativa la dirección sale de VITE_API_BASE (DEC-01), la sesión vive en el Keystore (DEC-03) y las
+ * peticiones salen por HTTP nativo, sin cabecera Origin. En la web sigue todo como antes.
+ */
+function apiUrl(): string {
+  const base = native ? resolveApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD) : PROXY_PREFIX
+  return base.startsWith('/') ? `${globalThis.location?.origin ?? 'http://localhost'}${base}` : base
+}
+
+export const supabase = createClient<Database>(apiUrl(), PLACEHOLDER_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false,
+    storageKey: 'contigo-auth',
+    ...(native ? { storage: createSecureStorage(createPluginSecureBackend(ContigoNative)) } : {}),
+  },
+  global: { fetch: native ? nativeFetch : trackedFetch },
 })

@@ -7,11 +7,13 @@ import ActivityLoader from './components/ActivityLoader'
 import { startInstallWatcher } from './lib/install'
 import { startUpdateWatcher } from './lib/update'
 import { applyTheme, watchSystemTheme } from './lib/theme'
+import { hideSplash, setupNativeChrome } from './lib/nativeChrome'
 
 startInstallWatcher()
 applyTheme()
 watchSystemTheme()
 startUpdateWatcher()
+setupNativeChrome()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -21,3 +23,6 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>,
 )
+
+// Ya hay algo que mostrar: se quita el splash nativo
+hideSplash()

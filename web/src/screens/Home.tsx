@@ -42,6 +42,9 @@ interface Props {
   onToast: Notify
   scope: Scope
   onScope: (s: Scope) => void
+  /** Gastos detectados esperando aprobación, y cómo abrir la bandeja */
+  detected?: number
+  onInbox?: () => void
 }
 
 const DOW = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
@@ -55,7 +58,7 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
   )
 }
 
-export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSettings, onCategory, onProfile, onToast, scope, onScope }: Props) {
+export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSettings, onCategory, onProfile, onToast, scope, onScope, detected = 0, onInbox }: Props) {
   const [day, setDay] = useState<number | null>(null)
   const [graphs, setGraphs] = useState(false)
   const [settle, setSettle] = useState(false)
@@ -182,6 +185,17 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
           </button>
         </div>
       </div>
+
+      {detected > 0 && onInbox && (
+        <section className="card calm" aria-label="Gastos detectados">
+          <span>
+            Detectamos <strong>{detected}</strong> {detected === 1 ? 'gasto' : 'gastos'} en tus avisos del banco.
+          </span>
+          <button type="button" className="btn small" onClick={onInbox}>
+            Revisar
+          </button>
+        </section>
+      )}
 
       <div className="row between" role="group" aria-label="Elegir mes">
         <button type="button" className="icon-btn" aria-label="Mes anterior" onClick={() => change(-1)}>

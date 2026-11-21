@@ -15,6 +15,7 @@ import Icon from './Icon'
 import SectionHead from './SectionHead'
 import type { Notify } from './Toast'
 import Spin from './Spin'
+import { logError } from '../lib/safeLog'
 
 interface Props {
   hh: Household
@@ -55,7 +56,7 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
     const { error: err } = await task()
     setBusy(false)
     if (err) {
-      console.error(err)
+      logError(err, 'RecurringPanel')
       setError('No se pudo guardar. Intenta de nuevo.')
       return false
     }

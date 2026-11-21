@@ -6,12 +6,16 @@ import { TABLE_LABEL, fillForecast } from '../lib/storage'
 import { supabase } from '../lib/supabase'
 import { useToastError } from '../lib/useToastError'
 import type { Notify } from '../components/Toast'
+import SecurityPanel from '../components/SecurityPanel'
+import { SkeletonCard, SkeletonChart } from '../components/Skeleton'
+import { logError } from '../lib/safeLog'
 
 const TABS = [
   { key: 'resumen', label: 'Resumen' },
   { key: 'uso', label: 'Uso' },
   { key: 'sistema', label: 'Sistema' },
   { key: 'hogares', label: 'Hogares' },
+  { key: 'seguridad', label: 'Seguridad' },
 ] as const
 type TabKey = (typeof TABS)[number]['key']
 
@@ -128,7 +132,7 @@ function Cleanup({ onChanged, onToast }: { onChanged: () => void; onToast: Notif
       setList(await fetchEmptyHouseholds())
       setPicked(new Set())
     } catch (e) {
-      console.error(e)
+      logError(e, 'Admin')
       setError('No se pudo cargar la lista. Revisa que la migración panel_admin esté aplicada.')
     } finally {
       setBusy(false)
@@ -146,7 +150,7 @@ function Cleanup({ onChanged, onToast }: { onChanged: () => void; onToast: Notif
       setPicked(new Set())
       setConfirm(false)
     } catch (e) {
-      console.error(e)
+      logError(e, 'Admin')
       setError('No se pudo borrar. Intenta de nuevo.')
     } finally {
       setBusy(false)
@@ -170,7 +174,7 @@ function Cleanup({ onChanged, onToast }: { onChanged: () => void; onToast: Notif
       setPicked(new Set())
       setKicking(null)
     } catch (e) {
-      console.error(e)
+      logError(e, 'Admin')
       setError('No se pudo sacar a la persona. Intenta de nuevo.')
     } finally {
       setBusy(false)
@@ -318,7 +322,7 @@ function AdminPanel({ onBack, onToast }: { onBack: () => void; onToast: Notify }
       setStats(st)
       setStorage(sg)
     } catch (e) {
-      console.error(e)
+      logError(e, 'Admin')
       setError('No se pudo cargar el panel. Revisa que la migración panel_admin esté aplicada.')
     } finally {
       setBusy(false)
@@ -514,6 +518,15 @@ function AdminPanel({ onBack, onToast }: { onBack: () => void; onToast: Notify }
           </section>
         </>
       )}
+
+      {!s && tab !== 'seguridad' && busy && (
+        <>
+          <SkeletonCard />
+          <SkeletonChart />
+        </>
+      )}
+
+      {tab === 'seguridad' && <SecurityPanel />}
 
       {s && tab === 'hogares' && <Cleanup onChanged={() => void load()} onToast={onToast} />}
     </main>

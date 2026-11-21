@@ -1,6 +1,7 @@
 import { captchaToken } from './captcha'
 import { LEGAL_VERSION } from './legal'
 import { supabase } from './supabase'
+import { logError } from './safeLog'
 
 /**
  * Entrar con Google sin salir de Contigo (Google Identity Services): el botón de Google entrega un token a esta página
@@ -88,7 +89,7 @@ export async function signInWithGoogleToken(token: string, nonce: string): Promi
     await markTermsAccepted(data.session.user.user_metadata)
     return null
   } catch (e) {
-    console.error(e)
+    logError(e, 'google')
     return e instanceof Error && /robot|anti-bots/i.test(e.message) ? e.message : GOOGLE_ERROR
   }
 }

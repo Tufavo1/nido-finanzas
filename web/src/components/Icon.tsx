@@ -103,6 +103,10 @@ const PATHS = {
   chevR: <path d="M9 6l6 6-6 6" />,
   /** Destello: identifica a DinovanceAI */
   spark: <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z" />,
+  /** Estados de error y vacío */
+  wifiOff: <path d="M3 3l18 18M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 3.2-2M10.7 6.1A15 15 0 0 1 22 9.5M2 9.5a15 15 0 0 1 3.4-2.3M12 20h.01" />,
+  alert: <path d="M12 3.5L2.5 20h19zM12 10v4.5M12 17.5h.01" />,
+  tools: <path d="M14.7 6.3a4 4 0 0 0-5 5L3 18l3 3 6.7-6.7a4 4 0 0 0 5-5L15 12l-3-3z" />,
   back: (
     <>
       <path d="M21 5H9l-6 7 6 7h12z" />

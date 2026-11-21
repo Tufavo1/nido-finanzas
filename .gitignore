@@ -15,3 +15,14 @@ nido-respaldos/
 
 # Respaldos de la base (contienen datos financieros: nunca al repositorio)
 respaldo-*.sql
+
+# Docker / Android (agente devops)
+dist-apk/
+.docker-cache/
+*.jks
+*.keystore
+keystore.properties
+.nido-signing/
+web/android/.gradle/
+web/android/**/build/
+web/android/local.properties

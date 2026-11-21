@@ -1,0 +1,55 @@
+// Copyright (c) 2026 Dinovance
+package cl.dinovance.contigo.capture
+
+import android.app.Notification
+import android.content.ComponentName
+import android.service.notification.NotificationListenerService
+import android.service.notification.StatusBarNotification
+
+/**
+ * Escucha las notificaciones del sistema. Solo mira las de los paquetes de la lista blanca y solo lee
+ * título y texto de esas. Todo el trabajo va dentro de [CaptureProcessor], que nunca lanza.
+ */
+class NotificationCaptureService : NotificationListenerService() {
+    private val graph by lazy { CaptureGraph.get(applicationContext) }
+
+    override fun onListenerConnected() {
+        graph.prefs.heartbeat(System.currentTimeMillis(), connected = true)
+        // Tras un reinicio se pierden las alarmas: si quedan gastos por enviar, se vuelve a agendar el recordatorio.
+        if (ReminderPolicy.pendingToSend(graph.drafts.list(), graph.prefs.activeOwner()) > 0) {
+            ReminderScheduler.schedule(applicationContext, ReminderPolicy.FIRST_REMINDER_MILLIS)
+        }
+    }
+
+    override fun onListenerDisconnected() {
+        graph.prefs.heartbeat(System.currentTimeMillis(), connected = false)
+        // El sistema puede desconectarnos (ahorro de batería, fabricante): pedimos volver a conectar.
+        requestRebind(ComponentName(this, NotificationCaptureService::class.java))
+    }
+
+    override fun onNotificationPosted(sbn: StatusBarNotification?) {
+        val posted = sbn ?: return
+        // Solo nombre de paquete y hora (jamas texto): alimenta «apps que avisaron recientemente» para elegir la lista.
+        if (posted.packageName != packageName) graph.recent.record(posted.packageName, posted.postTime)
+        // RF-01: se decide por el nombre del paquete antes de tocar los extras.
+        if (!graph.processor.accepts(posted.packageName)) return
+        try {
+            capture(posted)
+        } catch (e: Throwable) {
+            // Extras corruptos o no legibles: el servicio sigue vivo y solo se cuenta el fallo (sin contenido).
+            graph.prefs.recordFailure(e.javaClass.simpleName, System.currentTimeMillis())
+        }
+    }
+
+    private fun capture(posted: StatusBarNotification) {
+        val extras = posted.notification?.extras ?: return
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.take(MAX_TEXT)
+        val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))
+            ?.toString()?.take(MAX_TEXT)
+        if (graph.processor.process(posted.packageName, title, text, posted.postTime) == Outcome.STORED) DraftEvents.changed()
+    }
+
+    private companion object {
+        const val MAX_TEXT = 2_000
+    }
+}

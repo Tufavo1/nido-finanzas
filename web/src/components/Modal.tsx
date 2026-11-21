@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { registerOverlay } from '../lib/overlays'
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -17,6 +18,9 @@ export default function Modal({ onClose, label, children }: { onClose: () => voi
   useEffect(() => {
     closeRef.current = onClose
   })
+
+  // El botón atrás de Android cierra primero la ventana de más arriba
+  useEffect(() => registerOverlay(() => closeRef.current()), [])
 
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null
