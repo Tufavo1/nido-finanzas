@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
+import { fetchAccessToken, loadFcmAccount, sendFcm } from './fcm.ts'
 
 const ALLOWED = [
   'https://contigo.dinovance.cl',
@@ -33,6 +34,34 @@ function isKnownPushEndpoint(endpoint: string): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * Push nativo (FCM). Desactivado sin FCM_SERVICE_ACCOUNT_JSON. Si falla, el gasto ya se guardó: solo se
+ * registra el estado HTTP, nunca el contenido del aviso (CA-10-6).
+ */
+async function sendNative(admin: ReturnType<typeof createClient>, recipients: string[], title: string, body: string): Promise<number> {
+  const account = loadFcmAccount(Deno.env.get('FCM_SERVICE_ACCOUNT_JSON'))
+  if (!account) return 0
+  const { data: tokens } = await admin.from('native_push_tokens').select('id, token').in('user_id', recipients)
+  if (!tokens || tokens.length === 0) return 0
+  let sent = 0
+  const dead: string[] = []
+  try {
+    const accessToken = await fetchAccessToken(account)
+    await Promise.all(
+      (tokens as { id: string; token: string }[]).map(async (t) => {
+        const result = await sendFcm(account, accessToken, t.token, title, body)
+        if (result === 'sent') sent++
+        else if (result === 'dead') dead.push(t.id)
+        else console.error('fcm error')
+      }),
+    )
+  } catch (err) {
+    console.error('fcm error', (err as Error).name)
+  }
+  if (dead.length) await admin.from('native_push_tokens').delete().in('id', dead)
+  return sent
 }
 
 Deno.serve(async (req) => {
@@ -177,6 +206,7 @@ Deno.serve(async (req) => {
     )
 
     if (dead.length) await admin.from('push_subscriptions').delete().in('id', dead)
+    sent += await sendNative(admin, recipients, title, body)
     return reply(200, { sent })
   } catch (e) {
     console.error(e)

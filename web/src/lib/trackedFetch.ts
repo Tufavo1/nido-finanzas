@@ -10,8 +10,8 @@ type Input = Parameters<typeof fetch>[0]
 type Init = Parameters<typeof fetch>[1]
 
 /** fetch con tiempo máximo; las lecturas además se reintentan si la red o el servicio fallan un momento */
-const send = (method: string, input: Input, init: Init): Promise<Response> =>
-  withResilience((signal) => fetch(input, { ...init, signal }), { ...(isIdempotentMethod(method) ? READ : WRITE), signal: init?.signal })
+const send = (base: typeof fetch, method: string, input: Input, init: Init): Promise<Response> =>
+  withResilience((signal) => base(input, { ...init, signal }), { ...(isIdempotentMethod(method) ? READ : WRITE), signal: init?.signal })
 
 /** Cuánto espera una escritura a que vuelva el internet antes de intentarlo igual (y mostrar el error si falla) */
 const WAIT_ONLINE_MS = 20000
@@ -35,38 +35,44 @@ function waitOnline(): Promise<void> {
  * fetch que usa el cliente de Supabase. Avisa al cargador global cuando guarda, edita o elimina,
  * cuando se inicia o cierra sesión, y cuando una lectura va lenta. La renovación automática de la
  * sesión, el tiempo real y las funciones no cuentan, para que nunca bloqueen la pantalla solas.
+ * `base` es el fetch que realmente sale a la red: el del navegador en la web, el HTTP nativo en la app.
  */
-export const trackedFetch: typeof fetch = async (input, init) => {
-  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-  const method = (init?.method ?? (typeof input === 'object' && 'method' in input ? input.method : 'GET')).toUpperCase()
-  const isData = url.includes('/rest/v1/')
-  const isAuth = url.includes('/auth/v1/')
-  if (!isData && !isAuth) return fetch(input, init)
-
-  if (isAuth) {
-    const label = authLabel(url, method)
-    if (label === null) return send(method, input, init)
-    return track(method, label, input, init)
-  }
-
-  if (method === 'GET' || method === 'HEAD') {
-    const end = beginRead()
+export function createTrackedFetch(base: typeof fetch): typeof fetch {
+  const track = async (method: string, label: string, input: Input, init: Init) => {
+    const end = beginWrite(method, label)
     try {
-      return await send(method, input, init)
+      await waitOnline()
+      return await send(base, method, input, init)
     } finally {
       end()
     }
   }
 
-  return track(method, '', input, init)
-}
+  return async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    const method = (init?.method ?? (typeof input === 'object' && 'method' in input ? input.method : 'GET')).toUpperCase()
+    const isData = url.includes('/rest/v1/')
+    const isAuth = url.includes('/auth/v1/')
+    if (!isData && !isAuth) return base(input, init)
 
-async function track(method: string, label: string, input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) {
-  const end = beginWrite(method, label)
-  try {
-    await waitOnline()
-    return await send(method, input, init)
-  } finally {
-    end()
+    if (isAuth) {
+      const label = authLabel(url, method)
+      if (label === null) return send(base, method, input, init)
+      return track(method, label, input, init)
+    }
+
+    if (method === 'GET' || method === 'HEAD') {
+      const end = beginRead()
+      try {
+        return await send(base, method, input, init)
+      } finally {
+        end()
+      }
+    }
+
+    return track(method, '', input, init)
   }
 }
+
+/** El fetch de siempre (web): sale por el fetch global del navegador, que se busca en cada llamada. */
+export const trackedFetch: typeof fetch = createTrackedFetch((input, init) => fetch(input, init))

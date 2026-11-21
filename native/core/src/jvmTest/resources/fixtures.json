@@ -1,0 +1,655 @@
+{
+ "sintetico": true,
+ "aviso": "TODOS los casos son SINTETICOS e inventados (banco, comercios, personas, tarjetas *0000, codigos y montos de prueba). No provienen de ningun banco ni persona real. Fuente: docs/mobile/requisitos.md seccion 3 (F01-F32) mas casos de borde (E01-E15).",
+ "referencia": "now = 2026-11-21 (postedAtMillis = 2026-11-21T12:00:30-03:00)",
+ "allowedPackages": [
+  "cl.demo.banco",
+  "cl.demo.billetera"
+ ],
+ "fixtures": [
+  {
+   "id": "F01",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra aprobada por $12.990 en ALMACEN DEMO SPA con tu tarjeta *0000 el 14/11/2026.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 12990,
+    "merchant": "Almacen Demo Spa",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": ""
+  },
+  {
+   "id": "F02",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra por CLP 4500 en CAFE DEL TEST. Tarjeta terminada en 0000.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 4500,
+    "merchant": "Cafe Del Test",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": ""
+  },
+  {
+   "id": "F03",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra de 8.500 pesos en Tienda Ejemplo Ñuñoa, 13/11.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 8500,
+    "merchant": "Tienda Ejemplo Ñuñoa",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": ""
+  },
+  {
+   "id": "F04",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra en 3 cuotas sin interés por $45.000 en PRUEBA ELECTRO. Primera cuota: $15.000.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 15000,
+    "merchant": "Prueba Electro",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": {
+     "n": 1,
+     "total": 3
+    }
+   },
+   "nota": "se registra la cuota (RIESGO-04)"
+  },
+  {
+   "id": "F05",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Pago cuota 2 de 6 por $22.300 de crédito de consumo demo.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "pago de deuda, no gasto nuevo (RIESGO-05)"
+  },
+  {
+   "id": "F06",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Abono de $350.000 en tu cuenta corriente demo. Origen: EMPRESA FICTICIA SA.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 350000,
+    "merchant": null,
+    "kind": "INCOME",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": ""
+  },
+  {
+   "id": "F07",
+   "sintetico": true,
+   "packageName": "cl.demo.billetera",
+   "title": "Billetera Demo",
+   "text": "Recibiste una transferencia de $60.000 de Persona Demo el 12/11/2026.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 60000,
+    "merchant": null,
+    "kind": "INCOME",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": ""
+  },
+  {
+   "id": "F08",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Transferencia realizada a Juana Ejemplo por $20.000 el 10/11/2026.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 20000,
+    "merchant": "Juana Ejemplo",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": ""
+  },
+  {
+   "id": "F09",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Devolución de compra por $9.990 en TIENDA DEMO. Reverso aplicado.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 9990,
+    "merchant": null,
+    "kind": "INCOME",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": ""
+  },
+  {
+   "id": "F10",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Tu clave dinámica es 482913. No la compartas con nadie.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "OTP sin monto"
+  },
+  {
+   "id": "F11",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Clave para compra de $35.000 en COMERCIO DEMO: 771204. No compartas este código.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "OTP con monto"
+  },
+  {
+   "id": "F12",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "¡Oferta exclusiva! Ahorra $5.000 en tu próxima compra con cupón DEMO24.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "promocion con monto"
+  },
+  {
+   "id": "F13",
+   "sintetico": true,
+   "packageName": "cl.demo.billetera",
+   "title": "Billetera Demo",
+   "text": "20% de descuento en tiendas demo hasta el 30/11.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "promocion sin monto"
+  },
+  {
+   "id": "F14",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra por US$ 12.00 en SHOP DEMO INC.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "moneda extranjera"
+  },
+  {
+   "id": "F15",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra por $1.234,50 en Kiosco Demo.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 1234,
+    "merchant": "Kiosco Demo",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": "centavos ignorados"
+  },
+  {
+   "id": "F16",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra por $1.250.000 en MUEBLES DEMO el 01/11/2026.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 1250000,
+    "merchant": "Muebles Demo",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": ""
+  },
+  {
+   "id": "F17",
+   "sintetico": true,
+   "packageName": "cl.demo.billetera",
+   "title": "Billetera Demo",
+   "text": "Pagaste $99999 en MINIMARKET DEMO.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 99999,
+    "merchant": "Minimarket Demo",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": ""
+  },
+  {
+   "id": "F18",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra por $3.200 en PANADERÍA EL ÑANDÚ 13/11.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 3200,
+    "merchant": "Panadería El Ñandú",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": "acentos y ñ"
+  },
+  {
+   "id": "F19",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra por $7.800 en Farmacia Demo Norte el 11/11/2026.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 7800,
+    "merchant": "Farmacia Demo Norte",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": "mayusculas mezcladas intactas"
+  },
+  {
+   "id": "F20",
+   "sintetico": true,
+   "packageName": "cl.demo.billetera",
+   "title": "Billetera Demo",
+   "text": "Compra por $2.990 en PIZZA-DEMO #12.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 2990,
+    "merchant": "Pizza-Demo #12",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": ""
+  },
+  {
+   "id": "F21",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Cargo por $4.000 aprobado en tu tarjeta *0000.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 4000,
+    "merchant": null,
+    "kind": "EXPENSE",
+    "confidence": "MEDIUM",
+    "installment": null
+   },
+   "nota": "sin comercio: confianza MEDIUM, se pide confirmar"
+  },
+  {
+   "id": "F22",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Tu saldo disponible es de $210.000 al 14/11.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "saldo"
+  },
+  {
+   "id": "F23",
+   "sintetico": true,
+   "packageName": "cl.demo.billetera",
+   "title": "Billetera Demo",
+   "text": "Pago de servicio por $18.500 a Empresa Demo Agua.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 18500,
+    "merchant": "Empresa Demo Agua",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": ""
+  },
+  {
+   "id": "F24",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra online aprobada por $25.990 en TIENDA WEB DEMO.COM",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 25990,
+    "merchant": "Tienda Web Demo.com",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": ""
+  },
+  {
+   "id": "F25",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Retiro de $50.000 en cajero ATM DEMO 3.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 50000,
+    "merchant": null,
+    "kind": "EXPENSE",
+    "confidence": "LOW",
+    "installment": null
+   },
+   "nota": "retiro: EXPENSE con confianza LOW (nunca automatico, CA-02-7)"
+  },
+  {
+   "id": "F26",
+   "sintetico": true,
+   "packageName": "com.ejemplo.redsocial",
+   "title": "Red Social Demo",
+   "text": "Tu estado de cuenta de noviembre ya está disponible.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "otra familia, sin monto"
+  },
+  {
+   "id": "F27",
+   "sintetico": true,
+   "packageName": "com.ejemplo.redsocial",
+   "title": "Red Social Demo",
+   "text": "Compra aprobada por $12.990 en ALMACEN DEMO SPA.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "lista blanca: mismo texto que F01 de paquete no aprobado"
+  },
+  {
+   "id": "F28",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra rechazada por $15.000 en COMERCIO DEMO: fondos insuficientes.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "compra rechazada"
+  },
+  {
+   "id": "F29",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra aprobada por $9.000 en TIENDA TEST el 31/02/2026.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 9000,
+    "merchant": "Tienda Test",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": "fecha invalida: la fecha efectiva es la del aviso"
+  },
+  {
+   "id": "F30",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra aprobada por $6.500 en CAFE DEMO NORTE el 21/11/2026.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 6500,
+    "merchant": "Cafe Demo Norte",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": "base de pruebas de duplicado"
+  },
+  {
+   "id": "F31",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra aprobada por $6.500 en CAFE DEMO NORTE el 30/12/2026.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 6500,
+    "merchant": "Cafe Demo Norte",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": "fecha futura: se usa la del aviso"
+  },
+  {
+   "id": "F32",
+   "sintetico": true,
+   "packageName": "cl.demo.billetera",
+   "title": "Billetera Demo",
+   "text": "Te devolvimos $1.990 de la compra en TIENDA DEMO.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 1990,
+    "merchant": null,
+    "kind": "INCOME",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": ""
+  },
+  {
+   "id": "E01",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Código de verificación 123456. Confirma tu compra de $15.000 en TIENDA DEMO con este código.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "borde: OTP con monto"
+  },
+  {
+   "id": "E02",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Saldo disponible: $1.500.000 en tu cuenta corriente demo.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "borde: saldo con puntos"
+  },
+  {
+   "id": "E03",
+   "sintetico": true,
+   "packageName": "cl.demo.billetera",
+   "title": "Billetera Demo",
+   "text": "Aprovecha cuotas sin interés en compras sobre $100.000 solo este fin de semana.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "borde: promocion con monto"
+  },
+  {
+   "id": "E04",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra en 6 cuotas por $60.000 en TIENDA DEMO. Cuota 1 de 6: $10.000.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 10000,
+    "merchant": "Tienda Demo",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": {
+     "n": 1,
+     "total": 6
+    }
+   },
+   "nota": "borde: cargo en cuotas"
+  },
+  {
+   "id": "E05",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "ABONO de $150.000 recibido en tu cuenta demo.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 150000,
+    "merchant": null,
+    "kind": "INCOME",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": "borde: abono en mayusculas"
+  },
+  {
+   "id": "E06",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra por $ 1.500 en KIOSCO DEMO.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 1500,
+    "merchant": "Kiosco Demo",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": "borde: espacio tras el signo $"
+  },
+  {
+   "id": "E07",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "COMPRA POR $2.500 EN CAFÉ ÁRBOL.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 2500,
+    "merchant": "Café Árbol",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": "borde: todo en mayusculas con acentos"
+  },
+  {
+   "id": "E08",
+   "sintetico": true,
+   "packageName": "cl.demo.billetera",
+   "title": "Billetera Demo",
+   "text": "Compra por 12500 pesos en Bazar Demo.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 12500,
+    "merchant": "Bazar Demo",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": "borde: pesos sin puntos"
+  },
+  {
+   "id": "E09",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra por $14.000 en Restaurante En La Playa el 10/11/2026.",
+   "postedAtMillis": 1795273230000,
+   "expected": {
+    "amountClp": 14000,
+    "merchant": "Restaurante En La Playa",
+    "kind": "EXPENSE",
+    "confidence": "HIGH",
+    "installment": null
+   },
+   "nota": "borde: comercio con 'en' (requisitos.md §4)"
+  },
+  {
+   "id": "E10",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "borde: texto vacio"
+  },
+  {
+   "id": "E11",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": null,
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "borde: texto null"
+  },
+  {
+   "id": "E12",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": null,
+   "text": "   ",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "borde: solo espacios, titulo null"
+  },
+  {
+   "id": "E13",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra por $0 en TIENDA DEMO.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "borde: monto cero"
+  },
+  {
+   "id": "E14",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Compra por $10.000.000.000 en TIENDA DEMO.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "borde: monto sobre el limite (10.000.000.000)"
+  },
+  {
+   "id": "E15",
+   "sintetico": true,
+   "packageName": "cl.demo.banco",
+   "title": "Banco Demo",
+   "text": "Tu contraseña temporal es 5521. Pagaste $3.000 hace poco.",
+   "postedAtMillis": 1795273230000,
+   "expected": null,
+   "nota": "borde: contrasena con monto"
+  }
+ ]
+}

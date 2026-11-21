@@ -98,3 +98,27 @@ describe('readSharedNotice: texto que llega al abrir la app desde otra app', () 
     expect(readSharedNotice(`?text=${'a'.repeat(5000)}`, '')?.length).toBe(1000)
   })
 })
+
+// RF-03 (requisitos.md §2.1): descartar OTP, promociones, saldos, compras rechazadas y pagos de deuda.
+// Textos SINTÉTICOS (fixtures F05, F11, F12, F22, F28 y extras E01, E03, E15). Hoy el parser los lee como gasto.
+describe('RF-03: avisos que NO son un gasto', () => {
+  const NOW_RF03 = new Date(2026, 10, 21)
+  const casos: [string, string][] = [
+    ['CA-03-2 F11: clave con monto', 'Clave para compra de $35.000 en COMERCIO DEMO: 771204. No compartas este código.'],
+    ['CA-03-2 E01: código de verificación con monto', 'Código de verificación 123456. Confirma tu compra de $15.000 en TIENDA DEMO con este código.'],
+    ['CA-03-2 E15: contraseña temporal con monto', 'Tu contraseña temporal es 5521. Pagaste $3.000 hace poco.'],
+    ['CA-03-3 F12: promoción con monto', '¡Oferta exclusiva! Ahorra $5.000 en tu próxima compra con cupón DEMO24.'],
+    ['CA-03-3 E03: promoción de cuotas con monto', 'Aprovecha cuotas sin interés en compras sobre $100.000 solo este fin de semana.'],
+    ['CA-03-4 F22: saldo disponible', 'Tu saldo disponible es de $210.000 al 14/11.'],
+    ['CA-03-4 E02: saldo con puntos', 'Saldo disponible: $1.500.000 en tu cuenta corriente demo.'],
+    ['CA-03-5 F28: compra rechazada', 'Compra rechazada por $15.000 en COMERCIO DEMO: fondos insuficientes.'],
+    ['RIESGO-05 F05: pago de cuota de deuda', 'Pago cuota 2 de 6 por $22.300 de crédito de consumo demo.'],
+  ]
+  it.each(casos)('%s se descarta (null)', (_nombre, texto) => {
+    expect(parseBankNotice(texto, NOW_RF03)).toBeNull()
+  })
+
+  it('una compra normal con la palabra «saldo» en el comercio sigue siendo gasto (no sobre-filtrar)', () => {
+    expect(parseBankNotice('Compra por $5.000 en LIBRERIA DEMO el 20/11/2026.', NOW_RF03)).toMatchObject({ kind: 'expense', amount: 5_000 })
+  })
+})

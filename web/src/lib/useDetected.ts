@@ -1,0 +1,170 @@
+// Copyright (c) 2026 Dinovance
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Household } from '../App'
+import type { Notify } from '../components/Toast'
+import { candidateToDraft } from './candidates'
+import type { ExpenseDraft } from './candidates'
+import type { CaptureConfig } from './captureConfig'
+import type { HouseholdData } from './data'
+import { money } from './format'
+import { draftExpenseId } from './draftExpenseId'
+import { newId } from './idempotency'
+import { expenseRow, planDrafts } from './inbox'
+import { ContigoNative, isNativeApp, ownerKeyOf, pendingToSendCount, readDrafts, readRecentApps } from './nativeBridge'
+import type { NativeDraft } from './nativeBridge'
+import type { OfflineQueue } from './offlineQueue'
+import { unsentCount, unsentDrafts } from './draftFlags'
+import { enqueueWithNotice } from './queueNotice'
+import { deleteExpense, insertExpenseRow } from './saveExpense'
+import { useAppResume } from './useAppResume'
+import { logError } from './safeLog'
+
+/** Tiempo para tocar «Deshacer» (CA-09-2) */
+export const UNDO_MS = 10_000
+
+interface Args {
+  hh: Household
+  data: HouseholdData
+  config: CaptureConfig
+  queue: OfflineQueue
+  notify: Notify
+}
+
+/**
+ * Gastos detectados por el teléfono: los vacía al abrir y al reanudar la app, guarda solos los que corresponde
+ * (ya confirmados o modo automático) y deja el resto en la bandeja. Guardar usa un id idempotente por borrador.
+ */
+export function useDetected({ hh, data, config, queue, notify }: Args) {
+  const native = isNativeApp()
+  const [drafts, setDrafts] = useState<NativeDraft[] | null>(native ? null : [])
+  const [failed, setFailed] = useState(false)
+  const [pending, setPending] = useState<number | null>(null)
+  const [appNames, setAppNames] = useState<ReadonlyMap<string, string>>(new Map())
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [kept, setKept] = useState<ReadonlySet<string>>(new Set())
+  const [stuck, setStuck] = useState<ReadonlySet<string>>(new Set())
+  const inflight = useRef(new Set<string>())
+
+  const history = useMemo(() => [...data.expenses, ...data.prevExpenses], [data.expenses, data.prevExpenses])
+  const ctx = useMemo(() => ({ categories: data.categories, history }), [data.categories, history])
+
+  const load = useCallback(async () => {
+    if (!native) return
+    try {
+      // Sin dueño el teléfono no captura y no entrega borradores: se fija antes de leer (usuario + hogar activo)
+      await ContigoNative.setActiveOwner({ ownerKey: ownerKeyOf(hh.me.user_id, hh.household.id) })
+      const [list, toSend] = await Promise.all([readDrafts(ContigoNative), pendingToSendCount(ContigoNative)])
+      setDrafts(list)
+      setPending(toSend)
+      // Los nombres de las apps son un extra: sin ellos se muestra el paquete
+      setAppNames(new Map((await readRecentApps(ContigoNative).catch(() => [])).map((a) => [a.packageName, a.label])))
+      setFailed(false)
+      const { id } = await ContigoNative.consumePendingOpen()
+      if (id) setOpenId(id)
+    } catch (e) {
+      logError(e, 'useDetected')
+      setFailed(true)
+      setDrafts((prev) => prev ?? [])
+    }
+  }, [native, hh.me.user_id, hh.household.id])
+
+  useEffect(() => {
+    // En el siguiente turno: la lectura inicial no cambia el estado durante el montaje
+    const t = window.setTimeout(() => void load(), 0)
+    return () => window.clearTimeout(t)
+  }, [load])
+  useAppResume(() => void load())
+  useEffect(() => {
+    if (!native) return
+    const handles = [ContigoNative.addListener('draftsChanged', () => void load()), ContigoNative.addListener('draftOpen', (e) => setOpenId(e.id))]
+    return () => void Promise.all(handles).then((hs) => hs.forEach((h) => void h.remove()))
+  }, [native, load])
+
+  const clearOpen = useCallback(() => setOpenId(null), [])
+
+  const undo = useCallback(
+    async (id: string) => {
+      try {
+        await deleteExpense(id)
+        await data.refresh()
+        notify('Gasto deshecho\nLo borré de tus gastos.', 'info')
+      } catch (e) {
+        logError(e, 'useDetected')
+        notify('No se pudo deshacer\nRevisa tu conexión e inténtalo de nuevo.', 'error')
+      }
+    },
+    [data, notify],
+  )
+
+  /** Guarda el gasto. Sin red lo deja en la cola; un rechazo de la base lanza el error para que la pantalla lo muestre. */
+  const save = useCallback(
+    async (form: ExpenseDraft, nativeId?: string) => {
+      // El id sale del borrador: sobrevive a un reinicio y reenviar nunca duplica el gasto
+      const id = nativeId ? draftExpenseId(nativeId) : newId()
+      const r = await insertExpenseRow(expenseRow(hh.household.id, id, form, hh.me.user_id))
+      if (r.ok) {
+        notify(`Gasto guardado\n**${money(form.amount)}** en ${form.note || 'tus gastos'}.`, 'success', { label: 'Deshacer', durationMs: UNDO_MS, onAction: () => void undo(id) })
+        await data.refresh()
+      } else if (!(r.transient && (await enqueueWithNotice(queue, { ...form, id }, notify)))) {
+        throw new Error('No se pudo guardar el gasto')
+      }
+      if (nativeId) {
+        try {
+          await ContigoNative.removeDraft({ id: nativeId })
+        } catch (e) {
+          // El gasto ya está guardado; si el borrador queda, el mismo id evita duplicarlo
+          logError(e, 'useDetected')
+        }
+        await load()
+      }
+    },
+    [hh.household.id, hh.me.user_id, data, notify, queue, undo, load],
+  )
+
+  const ignore = useCallback(
+    async (d: NativeDraft) => {
+      try {
+        await ContigoNative.removeDraft({ id: d.id })
+        await load()
+        notify('Gasto descartado\nNo lo anotamos.', 'info')
+      } catch (e) {
+        logError(e, 'useDetected')
+        notify('No se pudo descartar\nInténtalo de nuevo.', 'error')
+      }
+    },
+    [load, notify],
+  )
+
+  /** «Conservar ambos»: la persona dice que no es un duplicado */
+  const keepBoth = useCallback((id: string) => setKept((prev) => new Set(prev).add(id)), [])
+
+  /** «Enviar ahora»: vuelve a intentar lo que quedó trabado */
+  const sendNow = useCallback(async () => {
+    setStuck(new Set())
+    await load()
+  }, [load])
+
+  // Guardado automático de lo que ya está confirmado o cumple las reglas del modo automático
+  useEffect(() => {
+    if (!drafts || !data.ready) return
+    const skip = new Set([...inflight.current, ...stuck])
+    for (const d of planDrafts(drafts, config, ctx, skip).auto) {
+      inflight.current.add(d.id)
+      const form = candidateToDraft(d, { paidBy: hh.me.user_id, shared: config.shared, categories: ctx.categories, history: ctx.history })
+      void save(form, d.id)
+        .catch((e: unknown) => {
+          logError(e, 'useDetected')
+          setStuck((prev) => new Set(prev).add(d.id))
+          notify('No se pudo guardar un gasto detectado\nLo dejé en tu bandeja para que lo revises.', 'warn')
+        })
+        .finally(() => inflight.current.delete(d.id))
+    }
+  }, [drafts, data.ready, config, ctx, hh.me.user_id, save, notify, stuck])
+
+  // En la bandeja: lo que se guardará solo no aparece (salvo que haya fallado)
+  const autoIds = new Set((drafts ? planDrafts(drafts, config, ctx, new Set()).auto : []).map((d) => d.id))
+  const waiting = (drafts ?? []).filter((d) => stuck.has(d.id) || !autoIds.has(d.id))
+  const localUnsent = unsentDrafts(waiting)
+  const unsent = { count: unsentCount(pending, localUnsent.length) }
+  return { drafts: drafts === null ? null : waiting, unsent, appNames, kept, keepBoth, sendNow, failed, openId, clearOpen, save, ignore, reload: load, ctx }
+}

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { markTermsAccepted } from './google'
 import { PLACEHOLDER_KEY, PROXY_PREFIX, supabase } from './supabase'
+import { logError } from './safeLog'
 
 /**
  * Entrar con Google. El cliente principal usa el flujo con tokens en la dirección (necesario para los correos de
@@ -69,7 +70,7 @@ export async function consumeOAuthCallback(): Promise<OAuthResult> {
     await markTermsAccepted(data.session.user.user_metadata)
     return 'ready'
   } catch (e) {
-    console.error(e)
+    logError(e, 'oauth')
     return 'failed'
   } finally {
     clean()

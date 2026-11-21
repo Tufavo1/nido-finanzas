@@ -14,10 +14,17 @@ import { debtView } from '../lib/finance'
 import { supabase } from '../lib/supabase'
 import { notifyPartner } from '../lib/push'
 import { newId, saveOnce } from '../lib/idempotency'
+import { runOptimistic } from '../lib/optimistic'
+import { markDirty } from '../lib/dirtyForms'
+import { deleteExpense, insertExpenseRow } from '../lib/saveExpense'
+import { expenseRow } from '../lib/inbox'
+import type { OfflineQueue } from '../lib/offlineQueue'
+import { enqueueWithNotice } from '../lib/queueNotice'
 import Spin from '../components/Spin'
 import RecurringCreateForm from '../components/RecurringCreateForm'
 import GoalCreateForm from '../components/GoalCreateForm'
 import DebtGuidedForm from '../components/DebtGuidedForm'
+import { logError } from '../lib/safeLog'
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', 'back'] as const
 
@@ -35,6 +42,7 @@ export default function Register({
   onSaved,
   onToast,
   notice,
+  queue,
 }: {
   hh: Household
   data: HouseholdData
@@ -42,6 +50,8 @@ export default function Register({
   onToast: Notify
   /** Aviso del banco con que otra app abrió Contigo (compartir o automatización) */
   notice?: string | null
+  /** Cola de gastos sin enviar: si no hay red, lo anotado no se pierde */
+  queue: OfflineQueue
 }) {
   // Gastos recientes: de ahí se aprende qué categoría usa la persona para cada comercio
   const history = useMemo(() => [...data.expenses, ...data.prevExpenses], [data.expenses, data.prevExpenses])
@@ -241,31 +251,44 @@ export default function Register({
       onSaved(`Aporte registrado\nSumaste **${money(amount)}** a **${goal.name}**.`)
       return
     }
-    const { ok } = await saveOnce(() =>
-      supabase.from('expenses').insert({
-        id: draftId,
-        household_id: hh.household.id,
-        category_id: catId,
-        amount,
-        // Un gasto personal es de quien lo anota; solo uno compartido puede pagarlo la otra persona
-        paid_by: shared ? paidBy : hh.me.user_id,
-        shared,
-        note: note.trim(),
-        spent_on: spentOn,
-      }),
+    // UI optimista: la pantalla vuelve al inicio al instante y el guardado sigue por detrás; si falla, el gasto queda en la cola
+    const form = { amount, note: note.trim(), spent_on: spentOn, shared, paid_by: shared ? paidBy : hh.me.user_id, category_id: catId }
+    const id = draftId
+    const result = await runOptimistic(
+      () => {
+        setDraftId(newId())
+        onSaved()
+      },
+      async () => {
+        const r = await insertExpenseRow(expenseRow(hh.household.id, id, form, hh.me.user_id))
+        if (!r.ok) throw new Error('No se pudo guardar el gasto')
+      },
+      () => void enqueueWithNotice(queue, { ...form, id }, onToast),
     )
-    if (!ok) {
-      setError('No se pudo guardar. Intenta de nuevo.')
-      setBusy(false)
-      return
-    }
-    notifyPartner('expense', draftId)
-    setDraftId(newId())
+    if (!result.ok) return
+    notifyPartner('expense', id)
     await data.refresh()
-    onSaved(`Gasto registrado\nSe anotaron **${money(amount)}** en ${catName ? `**${catName}**` : 'tus gastos'}.`)
+    onToast(`Gasto registrado\nSe anotaron **${money(amount)}** en ${catName ? `**${catName}**` : 'tus gastos'}.`, 'success', {
+      label: 'Deshacer',
+      durationMs: 10_000,
+      onAction: () => void undoExpense(id),
+    })
+  }
+
+  async function undoExpense(id: string) {
+    try {
+      await deleteExpense(id)
+      await data.refresh()
+      onToast('Gasto deshecho\nLo borré de tus gastos.', 'info')
+    } catch (e) {
+      logError(e, 'Register')
+      onToast('No se pudo deshacer\nRevisa tu conexión e inténtalo de nuevo.', 'error')
+    }
   }
 
   const dirty = digits !== '' || note !== '' || kind !== 'expense'
+  // Con cambios sin guardar, el botón atrás de Android pide confirmar antes de salir
+  useEffect(() => (dirty ? markDirty('register') : undefined), [dirty])
   const kinds: { key: TargetKind; label: string }[] = [
     { key: 'expense', label: 'Gasto' },
     ...(myDebts.length > 0 ? [{ key: 'debt' as const, label: 'Pagar deuda' }] : []),

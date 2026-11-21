@@ -1,5 +1,6 @@
 import type { EmailOtpType } from '@supabase/supabase-js'
 import { supabase } from './supabase'
+import { logError } from './safeLog'
 
 export type RecoveryResult = 'none' | 'ready' | 'invalid'
 
@@ -41,7 +42,7 @@ export async function consumeRecoveryLink(): Promise<RecoveryResult> {
       ok = !error
     }
   } catch (e) {
-    console.error(e)
+    logError(e, 'recovery')
   }
   clean()
   return ok ? 'ready' : 'invalid'

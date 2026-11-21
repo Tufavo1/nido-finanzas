@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { BUILD_DATE, COMMIT, TAGLINE, VERSION, checkForUpdate, copyright } from '../lib/about'
 import Logo from './Logo'
+import LicensesCard from './LicensesCard'
 import type { Notify } from './Toast'
 
 const fmtDate = new Intl.DateTimeFormat('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })
 
 /** Acerca de Contigo: versión, derechos y un gracias. */
-export default function AboutCard({ onToast }: { onToast: Notify }) {
+export default function AboutCard({ onToast, onPrivacy }: { onToast: Notify; onPrivacy?: () => void }) {
   const [busy, setBusy] = useState(false)
 
   async function update() {
@@ -52,6 +53,13 @@ export default function AboutCard({ onToast }: { onToast: Notify }) {
       <button type="button" className="btn ghost small" disabled={busy} onClick={() => void update()}>
         {busy ? 'Buscando…' : 'Buscar actualizaciones'}
       </button>
+
+      {onPrivacy && (
+        <button type="button" className="btn ghost small" onClick={onPrivacy}>
+          Política de privacidad
+        </button>
+      )}
+      <LicensesCard />
 
       <p className="about-thanks">
         <strong>Gracias por usar Contigo.</strong> Hecho con cariño para que cuidar la plata sea cosa de a dos… o de a uno.
