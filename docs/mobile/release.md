@@ -69,3 +69,10 @@ Google bloquea el OAuth web dentro de una WebView (`disallowed_useragent`). La a
 3. **Captcha:** `signInWithGoogleToken` ya manda `captchaToken` (Turnstile) a `signInWithIdToken`, igual que la web. Si en Authentication > Attack Protection el captcha está activo y la WebView no puede resolver Turnstile, el inicio de sesión mostrará «No pudimos verificar que no eres un robot». NO verificado en teléfono; si falla, evalúe permitir ID tokens sin captcha en ese proyecto o dejar solo correo y contraseña.
 4. **MFA:** tras entrar con Google el flujo de segundo factor existente se aplica igual (misma sesión de Supabase en el Keystore).
 Mensajes de error (en español simple): cancelado, sin cuentas de Google, sin conexión, nonce inválido, teléfono sin soporte, el servidor no validó la cuenta. Nunca se registran tokens ni correos.
+
+## 9. Publicar una versión nueva (actualización automática)
+
+1. Subir `version` en `web/package.json` (X.Y.Z; el versionCode sale de ahí: major*10000+minor*100+patch, siempre creciente).
+2. Compilar el release firmado (`scripts/docker-android-build.sh release`) y comprobar con aapt2 versionName/versionCode.
+3. Crear en GitHub un release PUBLICADO (no borrador ni prerelease) con tag `vX.Y.Z` y los dos assets `nido-release.apk` y `nido-release.apk.sha256` (de `dist-apk/`). Las apps instaladas lo detectan, verifican hash y firma, y se actualizan.
+4. Un release sin los dos assets, o firmado con otra llave, no se instala (la app lo rechaza).

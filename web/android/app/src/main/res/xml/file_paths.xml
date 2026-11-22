@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Copyright (c) 2026 Dinovance -->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Nada se comparte por FileProvider hoy: solo una subcarpeta vacia, en vez de todo el almacenamiento externo (S-08). -->
     <cache-path name="shared" path="shared/" />

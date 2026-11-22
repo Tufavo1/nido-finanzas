@@ -115,3 +115,7 @@ Keystore real (invalidación al cambiar el bloqueo de pantalla), `FLAG_SECURE`, 
 - `data_extraction_rules.xml`: archivo nuevo que el parche referencia (copiar a `web/android/app/src/main/res/xml/`).
 - `20261121170000_seguridad_endurece_observabilidad.sql.propuesta`: propuesta de migración (S-05), probada con ROLLBACK en staging.
 Nada de esto está aplicado; ningún archivo de producción ni test fue modificado.
+
+## Actualización desde GitHub (permiso REQUEST_INSTALL_PACKAGES)
+
+Nuevo permiso `REQUEST_INSTALL_PACKAGES`: la app puede pedir instalar su propia actualización (el usuario además debe habilitar «instalar apps desconocidas» para Contigo). Riesgo: el APK viene de un repositorio público. Defensas: solo hosts de GitHub por https con cada redirección validada, SHA-256 comprobado contra el release, mismo paquete, versionCode mayor y, sobre todo, Android rechaza una actualización con otra firma. Si el repo o la cuenta de GitHub se vieran comprometidos, un atacante podría publicar un APK y su hash, pero no firmarlo: la llave de firma (`~/.nido-signing`) es la barrera final. Privacidad: la comprobación es anónima pero revela la IP a GitHub. No verificado en teléfono real.

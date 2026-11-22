@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { installPromptSnoozed, isMobileDevice, promptInstall, snoozeInstallPrompt, useInstallState } from '../lib/install'
+import { isNativeApp } from '../lib/nativeBridge'
 import InstallGuide from './InstallGuide'
 import type { Notify } from './Toast'
 
@@ -12,6 +13,7 @@ export default function InstallBanner({ onToast, onAuth = false }: { onToast?: N
   const state = useInstallState()
   const [hidden, setHidden] = useState(installPromptSnoozed)
   const [guide, setGuide] = useState(false)
+  if (isNativeApp()) return null
   if (state === 'installed' || (state !== 'available' && !isMobileDevice())) return null
   if (hidden && !guide) return null
 

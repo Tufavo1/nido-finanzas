@@ -5,7 +5,8 @@ import Logo from '../components/Logo'
 import { INSTAGRAM_HANDLE, INSTAGRAM_URL, copyright } from '../lib/about'
 import { captchaToken } from '../lib/captcha'
 import GoogleButton from '../components/GoogleButton'
-import { NEEDS } from '../lib/needs'
+import { needsFor } from '../lib/needs'
+import { isNativeApp } from '../lib/nativeBridge'
 import { supabase } from '../lib/supabase'
 import { STRENGTH_LABEL, createThrottle, friendlyError, passwordStrength } from '../lib/security'
 import Spin from '../components/Spin'
@@ -231,7 +232,7 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
         <details className="auth-needs">
           <summary>¿Qué necesito para usar Contigo?</summary>
           <ul>
-            {NEEDS.map((n) => (
+            {needsFor(isNativeApp()).map((n) => (
               <li key={n.id}>
                 <strong>{n.title}</strong> ({n.required ? 'necesario' : 'opcional'}): {n.why}
               </li>

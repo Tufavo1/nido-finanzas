@@ -83,6 +83,14 @@ Flujo: aviso del banco → plugin (borrador cifrado) → `useDetected` → bande
 - `useAutoSync`: `setActiveOwner` y luego `setAutoProfile` van en la cola, y el perfil solo se envía si no hubo borrado/cambio de cuenta ni cancelación del efecto entre ambas. `wipeSessionData` y `wipeForAccountSwitch` invalidan la generación. `useDetected.load` fija el dueño por la misma cola.
 - No se requiere cambio de contrato. Defensa en el teléfono (R3-04/05) queda a cargo del backend.
 
+## App Android sin rastro de PWA y actualizaciones nativas
+
+- En nativo (`isNativeApp()`): `InstallBanner`, `InstallGuide` y el ítem «Cómo instalar» de Ajustes no se dibujan; `main.tsx` no arranca los vigilantes de instalación ni de service worker; `AccessCard` quita «App instalada» (`Conexión y avisos`); `SecurityInfo` y `securityChecks` omiten caché/service worker/instalada/almacenamiento del navegador; `needsFor(native)` quita «Instalarla»; Admin ya no dice «navegador». La web queda igual.
+- `PushToggle` delega en `NativePushToggle` (permiso de Android + token FCM, sin Web Push/VAPID).
+- «Acerca de» muestra «Aplicación Android», versión, número de compilación y estado de actualizaciones.
+- Actualizaciones: `lib/appUpdate.ts` (lógica pura: 12 h, «Más tarde» por versión, errores en español simple, parsers), `lib/appUpdateStore.ts` (estado compartido), `NativeUpdateSheet` (hoja con barra `role="progressbar"`, Reintentar, guía a Ajustes si falta el permiso). Revisa 4 s tras abrir y con el botón manual (que ignora el límite y lo descartado).
+- CONTRATO PENDIENTE (declarado por tipos en `nativeBridge.ts`, el backend debe confirmarlo): `getAppInfo`, `getPushStatus`, `enablePush`, `disablePush`, `checkForUpdate`, `downloadUpdate` (evento `updateProgress {downloaded,total?}`), `installUpdate` (code `NEEDS_INSTALL_PERMISSION`), `openInstallSettings`. Códigos de error: NETWORK, NO_SPACE, CORRUPT.
+
 ## Cómo probar
 - `npm --prefix web test` (todo) o `npx --prefix web vitest run src/lib/toastQueue.test.ts src/components`.
 - `npm --prefix web run lint` · `npm --prefix web exec -- tsc -b web` (desde la raíz).

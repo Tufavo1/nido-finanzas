@@ -3,6 +3,8 @@ import LegalModal from '../components/LegalModal'
 import { Suspense, lazy, useState } from 'react'
 import type { Household } from '../App'
 import AboutCard from '../components/AboutCard'
+import { nativeCopy } from '../lib/appUpdate'
+import { isNativeApp } from '../lib/nativeBridge'
 import InstallGuide from '../components/InstallGuide'
 import BackupCard from '../components/BackupCard'
 import LockSettings from '../components/LockSettings'
@@ -49,6 +51,7 @@ export default function Security({
   const [open, setOpen] = useState<string | null>(null)
   const toggle = (id: string) => setOpen((cur) => (cur === id ? null : id))
   const isAdmin = useIsAdmin()
+  const native = isNativeApp()
   const [showAdmin, setShowAdmin] = useState(false)
   const [legal, setLegal] = useState<'privacy' | 'terms' | null>(null)
 
@@ -135,13 +138,22 @@ export default function Security({
 
       <h2 className="set-group">Aplicación</h2>
       <div className="set-list">
-        <SettingsItem {...item} id="install" icon="download" title="Cómo instalar Contigo" summary="En iPhone o Android" open={open === 'install'}>
-          <section className="card">
-            <InstallGuide onToast={onToast} />
-          </section>
-        </SettingsItem>
+        {!native && (
+          <SettingsItem {...item} id="install" icon="download" title="Cómo instalar Contigo" summary="En iPhone o Android" open={open === 'install'}>
+            <section className="card">
+              <InstallGuide onToast={onToast} />
+            </section>
+          </SettingsItem>
+        )}
         {isAdmin && (
-          <SettingsItem {...item} id="access" icon="wallet" title="Instalación y conexión" summary="Internet, app instalada y avisos" open={open === 'access'}>
+          <SettingsItem
+            {...item}
+            id="access"
+            icon="wallet"
+            title={native ? nativeCopy.accessTitle : 'Instalación y conexión'}
+            summary={native ? nativeCopy.accessSummary : 'Internet, app instalada y avisos'}
+            open={open === 'access'}
+          >
             <AccessCard onToast={onToast} />
           </SettingsItem>
         )}

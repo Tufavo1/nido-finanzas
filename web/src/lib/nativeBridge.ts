@@ -60,7 +60,63 @@ export interface AutoProfileOptions {
   categories: { key: string; categoryId: string }[]
 }
 
+export interface AppInfo {
+  versionName: string
+  versionCode: number
+}
+
+/** Resultado de checkForUpdate. Con available=false los demas campos no vienen. */
+export interface UpdateCheck {
+  available: boolean
+  versionName?: string
+  versionCode?: number
+  notes?: string | null
+  sizeBytes?: number
+}
+
+export interface UpdateProgress {
+  downloaded: number
+  total: number
+}
+
+export interface UpdateInstallEvent {
+  status: 'confirm' | 'installed' | 'failed'
+  error?: UpdateErrorCode | null
+}
+
+/** Codigos de error de las actualizaciones (el texto del servidor nunca llega a la app). */
+export type UpdateErrorCode =
+  | 'NO_NETWORK' | 'RATE_LIMITED' | 'INVALID_FORMAT' | 'NO_ASSET' | 'HOST_NOT_ALLOWED' | 'TOO_LARGE'
+  | 'HASH_MISMATCH' | 'DOWNGRADE' | 'WRONG_PACKAGE' | 'WRONG_SIGNATURE' | 'INSTALL_NOT_ALLOWED'
+  | 'INSTALL_FAILED' | 'NOTHING_DOWNLOADED'
+
+const UPDATE_CODES: readonly UpdateErrorCode[] = ['NO_NETWORK', 'RATE_LIMITED', 'INVALID_FORMAT', 'NO_ASSET', 'HOST_NOT_ALLOWED', 'TOO_LARGE', 'HASH_MISMATCH', 'DOWNGRADE', 'WRONG_PACKAGE', 'WRONG_SIGNATURE', 'INSTALL_NOT_ALLOWED', 'INSTALL_FAILED', 'NOTHING_DOWNLOADED']
+
+/** Saca el codigo tipado de un rechazo del plugin; cualquier otra cosa es INSTALL_FAILED. */
+export function updateErrorCode(e: unknown): UpdateErrorCode {
+  const code = (e as { code?: unknown } | null)?.code
+  return UPDATE_CODES.find((c) => c === code) ?? 'INSTALL_FAILED'
+}
+
+/** Valida lo que devuelve checkForUpdate (la capa nativa ya lo valido, esto protege la UI). */
+export function parseUpdateCheck(raw: unknown): UpdateCheck {
+  const r = (raw ?? {}) as Record<string, unknown>
+  if (r.available !== true) return { available: false }
+  if (typeof r.versionName !== 'string' || typeof r.versionCode !== 'number' || typeof r.sizeBytes !== 'number') return { available: false }
+  return { available: true, versionName: r.versionName, versionCode: r.versionCode, sizeBytes: r.sizeBytes, notes: typeof r.notes === 'string' ? r.notes : null }
+}
+
 export interface ContigoNativePlugin {
+  getAppInfo(): Promise<AppInfo>
+  /** Consulta anonima a GitHub (le muestra la IP): ultimo release publicado y mayor que el instalado. */
+  checkForUpdate(): Promise<UpdateCheck>
+  /** Descarga y verifica (hash, paquete, version, firma). Progreso por el evento 'updateProgress'. */
+  downloadUpdate(): Promise<{ versionName: string; versionCode: number }>
+  /** Rechaza con INSTALL_NOT_ALLOWED si falta el permiso: guiar con openInstallSettings. Resultado por 'updateInstall'. */
+  installUpdate(): Promise<void>
+  canInstallUpdates(): Promise<{ allowed: boolean }>
+  openInstallSettings(): Promise<void>
+  discardUpdate(): Promise<void>
   getStatus(): Promise<CaptureStatus>
   openPermissionGuide(): Promise<void>
   openListenerSettings(): Promise<void>
@@ -126,10 +182,29 @@ export interface ContigoNativePlugin {
    */
   googleSignIn(options: { nonce: string; serverClientId: string }): Promise<{ idToken: string }>
 
+  // ---- CONTRATO PENDIENTE DEL BACKEND (diseñado por tipos; confirmar en docs/mobile/backend-android.md) ----
+  /** Versión y número de compilación reales del APK instalado: { versionName, versionCode } */
+  getAppInfo(): Promise<unknown>
+  /** Avisos nativos (FCM): permiso de Android y si el token ya quedó registrado: { permission: 'granted'|'denied'|'default', tokenRegistered } */
+  getPushStatus(): Promise<unknown>
+  /** Pide el permiso de notificaciones (Android 13+) y registra el token FCM. El token no llega a la interfaz. */
+  enablePush(): Promise<unknown>
+  /** Da de baja el token FCM de este teléfono */
+  disablePush(): Promise<void>
+  /** { available, versionName?, notes?, sizeBytes? }. Rechaza con code NETWORK si no hay conexión. */
+  checkForUpdate(): Promise<unknown>
+  /** Descarga el APK; el avance llega por el evento `updateProgress`. Rechaza con code NETWORK | NO_SPACE | CORRUPT. */
+  downloadUpdate(): Promise<void>
+  /** Abre el instalador del sistema. Rechaza con code NEEDS_INSTALL_PERMISSION si falta «instalar apps desconocidas». */
+  installUpdate(): Promise<void>
+  /** Abre el ajuste de Android «Instalar apps desconocidas» de Contigo */
+  openInstallSettings(): Promise<void>
+
   peekCrashReports(): Promise<{ reports: unknown[] }>
   clearCrashReports(): Promise<void>
 
   addListener(event: 'draftsChanged', listener: () => void): Promise<PluginListenerHandle>
+  addListener(event: 'updateProgress', listener: (e: { downloaded: number; total?: number }) => void): Promise<PluginListenerHandle>
   addListener(event: 'draftOpen', listener: (e: { id: string }) => void): Promise<PluginListenerHandle>
 }
 

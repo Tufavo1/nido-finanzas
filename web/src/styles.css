@@ -1965,3 +1965,10 @@ button.setup-item:focus-visible { outline: 3px solid var(--accent-ink); outline-
 .unsent-bar { position: sticky; top: 0; z-index: 39; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-sm); background: color-mix(in srgb, var(--amber) 55%, var(--surface)); color: var(--text); border-bottom: 1px solid var(--line); }
 .card.dup { border-color: var(--amber); border-width: 2px; }
 .dup-note { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border-radius: var(--r-md); background: var(--surface-2); }
+
+/* Barra de avance de la actualización de la app Android */
+.progress { height: 10px; border-radius: 999px; background: var(--skel); overflow: hidden; }
+.progress-bar { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .2s ease; }
+.progress-bar.indeterminate { animation: progress-slide 1.2s ease-in-out infinite; }
+@keyframes progress-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .progress-bar.indeterminate { animation: none; } .progress-bar { transition: none; } }

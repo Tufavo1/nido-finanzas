@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { promptInstall, useInstallState } from '../lib/install'
 import { currentPushState } from '../lib/push'
 import type { PushState } from '../lib/push'
+import { ContigoNative, isNativeApp } from '../lib/nativeBridge'
+import { nativeCopy, parsePushStatus } from '../lib/appUpdate'
 import type { Notify } from './Toast'
 
 type Tone = 'ok' | 'warn' | 'off'
@@ -15,7 +17,14 @@ export default function AccessCard({ onToast }: { onToast: Notify }) {
   const [online, setOnline] = useState(navigator.onLine)
 
   useEffect(() => {
-    void currentPushState().then(setPush)
+    if (isNativeApp()) {
+      ContigoNative.getPushStatus()
+        .then((r) => {
+          const s = parsePushStatus(r)
+          setPush(s.permission === 'denied' ? 'denied' : s.permission === 'granted' && s.tokenRegistered ? 'on' : 'off')
+        })
+        .catch(() => setPush('off'))
+    } else void currentPushState().then(setPush)
     const up = () => setOnline(true)
     const down = () => setOnline(false)
     window.addEventListener('online', up)
@@ -26,8 +35,9 @@ export default function AccessCard({ onToast }: { onToast: Notify }) {
     }
   }, [])
 
-  const rows: { title: string; tone: Tone; label: string; action?: { label: string; run: () => void } }[] = [
-    { title: 'Internet', tone: online ? 'ok' : 'warn', label: online ? 'Conectado' : 'Sin conexión' },
+  const native = isNativeApp()
+  type Row = { title: string; tone: Tone; label: string; action?: { label: string; run: () => void } }
+  const installRow: Row[] = native ? [] : [
     install === 'installed'
       ? { title: 'App instalada', tone: 'ok', label: 'Sí' }
       : install === 'available'
@@ -41,6 +51,10 @@ export default function AccessCard({ onToast }: { onToast: Notify }) {
             },
           }
         : { title: 'App instalada', tone: 'off', label: 'No' },
+  ]
+  const rows: Row[] = [
+    { title: 'Internet', tone: online ? 'ok' : 'warn', label: online ? 'Conectado' : 'Sin conexión' },
+    ...installRow,
     {
       title: 'Avisos',
       tone: push === 'on' ? 'ok' : push === 'denied' ? 'warn' : 'off',
@@ -49,7 +63,7 @@ export default function AccessCard({ onToast }: { onToast: Notify }) {
   ]
 
   return (
-    <section className="card" aria-label="Instalación y conexión">
+    <section className="card" aria-label={native ? nativeCopy.accessTitle : 'Instalación y conexión'}>
       <div className="stack tight">
         {rows.map((r) => (
           <div className="need" key={r.title}>

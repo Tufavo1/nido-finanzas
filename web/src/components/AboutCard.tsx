@@ -1,5 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BUILD_DATE, COMMIT, TAGLINE, VERSION, checkForUpdate, copyright } from '../lib/about'
+import { nativeCopy, parseAppInfo } from '../lib/appUpdate'
+import type { AppInfo } from '../lib/appUpdate'
+import { checkUpdates, useUpdateState } from '../lib/appUpdateStore'
+import { ContigoNative, isNativeApp } from '../lib/nativeBridge'
 import Logo from './Logo'
 import LicensesCard from './LicensesCard'
 import type { Notify } from './Toast'
@@ -9,6 +13,35 @@ const fmtDate = new Intl.DateTimeFormat('es-CL', { day: 'numeric', month: 'long'
 /** Acerca de Contigo: versión, derechos y un gracias. */
 export default function AboutCard({ onToast, onPrivacy }: { onToast: Notify; onPrivacy?: () => void }) {
   const [busy, setBusy] = useState(false)
+  const native = isNativeApp()
+  const upd = useUpdateState()
+  const [info, setInfo] = useState<AppInfo | null | undefined>(undefined)
+
+  useEffect(() => {
+    if (!native) return
+    let alive = true
+    ContigoNative.getAppInfo()
+      .then((r) => alive && setInfo(parseAppInfo(r)))
+      .catch(() => alive && setInfo(null))
+    return () => {
+      alive = false
+    }
+  }, [native])
+
+  async function nativeUpdate() {
+    await checkUpdates(true)
+  }
+
+  const updateStatus =
+    upd.phase === 'checking'
+      ? 'Buscando…'
+      : upd.phase === 'uptodate'
+        ? nativeCopy.upToDate
+        : upd.info.available
+          ? `Hay una versión nueva (${upd.info.versionName})`
+          : upd.phase === 'error'
+            ? (upd.error?.text ?? 'No se pudo comprobar')
+            : 'Sin revisar todavía'
 
   async function update() {
     setBusy(true)
@@ -33,6 +66,26 @@ export default function AboutCard({ onToast, onPrivacy }: { onToast: Notify; onP
         </div>
       </div>
 
+      {native ? (
+        <dl className="about-facts">
+          <div>
+            <dt>Tipo</dt>
+            <dd>{nativeCopy.appKind}</dd>
+          </div>
+          <div>
+            <dt>Versión</dt>
+            <dd className="num">{info === undefined ? '…' : (info?.versionName ?? 'No disponible')}</dd>
+          </div>
+          <div>
+            <dt>Compilación</dt>
+            <dd className="num">{info === undefined ? '…' : (info?.versionCode ?? 'No disponible')}</dd>
+          </div>
+          <div>
+            <dt>{nativeCopy.updatesTitle}</dt>
+            <dd aria-live="polite">{updateStatus}</dd>
+          </div>
+        </dl>
+      ) : (
       <dl className="about-facts">
         <div>
           <dt>Versión</dt>
@@ -49,10 +102,17 @@ export default function AboutCard({ onToast, onPrivacy }: { onToast: Notify; onP
           </div>
         )}
       </dl>
+      )}
 
-      <button type="button" className="btn ghost small" disabled={busy} onClick={() => void update()}>
-        {busy ? 'Buscando…' : 'Buscar actualizaciones'}
-      </button>
+      {native ? (
+        <button type="button" className="btn ghost small" disabled={upd.phase === 'checking'} onClick={() => void nativeUpdate()}>
+          {upd.phase === 'checking' ? 'Buscando…' : 'Buscar actualizaciones'}
+        </button>
+      ) : (
+        <button type="button" className="btn ghost small" disabled={busy} onClick={() => void update()}>
+          {busy ? 'Buscando…' : 'Buscar actualizaciones'}
+        </button>
+      )}
 
       {onPrivacy && (
         <button type="button" className="btn ghost small" onClick={onPrivacy}>

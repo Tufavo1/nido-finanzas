@@ -3,6 +3,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Sin copias de seguridad (la cola y la sesión no deben salir del teléfono) y sin tráfico en claro. -->
+    <!-- Actualizar la app desde su release de GitHub (con hash y firma comprobados). El usuario debe permitirlo en Ajustes. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <application
         android:name=".ContigoApplication"
         android:allowBackup="false"
@@ -64,6 +67,10 @@
 
         <receiver
             android:name=".capture.ReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".update.InstallResultReceiver"
             android:exported="false" />
 
         <provider

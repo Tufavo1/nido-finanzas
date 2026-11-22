@@ -28,3 +28,7 @@
 -keep class com.google.android.libraries.identity.googleid.** { *; }
 -dontwarn androidx.credentials.**
 -dontwarn com.google.android.libraries.identity.googleid.**
+
+# Actualizaciones: el receptor lo instancia el sistema por nombre; el resto va por el plugin.
+-keep class cl.dinovance.contigo.update.InstallResultReceiver
+-keep class cl.dinovance.contigo.update.UpdateError { *; }
