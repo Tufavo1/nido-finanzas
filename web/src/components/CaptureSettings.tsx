@@ -5,6 +5,7 @@ import BankConsentSheet from './BankConsentSheet'
 import BankTrustSheet from './BankTrustSheet'
 import CaptureDiagnostics from './CaptureDiagnostics'
 import CaptureAppsPicker from './CaptureAppsPicker'
+import ScanButton from './ScanButton'
 import PartnerAlerts from './PartnerAlerts'
 import Modal from './Modal'
 import NotificationPermission from './NotificationPermission'
@@ -137,6 +138,7 @@ export default function CaptureSettings({ config, onConfig, onToast, onCleared, 
 
   return (
     <div className="stack">
+      <ScanButton onPickApp={() => setAdvanced(true)} />
       <NotificationPermission permission={permission} wasGranted={status.revokedSinceConnected} onOpenSystemSettings={openGuide} onRequest={openGuide} showRestrictedHelp={status.restrictedSettingsLikely} />
 
       <section className="card">

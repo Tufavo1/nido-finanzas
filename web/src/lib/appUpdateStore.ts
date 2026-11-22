@@ -15,6 +15,10 @@ export interface UpdateState {
   info: UpdateInfo
   percent: number | null
   error: UpdateErrorInfo | null
+  /** «Después» del banner: solo esta sesión de la app, no se guarda */
+  dismissed: boolean
+  /** Otra ventana importante (conectar bancos) está abierta: la hoja de aviso espera */
+  suppressed: boolean
 }
 
 const LAST_KEY = 'contigo-update-checked'
@@ -35,7 +39,7 @@ const write = (k: string, v: string): void => {
   }
 }
 
-let state: UpdateState = { phase: 'idle', info: { available: false }, percent: null, error: null }
+let state: UpdateState = { phase: 'idle', info: { available: false }, percent: null, error: null, dismissed: false, suppressed: false }
 const listeners = new Set<() => void>()
 const set = (patch: Partial<UpdateState>): void => {
   state = { ...state, ...patch }
@@ -43,7 +47,7 @@ const set = (patch: Partial<UpdateState>): void => {
 }
 let busy = false
 
-/** Revisa si hay versión nueva. `manual` (botón de Acerca de) ignora el límite de 12 h y lo descartado, y cuenta los errores. */
+/** Revisa si hay versión nueva. `manual` (botón de Acerca de) ignora el límite de 6 h y lo descartado, y cuenta los errores. */
 export async function checkUpdates(manual = false): Promise<void> {
   if (!isNativeApp() || busy) return
   const last = Number(read(LAST_KEY))
@@ -83,6 +87,15 @@ export async function startUpdate(): Promise<void> {
 export function postponeUpdate(): void {
   if (state.info.versionName) write(LATER_KEY, state.info.versionName)
   set({ phase: 'idle', error: null })
+}
+
+/** «Después» en el banner: se oculta hasta que la app se abra de nuevo (no queda guardado) */
+export function dismissBanner(): void {
+  set({ dismissed: true })
+}
+
+export function setUpdateSuppressed(suppressed: boolean): void {
+  set({ suppressed })
 }
 
 export function closeUpdate(): void {

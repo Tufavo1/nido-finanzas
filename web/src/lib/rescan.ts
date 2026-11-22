@@ -3,6 +3,7 @@
 // y al aceptar la conexión de bancos. Silenciosa, por la cola nativa y como máximo una vez cada 10 s.
 import { enqueueNative } from './nativeSerial'
 import { ContigoNative, isNativeApp, parseRescan } from './nativeBridge'
+import type { RescanResult } from './nativeBridge'
 import { logError } from './safeLog'
 
 export const RESCAN_MIN_GAP_MS = 10_000
@@ -43,5 +44,22 @@ export async function rescanNow(opts: { force?: boolean; now?: number } = {}): P
     return 0
   } finally {
     inflight = false
+  }
+}
+
+/**
+ * «Buscar gastos ahora»: la pide la persona, así que salta el límite de 10 s. Devuelve el resultado completo,
+ * o null si no es la app nativa o falló (la pantalla dice qué hacer). Refresca la bandeja si encontró algo.
+ */
+export async function scanNow(): Promise<RescanResult | null> {
+  if (!isNativeApp()) return null
+  try {
+    const r = parseRescan(await enqueueNative(() => ContigoNative.rescanNotifications()))
+    lastAt = Date.now()
+    if (r.processed > 0) listeners.forEach((cb) => cb(r.processed))
+    return r
+  } catch (e) {
+    logError(e, 'rescan')
+    return null
   }
 }

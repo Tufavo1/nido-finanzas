@@ -61,8 +61,8 @@ class NotificationCaptureService : NotificationListenerService() {
     }
 
     /** Avisos que ya estaban en la barra (el servicio solo recibe los NUEVOS). Nunca lanza. Devuelve cuantos proceso. */
-    fun rescanActive(): Int = try {
-        val active = (activeNotifications ?: emptyArray()).map { sbn ->
+    fun rescanActive(): ScanReport = try {
+        val active = (activeNotifications ?: emptyArray()).filter { it.packageName != packageName }.map { sbn ->
             ActiveNotice(sbn.packageName, sbn.key, sbn.postTime) {
                 val extras = sbn.notification?.extras
                 val title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.take(MAX_TEXT)
@@ -70,12 +70,12 @@ class NotificationCaptureService : NotificationListenerService() {
                 title to text
             }
         }
-        val n = graph.rescanner.rescan(active)
-        if (n > 0) DraftEvents.changed()
-        n
+        val report = graph.rescanner.scan(active)
+        if (report.processed > 0) DraftEvents.changed()
+        report
     } catch (e: Throwable) {
         graph.prefs.recordFailure(e.javaClass.simpleName, System.currentTimeMillis())
-        0
+        ScanReport(0, 0, 0, 0)
     }
 
     companion object {

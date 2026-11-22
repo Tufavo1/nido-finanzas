@@ -4,15 +4,15 @@ import { CHECK_EVERY_MS, formatBytes, nativeCopy, parseAppInfo, parseUpdateInfo,
 
 const H = 3_600_000
 
-describe('shouldCheck: máximo una vez cada 12 h', () => {
+describe('shouldCheck: máximo una vez cada 6 h', () => {
   it('nunca revisó o el dato es raro: revisa', () => {
     expect(shouldCheck(null, 1000)).toBe(true)
     expect(shouldCheck(Number.NaN, 1000)).toBe(true)
   })
-  it('antes de 12 h no, desde 12 h sí', () => {
-    expect(CHECK_EVERY_MS).toBe(12 * H)
-    expect(shouldCheck(0, 12 * H - 1)).toBe(false)
-    expect(shouldCheck(0, 12 * H)).toBe(true)
+  it('antes de 6 h no, desde 6 h sí', () => {
+    expect(CHECK_EVERY_MS).toBe(6 * H)
+    expect(shouldCheck(0, 6 * H - 1)).toBe(false)
+    expect(shouldCheck(0, 6 * H)).toBe(true)
   })
   it('reloj atrasado (última revisión en el futuro): revisa', () => {
     expect(shouldCheck(10 * H, 0)).toBe(true)
