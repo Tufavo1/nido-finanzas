@@ -2,6 +2,8 @@
 import { Fragment, useState } from 'react'
 import CategoryPicker from './CategoryPicker'
 import EmptyState from './EmptyState'
+import ScanButton from './ScanButton'
+import { isNativeApp } from '../lib/nativeBridge'
 import { SkeletonList } from './Skeleton'
 import { DUPLICATE_EXPLANATION, duplicateMarks, sourceLabel } from '../lib/draftFlags'
 import { money } from '../lib/format'
@@ -105,7 +107,7 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
           </button>
         </section>
       )}
-      {drafts !== null && !failed && <EmptyState section="drafts" count={drafts.length} onCta={onSettings} />}
+      {drafts !== null && !failed && <EmptyState section="drafts" count={drafts.length} onCta={onSettings} action={isNativeApp() ? <ScanButton onPickApp={onSettings} /> : undefined} />}
       {groups.map((g) => (
         <Fragment key={g.kind}>
           {headed && <h2 className={`mov-title ${g.cls}`}>{g.title}</h2>}

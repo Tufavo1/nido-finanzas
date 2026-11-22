@@ -21,6 +21,8 @@ import androidx.credentials.exceptions.GetCredentialException
 import java.io.File
 import cl.dinovance.contigo.auth.GoogleSignInLogic
 import cl.dinovance.contigo.capture.BankSetup
+import cl.dinovance.contigo.capture.ScanReport
+import cl.dinovance.contigo.capture.ScanResult
 import cl.dinovance.contigo.capture.NotificationCaptureService
 import cl.dinovance.contigo.sync.ApiBasePolicy
 import cl.dinovance.contigo.update.CheckResult
@@ -461,13 +463,15 @@ class ContigoNativePlugin : Plugin() {
         )
     }
 
-    /** Procesa los avisos que ya estaban en la barra (solo apps permitidas, ultimas 24 h, maximo 50, sin duplicar). {processed, connected}. */
+    /** Procesa los avisos que ya estaban en la barra (solo apps permitidas, ultimas 24 h, maximo 50, sin duplicar). {connected, scanned, processed, alreadySeen, otherApps, reason}: solo numeros y un enum. */
     @PluginMethod
     fun rescanNotifications(call: PluginCall) {
         val service = NotificationCaptureService.instance
         updateExecutor.execute {
-            val n = service?.rescanActive() ?: 0
-            call.resolve(JSObject().put("processed", n).put("connected", service != null))
+            val report = service?.rescanActive() ?: ScanReport(0, 0, 0, 0)
+            val allowed = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+            val r = ScanResult.of(allowed && service != null, graph.prefs.effectiveWhitelist().isNotEmpty(), report)
+            call.resolve(JSObject().put("connected", service != null).apply { r.toMap().forEach { (k, v) -> put(k, v) } })
         }
     }
 

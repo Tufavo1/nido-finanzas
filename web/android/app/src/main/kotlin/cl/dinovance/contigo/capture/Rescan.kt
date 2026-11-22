@@ -54,12 +54,17 @@ class NotificationRescanner(
     private val recent: (pkg: String, postTime: Long) -> Unit,
     private val onFailure: (String) -> Unit = {},
 ) {
+    fun rescan(active: List<ActiveNotice>): Int = scan(active).processed
+
+    /** Como [rescan] pero con el informe del escaneo: solo numeros, jamas paquetes ni texto. */
     @Synchronized
-    fun rescan(active: List<ActiveNotice>): Int {
+    fun scan(active: List<ActiveNotice>): ScanReport {
         val now = clock()
         val fresh = active.filter { now - it.postTime <= MAX_AGE_MILLIS }.sortedByDescending { it.postTime }
         fresh.forEach { try { recent(it.packageName, it.postTime) } catch (e: Exception) { onFailure(e.javaClass.simpleName) } }
-        val todo = fresh.filter { accepts(it.packageName) && !seen.has(it.packageName, it.key, it.postTime) }.take(MAX_PER_PASS)
+        val allowed = fresh.filter { accepts(it.packageName) }
+        val examined = allowed.take(MAX_PER_PASS)
+        val todo = examined.filterNot { seen.has(it.packageName, it.key, it.postTime) }
         val done = ArrayList<Triple<String, String, Long>>()
         var processed = 0
         for (n in todo) {
@@ -72,11 +77,37 @@ class NotificationRescanner(
             done.add(Triple(n.packageName, n.key, n.postTime)) // tambien los malos: no se reintentan en cada conexion
         }
         if (done.isNotEmpty()) seen.markAll(done)
-        return processed
+        return ScanReport(examined.size, processed, examined.size - todo.size, fresh.size - allowed.size)
     }
 
     companion object {
         const val MAX_AGE_MILLIS = 24L * 60 * 60 * 1000
         const val MAX_PER_PASS = 50
+    }
+}
+
+/** scanned = avisos activos de apps PERMITIDAS examinados (<= 24 h, tope 50); processed = borradores nuevos; alreadySeen = ya marcados; otherApps = avisos de apps NO permitidas (solo el numero). */
+data class ScanReport(val scanned: Int, val processed: Int, val alreadySeen: Int, val otherApps: Int)
+
+/** Una causa probable de por que «Buscar gastos» no encontro nada. */
+enum class ScanReason { OK, LISTENER_OFF, NO_BANK_APP, NOTHING_ACTIVE, ONLY_SEEN }
+
+data class ScanResult(val report: ScanReport, val reason: ScanReason) {
+    fun toMap(): Map<String, Any> = mapOf(
+        "scanned" to report.scanned, "processed" to report.processed, "alreadySeen" to report.alreadySeen, "otherApps" to report.otherApps, "reason" to reason.name,
+    )
+
+    companion object {
+        /** [listenerOn]: permiso de acceso a notificaciones concedido Y servicio conectado. [hasBankApp]: hay apps permitidas (bancos detectados o elegidas). */
+        fun of(listenerOn: Boolean, hasBankApp: Boolean, r: ScanReport): ScanResult = ScanResult(
+            r,
+            when {
+                !listenerOn -> ScanReason.LISTENER_OFF
+                !hasBankApp -> ScanReason.NO_BANK_APP
+                r.scanned == 0 -> ScanReason.NOTHING_ACTIVE
+                r.processed == 0 && r.alreadySeen >= r.scanned -> ScanReason.ONLY_SEEN
+                else -> ScanReason.OK
+            },
+        )
     }
 }

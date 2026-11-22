@@ -26,8 +26,10 @@ import BankConsentSheet from './components/BankConsentSheet'
 import { readConsent, shouldAskConsent } from './lib/bankConsent'
 import { isNativeApp } from './lib/nativeBridge'
 import { refreshPushToken } from './lib/nativePush'
+import { useAppResume } from './lib/useAppResume'
 import { logError as logPushError } from './lib/safeLog'
 import NativeUpdateSheet from './components/NativeUpdateSheet'
+import NativeUpdateBanner from './components/NativeUpdateBanner'
 import UpdateBanner from './components/UpdateBanner'
 import LockScreen from './components/LockScreen'
 import OfflineBar from './components/OfflineBar'
@@ -123,11 +125,12 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   const { config: capture, save: saveCapture } = useCaptureConfig()
   const queue = useExpenseQueue(hh.household.id, hh.me.user_id, data.refresh, setToast)
   const detected = useDetected({ hh, data, config: capture, queue, notify: setToast })
-  // App Android: busca versión nueva al abrir (máx. 1 vez cada 12 h; sin molestar durante el arranque)
+  // App Android: busca versión nueva al abrir y al volver a primer plano (máx. 1 vez cada 6 h; sin molestar durante el arranque)
   useEffect(() => {
     const t = window.setTimeout(() => void checkUpdates(), 4000)
     return () => window.clearTimeout(t)
   }, [])
+  useAppResume(() => void checkUpdates())
   // Primera vez en la app Android: una hoja corta para conectar los bancos (sin insistir si dice «Ahora no»)
   const [askBanks, setAskBanks] = useState(false)
   useEffect(() => {
@@ -405,6 +408,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
       <InstallBanner onToast={setToast} />
       <UpdateBanner />
       <NativeUpdateSheet />
+      {isNativeApp() && <NativeUpdateBanner />}
       {askBanks && <BankConsentSheet config={capture} onConfig={saveCapture} onToast={setToast} onClose={() => setAskBanks(false)} />}
       {toast && <Toast key={`${toast.id}-${toast.expiresAt}`} toast={toast} onDismiss={dismissToast} onAction={actToast} />}
       <PullIndicator view={pull.view} refreshing={pull.refreshing} />

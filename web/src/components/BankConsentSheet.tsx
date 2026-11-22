@@ -9,6 +9,7 @@ import type { CaptureConfig } from '../lib/captureConfig'
 import { ContigoNative } from '../lib/nativeBridge'
 import { logError } from '../lib/safeLog'
 import { rescanNow } from '../lib/rescan'
+import { setUpdateSuppressed } from '../lib/appUpdateStore'
 import { useCaptureStatus } from '../lib/useCaptureStatus'
 
 const api = ContigoNative as unknown as DetectedBanksApi
@@ -30,6 +31,10 @@ const RESTRICTED = [
 /** «¿Conectar tus bancos?»: Aceptar → permiso → bancos encontrados → guardar solos. Corto y reversible. */
 export default function BankConsentSheet({ config, onConfig, onToast, onClose }: Props) {
   const { state, reload } = useCaptureStatus()
+  useEffect(() => {
+    setUpdateSuppressed(true)
+    return () => setUpdateSuppressed(false)
+  }, [])
   const [step, setStep] = useState<ConsentStep>('ask')
   const [banks, setBanks] = useState<DetectedBank[]>([])
   const [auto, setAuto] = useState(true)

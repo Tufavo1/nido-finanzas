@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Dinovance
 /** Lógica pura de la app Android: actualizaciones, versión y avisos nativos. Sin DOM ni plugin: se prueba sola. */
 
-export const CHECK_EVERY_MS = 12 * 3_600_000
+export const CHECK_EVERY_MS = 6 * 3_600_000
 
-/** Máximo una revisión cada 12 h; un reloj raro (revisión en el futuro) cuenta como «toca revisar» */
+/** Máximo una revisión cada 6 h; un reloj raro (revisión en el futuro) cuenta como «toca revisar» */
 export function shouldCheck(lastAt: number | null, now: number): boolean {
   if (lastAt === null || !Number.isFinite(lastAt) || lastAt > now) return true
   return now - lastAt >= CHECK_EVERY_MS
@@ -69,17 +69,19 @@ export function formatBytes(n: number | undefined): string {
 export interface UpdateErrorInfo {
   kind: 'permission' | 'retry'
   text: string
+  /** Versión de 2-3 palabras para el banner */
+  short: string
 }
 
 /** Cualquier fallo del plugin, en una frase simple. Nunca se muestran códigos ni mensajes crudos. */
 export function updateErrorInfo(e: unknown): UpdateErrorInfo {
   const code = isObj(e) && typeof e.code === 'string' ? e.code : ''
   if (code === 'NEEDS_INSTALL_PERMISSION')
-    return { kind: 'permission', text: 'Falta un permiso para instalar la actualización. Actívalo en Ajustes para Contigo y vuelve aquí.' }
-  if (code === 'NETWORK') return { kind: 'retry', text: 'No hay buena conexión. Revisa tu internet e inténtalo de nuevo.' }
-  if (code === 'NO_SPACE') return { kind: 'retry', text: 'No hay espacio suficiente en el teléfono. Libera un poco e inténtalo de nuevo.' }
-  if (code === 'CORRUPT') return { kind: 'retry', text: 'La descarga llegó dañada. Inténtalo de nuevo.' }
-  return { kind: 'retry', text: 'No se pudo actualizar. Inténtalo de nuevo en un momento.' }
+    return { kind: 'permission', text: 'Falta un permiso para instalar la actualización. Actívalo en Ajustes para Contigo y vuelve aquí.', short: 'Falta un permiso para instalar.' }
+  if (code === 'NETWORK') return { kind: 'retry', text: 'No hay buena conexión. Revisa tu internet e inténtalo de nuevo.', short: 'Revisa tu conexión.' }
+  if (code === 'NO_SPACE') return { kind: 'retry', text: 'No hay espacio suficiente en el teléfono. Libera un poco e inténtalo de nuevo.', short: 'Libera espacio.' }
+  if (code === 'CORRUPT') return { kind: 'retry', text: 'La descarga llegó dañada. Inténtalo de nuevo.', short: 'Inténtalo de nuevo.' }
+  return { kind: 'retry', text: 'No se pudo actualizar. Inténtalo de nuevo en un momento.', short: 'Inténtalo de nuevo.' }
 }
 
 /** Textos de la app Android que reemplazan a los de la versión web */

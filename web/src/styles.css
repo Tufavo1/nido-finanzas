@@ -2019,3 +2019,15 @@ button.setup-item:focus-visible { outline: 3px solid var(--accent-ink); outline-
 .switch { border: 1.5px solid var(--field-line); }
 .switch[aria-checked='true'] { border-color: var(--accent-ink); }
 .btn.ghost { border-color: var(--field-line); }
+
+/* Buscar gastos ahora */
+.scan { width: 100%; gap: 8px; }
+.scan-btn { width: 100%; min-height: 52px; }
+.scan-result { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-height: 0; }
+.scan-result:empty { display: none; }
+
+/* Banner de actualización de la app Android */
+.install-banner.update-banner { flex-direction: column; align-items: stretch; gap: 8px; z-index: 25; background: var(--surface); color: var(--text); border: 1px solid var(--field-line); }
+.update-banner .update-actions { display: flex; flex-direction: column; gap: 8px; }
+.update-banner .update-actions > .btn:not(.ghost) { width: 100%; min-height: 52px; }
+.update-banner .update-actions > .btn.ghost { min-height: 48px; }

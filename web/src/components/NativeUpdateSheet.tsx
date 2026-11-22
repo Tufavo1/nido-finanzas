@@ -6,7 +6,8 @@ import Modal from './Modal'
 /** Hoja «Hay una versión nueva (x.y.z)»: Actualizar ahora / Más tarde, avance accesible y errores en español simple */
 export default function NativeUpdateSheet() {
   const u = useUpdateState()
-  const open = u.phase === 'prompt' || u.phase === 'downloading' || u.phase === 'installing' || (u.phase === 'error' && u.info.available)
+  // Solo el primer aviso; descargar, instalar y errores los lleva el banner (nunca los dos a la vez ni sobre «Conectar bancos»)
+  const open = u.phase === 'prompt' && !u.suppressed
   if (!open) return null
   const working = u.phase === 'downloading' || u.phase === 'installing'
   const size = formatBytes(u.info.sizeBytes)

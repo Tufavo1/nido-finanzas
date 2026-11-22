@@ -201,3 +201,10 @@ El servicio de escucha solo recibía avisos NUEVOS (`onNotificationPosted`): un 
 - Sin duplicar: se guarda, cifrado y persistente, un anillo de 200 hashes SHA-256 de paquete+clave+hora (`SeenNotices`; jamás texto ni claves). `onNotificationPosted` también los marca. Este almacén NO se borra con el cierre de sesión (un gasto ya enviado no debe renacer desde la barra).
 - Límites: ignora avisos de más de 24 h, máximo 50 por pasada (los más recientes), y un aviso que falla no bloquea al resto ni tumba el servicio (se cuenta en la salud). Mismas reglas de dueño: sin sesión se guarda huérfano y se adopta al iniciar sesión. La bandeja sigue teniendo su tope de 50 borradores.
 - Modo aprender (`getRecentNotifyingApps`): ya registraba apps NO permitidas que avisan (solo paquete y hora) desde `onNotificationPosted`; ahora también las de la barra en cada reescaneo. Nunca guarda texto.
+
+### Resultado de `rescanNotifications()` (botón «Buscar gastos»)
+
+`{ connected, scanned, processed, alreadySeen, otherApps, reason }`. Solo números y un enum: jamás texto ni nombres de paquete.
+- `scanned`: avisos activos de apps PERMITIDAS examinados (≤ 24 h, tope 50, los más recientes). `processed`: cuántos generaron un borrador nuevo. `alreadySeen`: cuántos ya estaban marcados en `SeenNotices` (no se reprocesan). `otherApps`: cantidad de avisos activos de apps NO permitidas (la propia app no cuenta). `connected`: el servicio de escucha está conectado.
+- `reason` (UNA causa probable, en este orden): `LISTENER_OFF` (permiso de acceso a notificaciones apagado o servicio no conectado), `NO_BANK_APP` (no hay apps permitidas ni bancos detectados), `NOTHING_ACTIVE` (hay bancos pero ningún aviso activo de ellos en las últimas 24 h), `ONLY_SEEN` (todos los examinados ya estaban vistos), `OK`.
+- Lógica pura en `ScanResult.of` (`capture/Rescan.kt`), probada con fakes para cada razón. Cambio de comportamiento: los avisos ya vistos ahora cuentan dentro del tope de 50 examinados.

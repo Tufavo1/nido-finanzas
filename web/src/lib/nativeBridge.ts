@@ -335,16 +335,35 @@ export function parseNativeDraft(raw: unknown): NativeDraft | null {
   }
 }
 
+export type RescanReason = 'OK' | 'LISTENER_OFF' | 'NO_BANK_APP' | 'NOTHING_ACTIVE' | 'ONLY_SEEN'
+const REASONS: readonly RescanReason[] = ['OK', 'LISTENER_OFF', 'NO_BANK_APP', 'NOTHING_ACTIVE', 'ONLY_SEEN']
+
 export interface RescanResult {
   processed: number
   connected: boolean
+  /** Campos opcionales: las versiones viejas del teléfono no los traen */
+  scanned?: number
+  alreadySeen?: number
+  otherApps?: number
+  reason?: RescanReason
 }
 
 /** Valida el resultado de `rescanNotifications` (frontera): cualquier cosa rara cuenta como «nada nuevo». */
 export function parseRescan(raw: unknown): RescanResult {
   if (!isRecord(raw)) return { processed: 0, connected: false }
-  const p = raw['processed']
-  return { processed: isCount(p) && p <= 10_000 ? p : 0, connected: raw['connected'] === true }
+  const count = (v: unknown): number | undefined => (isCount(v) && v <= 10_000 ? v : undefined)
+  const reason = REASONS.find((r) => r === raw['reason'])
+  const scanned = count(raw['scanned'])
+  const alreadySeen = count(raw['alreadySeen'])
+  const otherApps = count(raw['otherApps'])
+  return {
+    processed: count(raw['processed']) ?? 0,
+    connected: raw['connected'] === true,
+    ...(scanned !== undefined ? { scanned } : {}),
+    ...(alreadySeen !== undefined ? { alreadySeen } : {}),
+    ...(otherApps !== undefined ? { otherApps } : {}),
+    ...(reason ? { reason } : {}),
+  }
 }
 
 /** Dueño activo del teléfono: `usuario:hogar` con solo caracteres seguros (lo valida también el plugin). */
