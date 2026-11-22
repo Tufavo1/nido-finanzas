@@ -106,7 +106,69 @@ export function parseUpdateCheck(raw: unknown): UpdateCheck {
   return { available: true, versionName: r.versionName, versionCode: r.versionCode, sizeBytes: r.sizeBytes, notes: typeof r.notes === 'string' ? r.notes : null }
 }
 
+/** Lo que el front ve de la deteccion de bancos (solo bancos encontrados). El plugin nativo devuelve {detected:[{bankId, appLabel, packageName, status}]}. */
+export interface DetectedBanksResult {
+  banks: { id: string; packageName: string }[]
+}
+
+/** Motivos que entiende la UI; el resto del nativo se traduce o pasa tal cual (la UI muestra «No pude leerlo»). */
+export interface DiagnosticsResult {
+  items: { reason: string; maskedText?: string; at: number }[]
+}
+
+export interface BankSetupResult {
+  enabled: string[]
+  disabled: string[]
+  withoutApp: string[]
+}
+
+const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** Nativo {detected:[{bankId,status,...}]} -> front {banks:[{id,packageName}]}: solo installed|seen, sin paquete nulo, sin repetir paquete. */
+export function adaptDetectedBanks(raw: unknown): DetectedBanksResult {
+  const rows = isRec(raw) && Array.isArray(raw['detected']) ? raw['detected'] : []
+  const banks: { id: string; packageName: string }[] = []
+  for (const r of rows) {
+    if (!isRec(r) || (r['status'] !== 'installed' && r['status'] !== 'seen')) continue
+    if (typeof r['bankId'] !== 'string' || typeof r['packageName'] !== 'string' || !r['packageName']) continue
+    if (banks.some((b) => b.id === r['bankId'])) continue // la UI usa un paquete por banco; el resto se vigila igual en el nativo
+    banks.push({ id: r['bankId'], packageName: r['packageName'] })
+  }
+  return { banks }
+}
+
+/** Motivos nativos -> los cuatro de la UI. Los que no tienen equivalente fiel pasan tal cual para no mentir. */
+const REASON_MAP: Record<string, string> = {
+  NOT_AN_EXPENSE: 'NO_AMOUNT',
+  AMBIGUOUS_AMOUNT: 'NO_AMOUNT',
+  NO_AMOUNT: 'NO_AMOUNT',
+  INCOME: 'INCOME',
+  BANK_OFF: 'BANK_OFF',
+  NO_SESSION: 'LOGIN_REQUIRED',
+  NO_OWNER: 'LOGIN_REQUIRED',
+  NO_PROFILE: 'LOGIN_REQUIRED',
+}
+
+export function adaptDiagnostics(raw: unknown): DiagnosticsResult {
+  const rows = isRec(raw) && Array.isArray(raw['items']) ? raw['items'] : []
+  const items: DiagnosticsResult['items'] = []
+  for (const r of rows.slice(0, 20)) {
+    if (!isRec(r) || typeof r['reason'] !== 'string' || typeof r['atMillis'] !== 'number') continue
+    const item: DiagnosticsResult['items'][number] = { reason: REASON_MAP[r['reason']] ?? r['reason'], at: r['atMillis'] }
+    if (typeof r['maskedText'] === 'string' && r['maskedText']) item.maskedText = r['maskedText']
+    items.push(item)
+  }
+  return { items }
+}
+
 export interface ContigoNativePlugin {
+  /** Bancos cuya app esta instalada (por nombre visible) o asociada a mano. */
+  getDetectedBanks(): Promise<DetectedBanksResult>
+  /** Activa captura + guardado automatico para los bancos con app, con el tope por defecto. Sin apps no hace nada (withoutApp lo informa). */
+  enableAllDetected(): Promise<BankSetupResult>
+  setAutoSaveAll(options: { enabled: boolean }): Promise<BankSetupResult>
+  /** Ultimos 20 avisos no aceptados: motivo y texto ENMASCARADO (digitos a #). Solo local, nunca se envia solo. */
+  getCaptureDiagnostics(): Promise<DiagnosticsResult>
   getAppInfo(): Promise<AppInfo>
   /** Consulta anonima a GitHub (le muestra la IP): ultimo release publicado y mayor que el instalado. */
   checkForUpdate(): Promise<UpdateCheck>
@@ -208,7 +270,16 @@ export interface ContigoNativePlugin {
   addListener(event: 'draftOpen', listener: (e: { id: string }) => void): Promise<PluginListenerHandle>
 }
 
-export const ContigoNative = registerPlugin<ContigoNativePlugin>('ContigoNative')
+const rawNative = registerPlugin<ContigoNativePlugin>('ContigoNative')
+
+/** El plugin nativo habla su propio formato en estos dos metodos; aqui se traduce al contrato de la UI. */
+export const ContigoNative: ContigoNativePlugin = new Proxy(rawNative, {
+  get(target, prop, receiver) {
+    if (prop === 'getDetectedBanks') return async () => adaptDetectedBanks(await (target.getDetectedBanks as () => Promise<unknown>)())
+    if (prop === 'getCaptureDiagnostics') return async () => adaptDiagnostics(await (target.getCaptureDiagnostics as () => Promise<unknown>)())
+    return Reflect.get(target, prop, receiver)
+  },
+})
 
 /** true dentro de la app Android o iOS; false en el navegador (PWA). */
 export const isNativeApp = (): boolean => Capacitor.isNativePlatform()

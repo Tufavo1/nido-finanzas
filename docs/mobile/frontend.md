@@ -91,6 +91,13 @@ Flujo: aviso del banco → plugin (borrador cifrado) → `useDetected` → bande
 - Actualizaciones: `lib/appUpdate.ts` (lógica pura: 12 h, «Más tarde» por versión, errores en español simple, parsers), `lib/appUpdateStore.ts` (estado compartido), `NativeUpdateSheet` (hoja con barra `role="progressbar"`, Reintentar, guía a Ajustes si falta el permiso). Revisa 4 s tras abrir y con el botón manual (que ignora el límite y lo descartado).
 - CONTRATO PENDIENTE (declarado por tipos en `nativeBridge.ts`, el backend debe confirmarlo): `getAppInfo`, `getPushStatus`, `enablePush`, `disablePush`, `checkForUpdate`, `downloadUpdate` (evento `updateProgress {downloaded,total?}`), `installUpdate` (code `NEEDS_INSTALL_PERMISSION`), `openInstallSettings`. Códigos de error: NETWORK, NO_SPACE, CORRUPT.
 
+## Conectar mis bancos (rediseño simple)
+
+- Primera vez (7 s tras abrir, solo nativo) o desde Ajustes «Conectar mis bancos»: `BankConsentSheet` con la máquina de estados `consentNext` (lib/bankConsent.ts): ask → permission (3 pasos, ajustes restringidos, «Ya lo hice» que verifica) → detecting → result (chips + «Guardar solos mis gastos» + «Siempre puedes deshacer») | none («Elegir app a mano» en Avanzado) | error. «Ahora no» se recuerda (`contigo-bank-consent`, preferencia del aparato que sobrevive al cierre de sesión) y no insiste.
+- Ajustes > Captura de gastos: una tarjeta (estado Activo/Pausado/Sin permiso, interruptor, chips, una línea de qué lee, «Ver qué hace la app» con 4 puntos) y «Avanzado» colapsado (pausar, compartidos, ocultar montos, apps, tope y app por banco a mano, envío, avisos de la pareja, «Avisos que no pude leer» con «Copiar aviso» solo copia el texto enmascarado, borrar).
+- Bandeja: con categoría sugerida el botón único es «Guardar»; sin ella, «Revisar y guardar».
+- CONTRATO PENDIENTE (por tipos en `DetectedBanksApi`, lib/bankConsent.ts; el backend debe confirmar nombres y formas): `getDetectedBanks() -> {banks:[{id,packageName}]}`, `enableAllDetected()` (activa todos los detectados con el tope por defecto), `setAutoSaveAll({enabled})`, `getCaptureDiagnostics() -> {items:[{reason: NO_AMOUNT|INCOME|BANK_OFF|LOGIN_REQUIRED, maskedText?, at}]}`. Sin esas funciones la tarjeta dice «Aún no hay bancos conectados» y el diagnóstico «todavía no muestra esto». La app guarda además los paquetes detectados en su configuración para que `setAllowedPackages` no los pise.
+
 ## Cómo probar
 - `npm --prefix web test` (todo) o `npx --prefix web vitest run src/lib/toastQueue.test.ts src/components`.
 - `npm --prefix web run lint` · `npm --prefix web exec -- tsc -b web` (desde la raíz).

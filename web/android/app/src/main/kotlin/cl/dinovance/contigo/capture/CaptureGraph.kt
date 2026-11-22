@@ -28,8 +28,12 @@ class CaptureGraph private constructor(context: Context) {
         override fun read() = session.get(LOG_KEY)
         override fun write(value: String?) { if (value == null) session.remove(LOG_KEY) else session.set(LOG_KEY, value) }
     }, System::currentTimeMillis)
+    val diagnostics = DiagnosticsLog(object : TextStore {
+        override fun read() = session.get(DIAG_KEY)
+        override fun write(value: String?) { if (value == null) session.remove(DIAG_KEY) else session.set(DIAG_KEY, value) }
+    }, System::currentTimeMillis)
     val processor = CaptureProcessor(
-        whitelist = prefs::whitelist,
+        whitelist = prefs::effectiveWhitelist,
         repository = drafts,
         notifier = notifier,
         health = prefs,
@@ -41,6 +45,8 @@ class CaptureGraph private constructor(context: Context) {
         auto = prefs,
         profile = ::loadProfile,
         autoLog = autoLog,
+        diag = diagnostics,
+        notificationsAllowed = { androidx.core.app.NotificationManagerCompat.from(context.applicationContext).areNotificationsEnabled() },
         onAutoSaved = { SyncScheduler.enqueue(context.applicationContext) },
     )
     private val transport = UrlConnectionTransport()
@@ -56,6 +62,23 @@ class CaptureGraph private constructor(context: Context) {
         onOwnerMismatch = ::clearProfile,
     )
 
+    /** Busca las apps de banco instaladas (lanzador, sin QUERY_ALL_PACKAGES), guarda las que coinciden por nombre y devuelve el resultado. */
+    fun refreshBanks(context: Context): List<DetectedBank> {
+        val pm = context.packageManager
+        val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+        val apps = try {
+            pm.queryIntentActivities(intent, 0).map { InstalledApp(it.activityInfo.packageName, it.loadLabel(pm).toString()) }.distinctBy { it.packageName }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        val learned = BankPresets.ALL.associate { b -> b.id to setOfNotNull(prefs.bankPackage(b.id)) }
+        val result = BankDetector.detect(apps, learned, context.packageName)
+        BankPresets.ALL.forEach { b ->
+            prefs.setDetectedPackages(b.id, result.filter { it.bankId == b.id && it.status == DetectStatus.installed }.mapNotNull { it.packageName }.toSet())
+        }
+        return result
+    }
+
     fun loadProfile(): AutoProfile? = try {
         session.get(PROFILE_KEY)?.let(AutoProfile::parse)
     } catch (e: Exception) {
@@ -69,6 +92,7 @@ class CaptureGraph private constructor(context: Context) {
     companion object {
         const val PROFILE_KEY = "auto-profile"
         const val LOG_KEY = "auto-log"
+        const val DIAG_KEY = "diag-log"
         private const val DRAFTS_KEY_ALIAS = "contigo_drafts_v1"
         private const val SESSION_KEY_ALIAS = "contigo_session_v1"
 

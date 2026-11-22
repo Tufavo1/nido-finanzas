@@ -3,6 +3,7 @@ package cl.dinovance.contigo.capture
 
 import cl.nido.parser.Kind
 import cl.nido.parser.NotificationParser
+import cl.nido.parser.ParseRejection
 
 enum class Outcome { IGNORED_PACKAGE, NO_SESSION, NOT_A_MOVEMENT, DUPLICATE, STORED, QUEUE_FULL, FAILED }
 
@@ -49,6 +50,10 @@ class CaptureProcessor(
     /** Se llama tras guardar un gasto confirmado automaticamente: agenda el envio en segundo plano. */
     private val onAutoSaved: () -> Unit = {},
     private val autoLog: AutoSavedLog? = null,
+    /** Diagnostico local (solo motivo y texto enmascarado) de avisos que no se aceptaron. */
+    private val diag: DiagnosticsLog? = null,
+    /** Permiso de notificaciones de Android: sin el, el gasto queda en la bandeja pero no se muestra el aviso propio. */
+    private val notificationsAllowed: () -> Boolean = { true },
 ) {
     private class Stored(val fingerprint: String, val key: String, val amount: Long, var blankMerchant: Boolean, val draftId: String, val at: Long)
 
@@ -75,14 +80,28 @@ class CaptureProcessor(
         // la misma sesión (R2-03). Siempre queda constancia en la salud del servicio.
         val orphan = requireOwner && owner == null
         val parser = NotificationParser(whitelist())
-        val candidate = parser.parse(packageName, title, text, postedAtMillis)
-        if (candidate == null || candidate.kind != Kind.EXPENSE) return Outcome.NOT_A_MOVEMENT
+        val parsed = parser.parseDetailed(packageName, title, text, postedAtMillis)
+        val candidate = parsed.candidate
+        val bankId = auto?.bankOfPackage(packageName)
+        val raw = listOfNotNull(title?.takeIf { it.isNotBlank() }, text).joinToString(" | ")
+        if (candidate == null || candidate.kind != Kind.EXPENSE) {
+            val reason = when {
+                candidate != null && candidate.kind == Kind.INCOME -> DiagReason.INCOME
+                parsed.rejection == ParseRejection.DISCARDED -> DiagReason.NOT_AN_EXPENSE
+                else -> DiagReason.NO_AMOUNT
+            }
+            diag(reason, bankId, raw)
+            return Outcome.NOT_A_MOVEMENT
+        }
         health.recordEvent(now)
         recent.removeAll { now - it.at >= DEDUPE_WINDOW_MILLIS }
         val key = dedupeKey(candidate.amountClp, candidate.merchant)
         // Mismo aviso repetido: misma huella o mismo monto y comercio a menos de 45 s de lo ULTIMO GUARDADO (el sistema reenvia
         // el aviso, p. ej. al cambiar de minuto). Se mide en segundos, no por el minuto de la huella (R2-01); no renueva la ventana.
-        if (recent.any { (it.fingerprint == candidate.fingerprint || it.key == key) && now - it.at < SAME_NOTICE_WINDOW_MILLIS }) return Outcome.DUPLICATE
+        if (recent.any { (it.fingerprint == candidate.fingerprint || it.key == key) && now - it.at < SAME_NOTICE_WINDOW_MILLIS }) {
+            diag(DiagReason.DUPLICATE, bankId, raw)
+            return Outcome.DUPLICATE
+        }
         // Un cargo sin comercio que se actualiza con mas detalle completa SU borrador, una sola vez (H-14, R2-02).
         // Con otro comercio despues ya no se fusiona: son compras distintas.
         val refined = recent.firstOrNull { it.blankMerchant && it.amount == candidate.amountClp && candidate.merchant != null && now - it.at < REFINE_WINDOW_MILLIS }
@@ -105,6 +124,7 @@ class CaptureProcessor(
         )
         if (!addOrMakeRoom(draft, owner)) {
             health.recordFailure("QueueFull", now)
+            diag(DiagReason.QUEUE_FULL, bankId, raw)
             notifier.queueFull()
             return Outcome.QUEUE_FULL
         }
@@ -112,8 +132,12 @@ class CaptureProcessor(
         while (recent.size > MAX_RECENT) recent.removeAt(0)
         if (orphan) {
             health.recordFailure("NoSession", now)
+            diag(DiagReason.NO_SESSION, bankId, raw)
             return Outcome.NO_SESSION
         }
+        if (parsed.ambiguousAmount) diag(DiagReason.AMBIGUOUS_AMOUNT, bankId, raw)
+        if (draft.status == DraftStatus.PENDING) whyNotAuto(packageName, candidate, owner, maybe, bankId, raw)
+        if (!notificationsAllowed()) diag(DiagReason.NOTIFICATIONS_OFF, bankId, raw)
         if (draft.autoSaved) {
             val merchant = candidate.merchant?.trim().orEmpty()
             autoLog?.add(AutoSavedEntry(draft.id.lowercase(), candidate.amountClp, merchant.ifEmpty { "Gasto" }, now, false, owner))
@@ -123,6 +147,27 @@ class CaptureProcessor(
             notifier.show(draft)
         }
         return Outcome.STORED
+    }
+
+    private fun diag(reason: DiagReason, bankId: String?, raw: String) {
+        try { diag?.add(reason, bankId, raw) } catch (e: Exception) { health.recordFailure("DiagFailed", clock()) }
+    }
+
+    /** Solo para bancos asociados: por que este gasto no se guardo solo (el primero que aplique). */
+    private fun whyNotAuto(packageName: String, c: cl.nido.parser.ParsedCandidate, owner: String?, maybe: Boolean, bankId: String?, raw: String) {
+        val cfg = auto ?: return
+        if (bankId == null) return
+        val p = profile()
+        val reason = when {
+            !cfg.autoEnabled(bankId) -> DiagReason.BANK_OFF
+            maybe -> DiagReason.DUPLICATE
+            p == null || owner == null || p.ownerKey != owner -> DiagReason.NO_PROFILE
+            c.confidence != cl.nido.parser.Confidence.HIGH || c.merchant.isNullOrBlank() -> DiagReason.LOW_CONFIDENCE
+            c.amountClp > cfg.maxClp() -> DiagReason.CAP_EXCEEDED
+            p.categoryFor(c.merchant) == null -> DiagReason.CATEGORY_UNKNOWN
+            else -> return
+        }
+        diag(reason, bankId, raw)
     }
 
     private fun autoCategory(packageName: String, candidate: cl.nido.parser.ParsedCandidate, owner: String?): String? {

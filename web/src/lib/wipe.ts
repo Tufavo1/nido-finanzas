@@ -8,7 +8,7 @@ import { emitNow, invalidateOwner } from './nativeSerial'
  * avisos pospuestos, el estado del bloqueo y el freno de intentos. Se conservan solo las preferencias
  * del aparato (tema, tiempo de bloqueo, no volver a pedir instalar) y las guías ya vistas.
  */
-const KEEP = new Set(['contigo-theme', 'contigo-lock-min', 'contigo-install-dismissed', 'contigo-smart-notify', 'contigo-update-checked', 'contigo-update-later'])
+const KEEP = new Set(['contigo-theme', 'contigo-lock-min', 'contigo-install-dismissed', 'contigo-smart-notify', 'contigo-update-checked', 'contigo-update-later', 'contigo-bank-consent'])
 
 function wipeLocal(): void {
   try {

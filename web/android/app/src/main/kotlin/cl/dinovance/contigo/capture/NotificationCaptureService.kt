@@ -15,6 +15,8 @@ class NotificationCaptureService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         graph.prefs.heartbeat(System.currentTimeMillis(), connected = true)
+        // Bancos instalados despues de abrir la app tambien se detectan
+        try { graph.refreshBanks(applicationContext) } catch (e: Exception) { graph.prefs.recordFailure(e.javaClass.simpleName, System.currentTimeMillis()) }
         // Tras un reinicio se pierden las alarmas: si quedan gastos por enviar, se vuelve a agendar el recordatorio.
         if (ReminderPolicy.pendingToSend(graph.drafts.list(), graph.prefs.activeOwner()) > 0) {
             ReminderScheduler.schedule(applicationContext, ReminderPolicy.FIRST_REMINDER_MILLIS)
@@ -32,7 +34,11 @@ class NotificationCaptureService : NotificationListenerService() {
         // Solo nombre de paquete y hora (jamas texto): alimenta «apps que avisaron recientemente» para elegir la lista.
         if (posted.packageName != packageName) graph.recent.record(posted.packageName, posted.postTime)
         // RF-01: se decide por el nombre del paquete antes de tocar los extras.
-        if (!graph.processor.accepts(posted.packageName)) return
+        if (!graph.processor.accepts(posted.packageName)) {
+            // App de banco conocida pero fuera de la lista: se anota el motivo SIN leer el texto del aviso
+            if (graph.prefs.bankOfPackage(posted.packageName) != null) graph.diagnostics.add(DiagReason.PACKAGE_NOT_ALLOWED, graph.prefs.bankOfPackage(posted.packageName), null)
+            return
+        }
         try {
             capture(posted)
         } catch (e: Throwable) {

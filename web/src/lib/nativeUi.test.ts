@@ -20,3 +20,21 @@ describe('guardas de la app nativa', () => {
     expect(src('../components/NativePushToggle.tsx')).not.toMatch(/Notification\.|serviceWorker|VAPID|navegador|PushManager/)
   })
 })
+
+describe('conectar mis bancos: lenguaje simple y sin envíos solos', () => {
+  const FILES = ['../components/CaptureSettings.tsx', '../components/BankConsentSheet.tsx', '../components/BankTrustSheet.tsx', '../components/CaptureDiagnostics.tsx', '../components/BankCard.tsx', '../components/BankAutoSection.tsx', '../components/SyncStatus.tsx', '../components/PartnerAlerts.tsx']
+  // Solo el texto que ve la persona: se ignoran comentarios
+  const visible = (f: string) => src(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  it.each(FILES)('%s sin jerga', (f) => {
+    expect(visible(f)).not.toMatch(/modo aprender|lista blanca|perfil|dueño|sincroniza/i)
+  })
+  it('el diagnóstico no envía nada: solo copia', () => {
+    const t = visible('../components/CaptureDiagnostics.tsx')
+    expect(t).toMatch(/clipboard\.writeText/)
+    expect(t).not.toMatch(/fetch\(|supabase|sendBeacon|XMLHttpRequest/)
+  })
+  it('la hoja de consentimiento dice lo acordado', () => {
+    const t = src('../components/BankConsentSheet.tsx')
+    for (const s of ['¿Conectar tus bancos?', 'Aceptar', 'Ahora no', 'Ya lo hice', 'Guardar solos mis gastos', 'Siempre puedes deshacer']) expect(t).toContain(s)
+  })
+})

@@ -101,9 +101,20 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
               </div>
             )}
             <div className="row detected-actions">
-              <button type="button" className="btn small" onClick={() => onReview(d)}>
-                Revisar y guardar
-              </button>
+              {suggested && d.kind !== 'INCOME' ? (
+                <>
+                  <button type="button" className="btn small" onClick={() => void pick(d, suggested)}>
+                    Guardar
+                  </button>
+                  <button type="button" className="btn ghost small" onClick={() => onReview(d)}>
+                    Revisar
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="btn small" onClick={() => onReview(d)}>
+                  Revisar y guardar
+                </button>
+              )}
               <button type="button" className="btn ghost small" onClick={() => setPicking(d)}>
                 Cambiar categoría
               </button>
