@@ -199,7 +199,10 @@ class QaRonda3Test {
     @Test
     fun `r3-3 ningun envio en segundo plano pone cabecera Origin (ni la renovacion de sesion)`() {
         val src = File("src/main/kotlin/cl/dinovance/contigo/sync/NetworkAndSession.kt").readText() + File("src/main/kotlin/cl/dinovance/contigo/sync/ExpenseSyncer.kt").readText()
-        assertFalse(Regex("(?i)\"origin\"").containsMatchIn(src.replace("sin cabecera Origin", "")))
+        // DEC-01 REVISADA (el Worker real rechaza escrituras sin Origin): el envio y la renovacion de sesion llevan el Origin del Worker
+        // y nunca Sec-Fetch-Site. La asercion anterior («jamas Origin») quedo obsoleta por esa decision.
+        assertTrue(Regex("(?i)\"origin\" to").findAll(src).count() >= 2)
+        assertFalse(Regex("(?i)\"sec-fetch-site\" to").containsMatchIn(src))
         assertTrue(src.contains("EXPONENTIAL").not()) // el retroceso vive en el Worker, no aqui
         assertTrue(File("src/main/kotlin/cl/dinovance/contigo/sync/ExpenseSyncWorker.kt").readText().contains("BackoffPolicy.EXPONENTIAL"))
     }

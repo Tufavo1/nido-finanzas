@@ -124,7 +124,7 @@ class AutoSaveTest {
     private fun saveOne() { processor().process(bank, null, text(), now) }
 
     @Test
-    fun `envia la fila con el mismo id del borrador, la fecha de Chile, sin Origin, y borra el borrador al exito`() {
+    fun `envia la fila con el mismo id del borrador, la fecha de Chile, con el Origin del Worker, y borra el borrador al exito`() {
         saveOne()
         val d = repo.list().single()
         val net = Net(mutableListOf({ HttpResult(201, "") }))
@@ -135,7 +135,9 @@ class AutoSaveTest {
         assertEquals("{\"kind\":\"expense\",\"id\":\"${d.id}\"}", net.sent.last().third)
         assertEquals("https://api.demo.test/supabase/rest/v1/expenses", url)
         assertEquals("Bearer tok", headers["Authorization"])
-        assertFalse(headers.keys.any { it.equals("Origin", true) })
+        assertEquals("https://api.demo.test", headers["Origin"])
+        assertTrue(net.sent.all { it.second["Origin"] == "https://api.demo.test" && it.second.keys.none { k -> k.equals("Sec-Fetch-Site", true) } }) // tambien notify
+        assertEquals("https://x.test:8443", ExpenseSyncer.apiOrigin("https://x.test:8443/supabase"))
         val row = JSONObject(body)
         assertEquals(d.id, row.getString("id"))
         assertEquals(6500, row.getLong("amount"))
