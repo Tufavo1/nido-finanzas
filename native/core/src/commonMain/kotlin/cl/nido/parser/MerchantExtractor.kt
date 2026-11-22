@@ -26,8 +26,14 @@ internal object MerchantExtractor {
         RegexOption.IGNORE_CASE,
     )
 
+    // «Pagaste $100 a tu CMR Mastercard Premium»: no hay comercio, el aviso solo nombra la tarjeta. Para CMR se usa un nombre fijo
+    // y estable (así la categoría se aprende una vez); con otras tarjetas no se inventa nada.
+    private val CMR_CARD = Regex("^(?:tu|su)\\s+cmr\\b", RegexOption.IGNORE_CASE)
+    const val CMR_MERCHANT = "Compra con CMR"
+
     fun find(before: String, after: String, isTransfer: Boolean): String? {
         val candidate = fromAfter(after) ?: if (isTransfer) fromBefore(before) else null
+        if (candidate != null && CMR_CARD.containsMatchIn(candidate)) return CMR_MERCHANT
         return candidate?.takeIf { it.isNotEmpty() && !NOT_A_NAME.containsMatchIn(it) }
     }
 
