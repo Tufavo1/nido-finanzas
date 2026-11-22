@@ -25,6 +25,8 @@ import { checkUpdates } from './lib/appUpdateStore'
 import BankConsentSheet from './components/BankConsentSheet'
 import { readConsent, shouldAskConsent } from './lib/bankConsent'
 import { isNativeApp } from './lib/nativeBridge'
+import { refreshPushToken } from './lib/nativePush'
+import { logError as logPushError } from './lib/safeLog'
 import NativeUpdateSheet from './components/NativeUpdateSheet'
 import UpdateBanner from './components/UpdateBanner'
 import LockScreen from './components/LockScreen'
@@ -141,6 +143,10 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
     if (r.ok) setLinkCandidate(r.candidate)
     else setToast(`Enlace no válido\n${r.reason}`, 'warn')
   })
+  // Si los avisos ya estaban activados, renueva el token en silencio (pudo rotar); nunca los activa solo
+  useEffect(() => {
+    if (isNativeApp()) void refreshPushToken().catch((e: unknown) => logPushError(e, 'Shell'))
+  }, [hh.me.user_id])
   const draftOpts = useMemo(() => ({ paidBy: hh.me.user_id, shared: capture.shared, categories: data.categories, history: detected.ctx.history }), [hh.me.user_id, capture.shared, data.categories, detected.ctx.history])
   const reviewDraft = detected.drafts?.find((d) => d.kind === 'EXPENSE' && d.id === (reviewId ?? detected.openId))
   const review = useMemo(() => {

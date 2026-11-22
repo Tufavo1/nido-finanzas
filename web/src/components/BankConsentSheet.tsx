@@ -8,6 +8,7 @@ import type { ConsentStep, DetectedBank, DetectedBanksApi } from '../lib/bankCon
 import type { CaptureConfig } from '../lib/captureConfig'
 import { ContigoNative } from '../lib/nativeBridge'
 import { logError } from '../lib/safeLog'
+import { rescanNow } from '../lib/rescan'
 import { useCaptureStatus } from '../lib/useCaptureStatus'
 
 const api = ContigoNative as unknown as DetectedBanksApi
@@ -98,6 +99,7 @@ export default function BankConsentSheet({ config, onConfig, onToast, onClose }:
     }
   }
   function finish() {
+    void rescanNow({ force: true })
     if (banks.length > 0 && auto) onToast(activatedMessage(banks))
     onClose()
   }
