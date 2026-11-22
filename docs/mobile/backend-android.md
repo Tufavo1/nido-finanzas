@@ -167,3 +167,9 @@ Contratos en `nativeBridge.ts` (`ContigoNative.*`):
 | R3-09 | Una fila rechazada (4xx) se marca `syncRejected` y no se reenvía sola ni tapa el éxito de las demás. Es visible: `listAutoSaved` trae `status: 'pending' \| 'synced' \| 'rejected'`, `getSyncState` trae `rejected` y `state: 'error'`, y `listDrafts` trae `syncRejected`. No cuenta en «gastos por enviar». |
 | R3-10/11 | UUID validado con la forma real; la nota se corta sin partir pares sustitutos. |
 | INFO | Un borrador de un banco con el guardado automático apagado llega con `bankAutoOff: true`; `planDrafts` lo pregunta aunque el modo global esté encendido (banco apagado = nunca solo). |
+
+## Entrar con Google en la app (Credential Manager)
+- `ContigoNative.isGoogleSignInSupported() -> { supported }` y `ContigoNative.googleSignIn({ nonce, serverClientId }) -> { idToken }` (rechaza con `code`: `CANCELLED`, `NO_ACCOUNTS`, `NETWORK`, `INVALID_NONCE`, `UNSUPPORTED`, `FAILED`). El plugin envía el SHA-256 hex del nonce al selector; Supabase recibe el nonce en claro.
+- `web/src/lib/nativeGoogle.ts`: `signInWithGoogleNative()` (arma todo y devuelve `null` o un mensaje en español), `nativeGoogleAvailable()` (ID de cliente Y soporte del plugin) y `googleErrorMessage(code)`.
+- `signInWithGoogle()` (oauth.ts) en nativo delega en ese flujo y NUNCA abre OAuth web; `loadGsi()` rechaza en nativo, así que `GoogleButton` cae solo al botón de respaldo, que ya llama `signInWithGoogle()`.
+- Para el front: en nativo mostrar el botón de Google solo si `await nativeGoogleAvailable()` es true (hoy, sin ID de cliente, el botón de respaldo seguiría visible y mostraría el mensaje de «no disponible»).

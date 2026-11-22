@@ -22,3 +22,9 @@
 # Marcos de pila legibles en CrashReport (clase.metodo(archivo:linea)); el archivo se oculta con un nombre fijo.
 -keepattributes SourceFile,LineNumberTable,*Annotation*
 -renamesourcefileattribute SourceFile
+
+# Entrar con Google (Credential Manager + Sign in with Google): se instancian por reflexion desde los proveedores de Play Services.
+-keep class androidx.credentials.** { *; }
+-keep class com.google.android.libraries.identity.googleid.** { *; }
+-dontwarn androidx.credentials.**
+-dontwarn com.google.android.libraries.identity.googleid.**

@@ -51,3 +51,21 @@ No suba `nido-debug.apk`. Verifique `VITE_API_BASE` antes (punto 1).
 
 ## 7. Lo no verificado
 Instalación y arranque del release en un teléfono real (R8 con Capacitor/plugin: se comprobó que el dex conserva `ContigoNativePlugin`, no que el puente funcione), `FLAG_SECURE`, el servicio de notificaciones, login contra el Worker real, CSP nativa, FCM.
+
+## 8. Entrar con Google en la app (lo que debe hacer el DUEÑO fuera del código)
+Google bloquea el OAuth web dentro de una WebView (`disallowed_useragent`). La app nativa NUNCA lo abre: usa Credential Manager + Sign in with Google (selector de cuentas del sistema). El botón solo se muestra si el APK se compiló con `VITE_GOOGLE_CLIENT_ID` y el teléfono tiene Google Play Services.
+
+1. **Google Cloud Console** (mismo proyecto del cliente web): APIs y servicios > Credenciales > Crear credenciales > ID de cliente de OAuth, tipo **Android**:
+   - Nombre del paquete: `cl.dinovance.contigo`
+   - Huella SHA-1 del certificado de firma de RELEASE: `2F:75:6D:E0:CF:04:79:42:23:22:2B:DF:4D:58:DA:32:D4:C4:9A:24` (comprobada con `apksigner verify --print-certs dist-apk/nido-release.apk`, línea «SHA-1 digest»).
+   - Si algún día se firma con otra llave (o Play App Signing), crear otro cliente Android con esa SHA-1. El ID del cliente Android NO se pone en el código: Google identifica la app por paquete + SHA-1.
+   - La pantalla de consentimiento debe estar publicada (o con la cuenta de prueba agregada).
+2. **Supabase** (panel): Authentication > Providers > Google:
+   - **Enable Sign in with Google**: activado.
+   - **Client IDs** (autorizados): `305556491325-k77oi3118v74tmfogrnafln4frq40mqp.apps.googleusercontent.com` (el ID de cliente WEB; es el `serverClientId`, el `aud` del token). Si hay más de uno, separados por coma. No hace falta poner el ID del cliente Android.
+   - **Skip nonce checks**: DESACTIVADO (la app envía el SHA-256 del nonce a Google y el nonce en claro a Supabase, que lo comprueba).
+   - **Allow users without an email**: desactivado.
+   - El Client Secret solo lo usa el flujo web (PWA); la app nativa no lo necesita.
+3. **Captcha:** `signInWithGoogleToken` ya manda `captchaToken` (Turnstile) a `signInWithIdToken`, igual que la web. Si en Authentication > Attack Protection el captcha está activo y la WebView no puede resolver Turnstile, el inicio de sesión mostrará «No pudimos verificar que no eres un robot». NO verificado en teléfono; si falla, evalúe permitir ID tokens sin captcha en ese proyecto o dejar solo correo y contraseña.
+4. **MFA:** tras entrar con Google el flujo de segundo factor existente se aplica igual (misma sesión de Supabase en el Keystore).
+Mensajes de error (en español simple): cancelado, sin cuentas de Google, sin conexión, nonce inválido, teléfono sin soporte, el servidor no validó la cuenta. Nunca se registran tokens ni correos.

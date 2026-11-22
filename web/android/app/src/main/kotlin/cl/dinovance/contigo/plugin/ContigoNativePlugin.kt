@@ -11,7 +11,18 @@ import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import cl.dinovance.contigo.capture.CaptureGraph
 import cl.dinovance.contigo.capture.Draft
+import androidx.core.content.ContextCompat
+import androidx.credentials.CredentialManager
+import androidx.credentials.CredentialManagerCallback
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.GetCredentialResponse
+import androidx.credentials.exceptions.GetCredentialException
+import cl.dinovance.contigo.auth.GoogleSignInLogic
 import cl.dinovance.contigo.capture.AutoProfile
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import cl.dinovance.contigo.capture.BankPresets
 import cl.dinovance.contigo.capture.OwnerFilter
 import cl.dinovance.contigo.sync.SyncScheduler
@@ -379,6 +390,53 @@ class ContigoNativePlugin : Plugin() {
         val id = call.getString("id")?.lowercase() ?: return call.reject("Falta el id", "INVALID_ARGUMENT")
         if (graph.autoLog.listFor(graph.prefs.activeOwner()).any { it.id == id }) graph.autoLog.remove(id)
         call.resolve()
+    }
+
+    // ---- Entrar con Google (Credential Manager). Google bloquea el OAuth web dentro de una WebView (disallowed_useragent) ----
+
+    @PluginMethod
+    fun isGoogleSignInSupported(call: PluginCall) {
+        // Credential Manager llega por Google Play Services; sin ellos el selector no existe
+        val ok = try {
+            context.packageManager.getPackageInfo("com.google.android.gms", 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
+        }
+        call.resolve(JSObject().put("supported", ok))
+    }
+
+    /** nonce en claro de la app; al selector va su SHA-256 hex (setNonce) y Supabase lo recibe en claro. Sin tokens ni correos en logs. */
+    @PluginMethod
+    fun googleSignIn(call: PluginCall) {
+        val nonce = call.getString("nonce")
+        val clientId = call.getString("serverClientId")
+        if (!GoogleSignInLogic.isValidNonce(nonce)) return call.reject("Nonce no válido", "INVALID_NONCE")
+        if (!GoogleSignInLogic.isValidClientId(clientId)) return call.reject("Cliente no válido", "UNSUPPORTED")
+        val act = activity ?: return call.reject("Sin pantalla", "FAILED")
+        val option = GetSignInWithGoogleOption.Builder(clientId!!).setNonce(GoogleSignInLogic.hashNonce(nonce!!)).build()
+        val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
+        CredentialManager.create(act).getCredentialAsync(
+            act, request, null, ContextCompat.getMainExecutor(act),
+            object : CredentialManagerCallback<GetCredentialResponse, GetCredentialException> {
+                override fun onResult(result: GetCredentialResponse) {
+                    val credential = result.credential
+                    if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                        try {
+                            call.resolve(JSObject().put("idToken", GoogleIdTokenCredential.createFrom(credential.data).idToken))
+                        } catch (e: GoogleIdTokenParsingException) {
+                            call.reject("No se pudo leer la cuenta", "FAILED")
+                        }
+                    } else {
+                        call.reject("Credencial inesperada", "FAILED")
+                    }
+                }
+
+                override fun onError(e: GetCredentialException) {
+                    call.reject("Google no respondió", GoogleSignInLogic.errorCode(e))
+                }
+            },
+        )
     }
 
     // ---- Diagnóstico ----
