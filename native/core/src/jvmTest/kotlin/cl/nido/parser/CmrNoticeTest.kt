@@ -33,4 +33,23 @@ class CmrNoticeTest {
         val c = parse("Pagaste \$5.000 a tu tarjeta Visa").candidate
         assertEquals(null, c?.merchant)
     }
+
+    @Test
+    fun `compra con comercio y ciudad queda como gasto sin la ciudad`() {
+        val c = parse("Compraste \$6.778 en Ganaderia Rio Bueno S.a Santiago Chl").candidate!!
+        assertEquals(6_778L, c.amountClp); assertEquals(Kind.EXPENSE, c.kind); assertEquals(Confidence.HIGH, c.confidence)
+        assertEquals("Ganaderia Rio Bueno S.a", c.merchant)
+    }
+
+    @Test
+    fun `Recibiste es un ingreso, nunca un gasto`() {
+        val c = parse("Recibiste \$1.000").candidate!!
+        assertEquals(1_000L, c.amountClp); assertEquals(Kind.INCOME, c.kind)
+    }
+
+    @Test
+    fun `ciudad con pais de tres letras se corta solo si es el final del aviso`() {
+        assertEquals("Cafe Demo", parse("Compraste \$2.000 en Cafe Demo Valparaiso Chl").candidate?.merchant)
+        assertEquals("Tienda Chl Demo", parse("Compraste \$2.000 en Tienda Chl Demo").candidate?.merchant)
+    }
 }
