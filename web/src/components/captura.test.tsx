@@ -31,7 +31,12 @@ describe('DetectedInbox', () => {
     expect(html).toContain('Almacen Demo')
     expect(html).toContain('Categoría sugerida: Supermercado')
     expect(html).toContain('Cuota 1 de 3')
-    for (const a of ['Revisar y guardar', 'Cambiar categoría', 'Ignorar']) expect(html).toContain(a)
+    for (const a of ['>Guardar<', 'Cambiar categoría', 'Ignorar']) expect(html).toContain(a)
+  })
+  it('sin categoría sugerida (comercio nuevo) no hay Guardar directo: pide revisar', () => {
+    const html = renderToStaticMarkup(<DetectedInbox {...base} history={[]} drafts={[{ ...draft, merchant: 'Comercio Nuevo' }]} failed={false} />)
+    expect(html).toContain('Revisar y guardar')
+    expect(html).not.toContain('>Guardar<')
   })
 })
 

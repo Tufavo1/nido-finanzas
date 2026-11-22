@@ -1,17 +1,24 @@
 // Copyright (c) 2026 Dinovance
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import BankAutoSection from './BankAutoSection'
+import BankConsentSheet from './BankConsentSheet'
+import BankTrustSheet from './BankTrustSheet'
+import CaptureDiagnostics from './CaptureDiagnostics'
 import CaptureAppsPicker from './CaptureAppsPicker'
 import PartnerAlerts from './PartnerAlerts'
 import Modal from './Modal'
 import NotificationPermission from './NotificationPermission'
 import { SkeletonCard } from './Skeleton'
 import type { Notify } from './Toast'
+import { activatedMessage, parseDetectedBanks, summarizeCapture } from '../lib/bankConsent'
+import type { DetectedBank, DetectedBanksApi } from '../lib/bankConsent'
 import { effectivePackages } from '../lib/captureApps'
 import type { CaptureConfig } from '../lib/captureConfig'
 import { ContigoNative } from '../lib/nativeBridge'
 import { useCaptureStatus } from '../lib/useCaptureStatus'
 import { logError } from '../lib/safeLog'
+
+const bankApi = ContigoNative as unknown as DetectedBanksApi
 
 interface Props {
   config: CaptureConfig
@@ -39,6 +46,22 @@ function Switch({ id, label, hint, on, onChange }: { id: string; label: string; 
 export default function CaptureSettings({ config, onConfig, onToast, onCleared, onSendNow }: Props) {
   const { state, reload } = useCaptureStatus()
   const [confirmWipe, setConfirmWipe] = useState(false)
+  const [advanced, setAdvanced] = useState(false)
+  const [connect, setConnect] = useState(false)
+  const [trust, setTrust] = useState(false)
+  const [detected, setDetected] = useState<DetectedBank[] | null>(null)
+
+  const loadDetected = useCallback(async () => {
+    try {
+      setDetected(parseDetectedBanks(await bankApi.getDetectedBanks()))
+    } catch {
+      setDetected([])
+    }
+  }, [])
+  useEffect(() => {
+    const t = window.setTimeout(() => void loadDetected(), 0)
+    return () => window.clearTimeout(t)
+  }, [loadDetected])
 
   if (state.kind === 'web') {
     return (
@@ -98,37 +121,106 @@ export default function CaptureSettings({ config, onConfig, onToast, onCleared, 
 
   const permission = status.listenerAllowed ? 'granted' : status.revokedSinceConnected ? 'denied' : 'default'
   const openGuide = () => void ContigoNative.openPermissionGuide().catch((e: unknown) => logError(e, 'CaptureSettings'))
+  const summary = summarizeCapture({ listenerAllowed: status.listenerAllowed, enabled: config.enabled, revoked: status.revokedSinceConnected })
+  const autoOn = config.mode === 'AUTO'
+
+  async function setAutoAll(on: boolean) {
+    try {
+      await bankApi.setAutoSaveAll({ enabled: on })
+      await apply({ ...config, mode: on ? 'AUTO' : 'CONFIRM' })
+      if (on && detected && detected.length > 0) onToast(activatedMessage(detected))
+    } catch (e) {
+      logError(e, 'CaptureSettings')
+      onToast('No se pudo guardar el cambio\nInténtalo de nuevo.', 'error')
+    }
+  }
 
   return (
     <div className="stack">
       <NotificationPermission permission={permission} wasGranted={status.revokedSinceConnected} onOpenSystemSettings={openGuide} onRequest={openGuide} showRestrictedHelp={status.restrictedSettingsLikely} />
-      {permission === 'granted' && <span className="muted small-text" role="status">El acceso a las notificaciones está activo.</span>}
 
       <section className="card">
-        <Switch id="cap-on" label="Detectar mis gastos" hint="Si lo apagas, el teléfono no lee ningún aviso. Tu lista de apps se recuerda." on={config.enabled} onChange={(enabled) => void apply({ ...config, enabled })} />
-        <CaptureAppsPicker selected={config.savedPackages} onChange={(savedPackages) => apply({ ...config, savedPackages })} />
+        <div className="row between">
+          <strong>Estado</strong>
+          <span className={summary.kind === 'active' ? 'strong' : summary.kind === 'no-permission' ? 'over' : 'muted'} role="status">
+            {summary.label}
+          </span>
+        </div>
+        <Switch id="cap-auto" label="Guardar solos mis gastos" hint="Siempre puedes deshacer." on={autoOn} onChange={(on) => void setAutoAll(on)} />
+        {detected === null ? (
+          <span className="muted small-text" role="status">
+            Buscando tus bancos…
+          </span>
+        ) : detected.length > 0 ? (
+          <ul className="chips" aria-label="Bancos encontrados">
+            {detected.map((b) => (
+              <li key={b.id} className="chip">
+                {b.name}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span className="muted small-text">Aún no hay bancos conectados.</span>
+        )}
+        <span className="muted small-text">Solo lee avisos de gasto de tus bancos; nunca claves ni mensajes personales.</span>
+        <div className="row">
+          {(detected === null || detected.length === 0 || !status.listenerAllowed) && (
+            <button type="button" className="btn small" onClick={() => setConnect(true)}>
+              Conectar mis bancos
+            </button>
+          )}
+          <button type="button" className="btn ghost small" onClick={() => setTrust(true)}>
+            Ver qué hace la app
+          </button>
+        </div>
       </section>
 
-      <section className="card">
-        <Switch id="cap-auto" label="Modo automático" hint="Guarda solo los gastos seguros que ya conoces, sin preguntar. Siempre puedes deshacer durante 10 segundos." on={config.mode === 'AUTO'} onChange={(on) => void apply({ ...config, mode: on ? 'AUTO' : 'CONFIRM' })} />
-        <Switch id="cap-shared" label="Marcar como compartidos" hint="Los gastos detectados parten como compartidos con tu pareja." on={config.shared} onChange={(shared) => void apply({ ...config, shared })} />
-      </section>
+      <button type="button" className="btn ghost small" aria-expanded={advanced} aria-controls="cap-advanced" onClick={() => setAdvanced(!advanced)}>
+        {advanced ? 'Ocultar avanzado' : 'Avanzado'}
+      </button>
 
-      <BankAutoSection config={config} onConfig={onConfig} onToast={onToast} onSendNow={onSendNow} />
+      {advanced && (
+        <div className="stack" id="cap-advanced">
+          <section className="card">
+            <Switch id="cap-on" label="Leer avisos de mis bancos" hint="Apágalo para pausar." on={config.enabled} onChange={(enabled) => void apply({ ...config, enabled })} />
+            <Switch id="cap-shared" label="Gastos compartidos" hint="Parten como compartidos con tu pareja." on={config.shared} onChange={(shared) => void apply({ ...config, shared })} />
+            <Switch id="cap-hide" label="Ocultar montos con el teléfono bloqueado" hint="Recomendado." on={status.hideOnLockScreen} onChange={(v) => void setHide(v)} />
+          </section>
 
-      <PartnerAlerts onToast={onToast} />
+          <section className="card">
+            <CaptureAppsPicker selected={config.savedPackages} onChange={(savedPackages) => apply({ ...config, savedPackages })} />
+          </section>
 
-      <section className="card">
-        <Switch id="cap-hide" label="Ocultar montos con el teléfono bloqueado" hint="La notificación no muestra cuánto ni dónde. Recomendado." on={status.hideOnLockScreen} onChange={(v) => void setHide(v)} />
-      </section>
+          <BankAutoSection config={config} onConfig={onConfig} onToast={onToast} onSendNow={onSendNow} />
 
-      <section className="card">
-        <strong>Borrar todo lo capturado</strong>
-        <span className="muted small-text">Quita de este teléfono los gastos detectados que aún no confirmaste. Tus gastos ya guardados no se tocan.</span>
-        <button type="button" className="btn danger small" onClick={() => setConfirmWipe(true)}>
-          Borrar lo capturado
-        </button>
-      </section>
+          <PartnerAlerts onToast={onToast} />
+
+          <CaptureDiagnostics onToast={onToast} />
+
+          <section className="card">
+            <strong>Borrar todo lo capturado</strong>
+            <span className="muted small-text">Quita de este teléfono lo detectado que aún no confirmaste. Lo ya guardado no se toca.</span>
+            <button type="button" className="btn danger small" onClick={() => setConfirmWipe(true)}>
+              Borrar lo capturado
+            </button>
+          </section>
+        </div>
+      )}
+
+      {connect && (
+        <BankConsentSheet
+          config={config}
+          onConfig={onConfig}
+          onToast={onToast}
+          onClose={(choose) => {
+            setConnect(false)
+            if (choose) setAdvanced(true)
+            void reload()
+            void loadDetected()
+          }}
+        />
+      )}
+      {trust && <BankTrustSheet onClose={() => setTrust(false)} />}
 
       {confirmWipe && (
         <Modal onClose={() => setConfirmWipe(false)} label="Borrar lo capturado">

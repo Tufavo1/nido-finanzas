@@ -8,7 +8,7 @@ import android.content.SharedPreferences
  * Preferencias no secretas de la captura: lista blanca de paquetes, privacidad y salud del servicio.
  * Son SharedPreferences normales porque no contienen montos, textos ni credenciales.
  */
-class CapturePrefs(context: Context) : HealthRecorder, RecentStore, AutoConfig, cl.dinovance.contigo.sync.SyncStatusStore {
+class CapturePrefs(context: Context) : HealthRecorder, RecentStore, AutoConfig, BankStore, cl.dinovance.contigo.sync.SyncStatusStore {
     private val prefs: SharedPreferences = context.applicationContext.getSharedPreferences(NAME, Context.MODE_PRIVATE)
 
     fun whitelist(): Set<String> = prefs.getStringSet(KEY_WHITELIST, emptySet()).orEmpty().toSet()
@@ -38,9 +38,29 @@ class CapturePrefs(context: Context) : HealthRecorder, RecentStore, AutoConfig, 
         prefs.edit().putBoolean("bank_auto_$bank", enabled).apply()
     }
 
-    override fun bankOfPackage(packageName: String): String? = BankPresets.ALL.firstOrNull { bankPackage(it.id) == packageName }?.id
+    // Bancos detectados por nombre visible (se rehacen en cada busqueda) y paquete asociado a mano (modo aprender / Avanzado)
+    override fun detectedPackages(bank: String): Set<String> = prefs.getStringSet("bank_det_$bank", emptySet()).orEmpty().toSet()
 
-    override fun autoEnabled(bank: String): Boolean = bankAutoSave(bank) && bankPackage(bank) != null
+    fun setDetectedPackages(bank: String, packages: Set<String>) {
+        prefs.edit().putStringSet("bank_det_$bank", packages).apply()
+    }
+
+    override fun manualPackage(bank: String): String? = bankPackage(bank)
+
+    override fun autoSave(bank: String): Boolean = bankAutoSave(bank)
+
+    override fun setAutoSave(bank: String, enabled: Boolean) = setBankAutoSave(bank, enabled)
+
+    fun hasBankApp(bank: String): Boolean = bankPackage(bank) != null || detectedPackages(bank).isNotEmpty()
+
+    override fun bankOfPackage(packageName: String): String? =
+        BankPresets.ALL.firstOrNull { bankPackage(it.id) == packageName || packageName in detectedPackages(it.id) }?.id
+
+    override fun autoEnabled(bank: String): Boolean = bankAutoSave(bank) && hasBankApp(bank)
+
+    /** Lista que realmente vigila el servicio: la elegida por la persona + las apps de banco (detectadas o asociadas). */
+    fun effectiveWhitelist(): Set<String> =
+        whitelist() + BankPresets.ALL.flatMap { b -> detectedPackages(b.id) + listOfNotNull(bankPackage(b.id)) }
 
     override fun maxClp(): Long = prefs.getLong(KEY_AUTO_CAP, cl.nido.parser.CaptureSettings.DEFAULT_MAX_CLP)
 

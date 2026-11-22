@@ -20,6 +20,7 @@ import androidx.credentials.GetCredentialResponse
 import androidx.credentials.exceptions.GetCredentialException
 import java.io.File
 import cl.dinovance.contigo.auth.GoogleSignInLogic
+import cl.dinovance.contigo.capture.BankSetup
 import cl.dinovance.contigo.update.CheckResult
 import cl.dinovance.contigo.update.UpdateEvents
 import cl.dinovance.contigo.update.HttpUrlGet
@@ -91,7 +92,7 @@ class ContigoNativePlugin : Plugin() {
             .put("lastHeartbeatAt", health.lastHeartbeatAt)
             .put("failures", health.failures)
             .put("lastFailureClass", health.lastFailureClass)
-            .put("whitelistCount", graph.prefs.whitelist().size)
+            .put("whitelistCount", graph.prefs.effectiveWhitelist().size)
             .put("hideOnLockScreen", graph.prefs.hideOnLockScreen())
         call.resolve(result)
     }
@@ -128,7 +129,7 @@ class ContigoNativePlugin : Plugin() {
     // ---- Lista blanca y privacidad ----
 
     @PluginMethod
-    fun getAllowedPackages(call: PluginCall) = call.resolve(JSObject().put("packages", JSONArray(graph.prefs.whitelist().sorted())))
+    fun getAllowedPackages(call: PluginCall) = call.resolve(JSObject().put("packages", JSONArray(graph.prefs.effectiveWhitelist().sorted())))
 
     @PluginMethod
     fun setAllowedPackages(call: PluginCall) {
@@ -214,6 +215,7 @@ class ContigoNativePlugin : Plugin() {
         graph.drafts.clear()
         graph.recent.clear()
         graph.autoLog.clear()
+        graph.diagnostics.clear()
         graph.clearProfile()
         call.resolve()
     }
@@ -225,8 +227,10 @@ class ContigoNativePlugin : Plugin() {
         if (key != null && !OWNER_KEY.matches(key)) return call.reject("Dueño no válido", "INVALID_ARGUMENT")
         if (key != null) {
             // Avisos que llegaron sin sesion (p. ej. token vencido): vuelven a su persona si es la misma (R2-03)
-            OwnerFilter.adoptable(graph.drafts.list(), key, graph.prefs.lastUser()).forEach { d -> graph.drafts.update(d.id) { it.copy(ownerKey = key) } }
+            val adopted = OwnerFilter.adoptable(graph.drafts.list(), key, graph.prefs.lastUser())
+            adopted.forEach { d -> graph.drafts.update(d.id) { it.copy(ownerKey = key) } }
             graph.prefs.setLastUser(OwnerFilter.userOf(key))
+            if (adopted.isNotEmpty()) DraftEvents.changed() // la bandeja se refresca con lo que llego antes de iniciar sesion
         }
         graph.prefs.setActiveOwner(key)
         call.resolve()
@@ -250,6 +254,7 @@ class ContigoNativePlugin : Plugin() {
         graph.session.removeByPrefix("queue-")
         graph.clearProfile()
         graph.autoLog.clear()
+        graph.diagnostics.clear()
         if (key != null) OwnerFilter.adoptable(graph.drafts.list(), key, graph.prefs.lastUser()).forEach { d -> graph.drafts.update(d.id) { it.copy(ownerKey = key) } }
         OwnerFilter.foreign(graph.drafts.list(), key).forEach {
             graph.notifier.cancel(it.id)
@@ -280,7 +285,7 @@ class ContigoNativePlugin : Plugin() {
         val banks = JSArray()
         BankPresets.ALL.forEach {
             banks.put(
-                JSObject().put("id", it.id).put("name", it.displayName).put("packageName", graph.prefs.bankPackage(it.id))
+                JSObject().put("id", it.id).put("name", it.displayName).put("packageName", graph.prefs.bankPackage(it.id) ?: graph.prefs.detectedPackages(it.id).minOrNull())
                     .put("autoSave", graph.prefs.autoEnabled(it.id)).put("candidatePackages", JSArray(it.candidatePackages)),
             )
         }
@@ -302,7 +307,8 @@ class ContigoNativePlugin : Plugin() {
     fun setBankAutoSave(call: PluginCall) {
         val bank = call.getString("bankId")?.let(BankPresets::byId) ?: return call.reject("Banco no válido", "INVALID_ARGUMENT")
         val enabled = call.getBoolean("enabled") ?: return call.reject("Falta enabled", "INVALID_ARGUMENT")
-        if (enabled && graph.prefs.bankPackage(bank.id) == null) return call.reject("Asocia primero la app del banco", "NO_PACKAGE")
+        if (enabled) graph.refreshBanks(context)
+        if (enabled && !graph.prefs.hasBankApp(bank.id)) return call.reject("Asocia primero la app del banco", "NO_PACKAGE")
         graph.prefs.setBankAutoSave(bank.id, enabled)
         call.resolve()
     }
@@ -448,6 +454,44 @@ class ContigoNativePlugin : Plugin() {
                 }
             },
         )
+    }
+
+    // ---- Deteccion automatica de bancos, activacion en un paso y diagnostico ----
+
+    /** Apps de banco encontradas por NOMBRE VISIBLE entre las apps con icono (sin QUERY_ALL_PACKAGES). Incluye not_found. */
+    @PluginMethod
+    fun getDetectedBanks(call: PluginCall) {
+        val list = JSArray()
+        graph.refreshBanks(context).forEach {
+            list.put(JSObject().put("bankId", it.bankId).put("appLabel", it.appLabel ?: JSONObject.NULL).put("packageName", it.packageName ?: JSONObject.NULL).put("status", it.status.name))
+        }
+        call.resolve(JSObject().put("detected", list))
+    }
+
+    private fun resolveSetup(call: PluginCall, enabled: Boolean) {
+        graph.refreshBanks(context)
+        val r = BankSetup(graph.prefs).setAll(enabled)
+        call.resolve(JSObject().put("enabled", JSONArray(r.enabled)).put("disabled", JSONArray(r.disabled)).put("withoutApp", JSONArray(r.withoutApp)))
+    }
+
+    /** Activa captura + guardado automatico en todos los bancos con app, con el tope por defecto. Sin apps no hace nada y lo informa (withoutApp). */
+    @PluginMethod
+    fun enableAllDetected(call: PluginCall) = resolveSetup(call, true)
+
+    @PluginMethod
+    fun setAutoSaveAll(call: PluginCall) {
+        val enabled = call.getBoolean("enabled") ?: return call.reject("Falta enabled", "INVALID_ARGUMENT")
+        resolveSetup(call, enabled)
+    }
+
+    /** Motivos tipificados y texto ENMASCARADO de los ultimos avisos no aceptados (maximo 20). Solo local. */
+    @PluginMethod
+    fun getCaptureDiagnostics(call: PluginCall) {
+        val items = JSArray()
+        graph.diagnostics.list().forEach {
+            items.put(JSObject().put("atMillis", it.atMillis).put("bankId", it.bankId ?: JSONObject.NULL).put("reason", it.reason.name).put("maskedText", it.maskedText))
+        }
+        call.resolve(JSObject().put("items", items))
     }
 
     // ---- Actualizaciones desde el release publicado en GitHub ----

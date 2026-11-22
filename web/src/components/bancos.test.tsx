@@ -11,10 +11,10 @@ const props = { cap: 50_000, busy: false, onToggle: noop, onAssociate: noop, onD
 describe('BankCard', () => {
   it('sin app asociada: lo dice, el interruptor no se puede encender y explica qué hace', () => {
     const html = renderToStaticMarkup(<BankCard bank={bank} {...props} />)
-    expect(html).toContain('Guardar solos los gastos de Santander')
+    expect(html).toContain('Guardar solos: Santander')
     expect(html).toContain('Sin app asociada')
     expect(html).toContain('disabled')
-    expect(html).toContain('Nunca anota abonos')
+    expect(html).toContain('Nunca abonos')
     expect(html).toContain('deshacer')
     expect(html).toContain('50.000')
     expect(html).toContain('aria-checked="false"')

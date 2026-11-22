@@ -157,3 +157,30 @@ describe('actualizaciones', () => {
     expect(updateErrorCode(null)).toBe('INSTALL_FAILED')
   })
 })
+
+describe('adaptadores de bancos detectados y diagnostico', () => {
+  it('adaptDetectedBanks: bankId a id, solo installed o seen, sin repetidos ni basura', async () => {
+    const { adaptDetectedBanks } = await import('./nativeBridge')
+    const raw = { detected: [
+      { bankId: 'santander', appLabel: 'Santander', packageName: 'x.s', status: 'installed' },
+      { bankId: 'banco-estado', appLabel: 'CuentaRUT', packageName: 'x.cr', status: 'installed' },
+      { bankId: 'banco-estado', appLabel: 'BancoEstado', packageName: 'x.be', status: 'installed' },
+      { bankId: 'banco-chile', appLabel: null, packageName: 'x.c', status: 'seen' },
+      { bankId: 'banco-falabella', appLabel: null, packageName: null, status: 'not_found' },
+      { bankId: 5, packageName: 'x', status: 'installed' }, null, 'x',
+    ] }
+    expect(adaptDetectedBanks(raw)).toEqual({ banks: [{ id: 'santander', packageName: 'x.s' }, { id: 'banco-estado', packageName: 'x.cr' }, { id: 'banco-chile', packageName: 'x.c' }] })
+    expect(adaptDetectedBanks(null)).toEqual({ banks: [] })
+    expect(adaptDetectedBanks({ detected: 'no' })).toEqual({ banks: [] })
+  })
+  it('adaptDiagnostics: atMillis a at, motivos al mas cercano y desconocidos tal cual', async () => {
+    const { adaptDiagnostics } = await import('./nativeBridge')
+    const row = (reason: string, extra: object = {}) => ({ reason, atMillis: 5, maskedText: 'Compra $#.###', ...extra })
+    const out = adaptDiagnostics({ items: [row('NOT_AN_EXPENSE'), row('AMBIGUOUS_AMOUNT'), row('NO_AMOUNT'), row('INCOME'), row('BANK_OFF'), row('NO_SESSION'), row('NO_PROFILE'), row('CAP_EXCEEDED'), row('CATEGORY_UNKNOWN', { maskedText: '' }), { reason: 'X' }, null] })
+    expect(out.items.map((i) => i.reason)).toEqual(['NO_AMOUNT', 'NO_AMOUNT', 'NO_AMOUNT', 'INCOME', 'BANK_OFF', 'LOGIN_REQUIRED', 'LOGIN_REQUIRED', 'CAP_EXCEEDED', 'CATEGORY_UNKNOWN'])
+    expect(out.items[0]).toEqual({ reason: 'NO_AMOUNT', at: 5, maskedText: 'Compra $#.###' })
+    expect(out.items[8]).toEqual({ reason: 'CATEGORY_UNKNOWN', at: 5 })
+    expect(adaptDiagnostics(undefined)).toEqual({ items: [] })
+    expect(adaptDiagnostics({ items: Array.from({ length: 30 }, () => row('NO_AMOUNT')) }).items).toHaveLength(20)
+  })
+})

@@ -22,6 +22,9 @@ import { supabase } from './lib/supabase'
 import Icon from './components/Icon'
 import InstallBanner from './components/InstallBanner'
 import { checkUpdates } from './lib/appUpdateStore'
+import BankConsentSheet from './components/BankConsentSheet'
+import { readConsent, shouldAskConsent } from './lib/bankConsent'
+import { isNativeApp } from './lib/nativeBridge'
 import NativeUpdateSheet from './components/NativeUpdateSheet'
 import UpdateBanner from './components/UpdateBanner'
 import LockScreen from './components/LockScreen'
@@ -121,6 +124,13 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   // App Android: busca versión nueva al abrir (máx. 1 vez cada 12 h; sin molestar durante el arranque)
   useEffect(() => {
     const t = window.setTimeout(() => void checkUpdates(), 4000)
+    return () => window.clearTimeout(t)
+  }, [])
+  // Primera vez en la app Android: una hoja corta para conectar los bancos (sin insistir si dice «Ahora no»)
+  const [askBanks, setAskBanks] = useState(false)
+  useEffect(() => {
+    if (!isNativeApp() || !shouldAskConsent(readConsent())) return
+    const t = window.setTimeout(() => setAskBanks(true), 7000)
     return () => window.clearTimeout(t)
   }, [])
   useAutoSync({ userId: hh.me.user_id, householdId: hh.household.id, shared: capture.shared, categories: data.categories, history: detected.ctx.history, ready: data.ready })
@@ -385,6 +395,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
       <InstallBanner onToast={setToast} />
       <UpdateBanner />
       <NativeUpdateSheet />
+      {askBanks && <BankConsentSheet config={capture} onConfig={saveCapture} onToast={setToast} onClose={() => setAskBanks(false)} />}
       {toast && <Toast key={`${toast.id}-${toast.expiresAt}`} toast={toast} onDismiss={dismissToast} onAction={actToast} />}
       <PullIndicator view={pull.view} refreshing={pull.refreshing} />
     </div>
