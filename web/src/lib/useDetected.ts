@@ -20,6 +20,7 @@ import { deleteExpense, insertExpenseRow } from './saveExpense'
 import { debtPaymentRow, incomeRow, saveMovement } from './movements'
 import { insertDebtPaymentRow, insertIncomeRow } from './saveMovement'
 import { useAppResume } from './useAppResume'
+import { onRescanned, rescanNow } from './rescan'
 import { logError } from './safeLog'
 
 /** Tiempo para tocar «Deshacer» (CA-09-2) */
@@ -74,12 +75,21 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
     }
   }, [native, hh.me.user_id, hh.household.id])
 
+  // Relectura de los avisos ya presentes en el teléfono: sin esperar, en silencio; si hay algo nuevo, refresca la bandeja
+  useEffect(() => (native ? onRescanned(() => void load()) : undefined), [native, load])
   useEffect(() => {
     // En el siguiente turno: la lectura inicial no cambia el estado durante el montaje
-    const t = window.setTimeout(() => void load(), 0)
+    const t = window.setTimeout(() => {
+      void load()
+      // Al abrir y al iniciar sesión (el hook se monta con la sesión)
+      void rescanNow()
+    }, 0)
     return () => window.clearTimeout(t)
   }, [load])
-  useAppResume(() => void load())
+  useAppResume(() => {
+    void load()
+    void rescanNow()
+  })
   useEffect(() => {
     if (!native) return
     const handles = [ContigoNative.addListener('draftsChanged', () => void load()), ContigoNative.addListener('draftOpen', (e) => setOpenId(e.id))]

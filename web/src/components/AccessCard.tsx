@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { promptInstall, useInstallState } from '../lib/install'
 import { currentPushState } from '../lib/push'
 import type { PushState } from '../lib/push'
-import { ContigoNative, isNativeApp } from '../lib/nativeBridge'
+import { isNativeApp } from '../lib/nativeBridge'
+import { getPushStatus } from '../lib/nativePush'
 import { nativeCopy, parsePushStatus } from '../lib/appUpdate'
 import type { Notify } from './Toast'
 
@@ -18,7 +19,7 @@ export default function AccessCard({ onToast }: { onToast: Notify }) {
 
   useEffect(() => {
     if (isNativeApp()) {
-      ContigoNative.getPushStatus()
+      getPushStatus()
         .then((r) => {
           const s = parsePushStatus(r)
           setPush(s.permission === 'denied' ? 'denied' : s.permission === 'granted' && s.tokenRegistered ? 'on' : 'off')

@@ -49,6 +49,20 @@ class CaptureGraph private constructor(context: Context) {
         notificationsAllowed = { androidx.core.app.NotificationManagerCompat.from(context.applicationContext).areNotificationsEnabled() },
         onAutoSaved = { SyncScheduler.enqueue(context.applicationContext) },
     )
+    // Avisos ya vistos (solo hashes): almacen aparte, NO se borra con el cierre de sesion para que un gasto ya enviado no renazca desde la barra
+    private val seenStore = SecureKeyValueStore(File(context.noBackupFilesDir, "seen"), KeystoreAesGcm(SESSION_KEY_ALIAS))
+    val seen = SeenNotices(object : TextStore {
+        override fun read() = seenStore.get(SEEN_KEY)
+        override fun write(value: String?) { if (value == null) seenStore.remove(SEEN_KEY) else seenStore.set(SEEN_KEY, value) }
+    })
+    val rescanner = NotificationRescanner(
+        accepts = { processor.accepts(it) },
+        process = { p, t, x, at -> processor.process(p, t, x, at) },
+        seen = seen,
+        clock = System::currentTimeMillis,
+        recent = { p, at -> if (p != context.packageName) recent.record(p, at) },
+        onFailure = { prefs.recordFailure(it, System.currentTimeMillis()) },
+    )
     private val transport = UrlConnectionTransport()
     val syncer = ExpenseSyncer(
         repository = drafts,
@@ -93,6 +107,7 @@ class CaptureGraph private constructor(context: Context) {
         const val PROFILE_KEY = "auto-profile"
         const val LOG_KEY = "auto-log"
         const val DIAG_KEY = "diag-log"
+        const val SEEN_KEY = "seen-notices"
         private const val DRAFTS_KEY_ALIAS = "contigo_drafts_v1"
         private const val SESSION_KEY_ALIAS = "contigo_session_v1"
 

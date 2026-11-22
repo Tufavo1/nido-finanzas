@@ -21,6 +21,7 @@ import androidx.credentials.exceptions.GetCredentialException
 import java.io.File
 import cl.dinovance.contigo.auth.GoogleSignInLogic
 import cl.dinovance.contigo.capture.BankSetup
+import cl.dinovance.contigo.capture.NotificationCaptureService
 import cl.dinovance.contigo.sync.ApiBasePolicy
 import cl.dinovance.contigo.update.CheckResult
 import cl.dinovance.contigo.update.UpdateEvents
@@ -458,6 +459,16 @@ class ContigoNativePlugin : Plugin() {
                 }
             },
         )
+    }
+
+    /** Procesa los avisos que ya estaban en la barra (solo apps permitidas, ultimas 24 h, maximo 50, sin duplicar). {processed, connected}. */
+    @PluginMethod
+    fun rescanNotifications(call: PluginCall) {
+        val service = NotificationCaptureService.instance
+        updateExecutor.execute {
+            val n = service?.rescanActive() ?: 0
+            call.resolve(JSObject().put("processed", n).put("connected", service != null))
+        }
     }
 
     // ---- Deteccion automatica de bancos, activacion en un paso y diagnostico ----

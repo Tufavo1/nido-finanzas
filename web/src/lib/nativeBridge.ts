@@ -231,6 +231,8 @@ export interface ContigoNativePlugin {
   configureSync(options: { apiBase: string | null }): Promise<void>
   getSyncState(): Promise<unknown>
   syncNow(): Promise<void>
+  /** Vuelve a leer los avisos que ya estaban en la barra del teléfono: { processed, connected } */
+  rescanNotifications(): Promise<unknown>
   /** Gastos guardados solos (por enviar o ya enviados), los más nuevos primero. */
   listAutoSaved(): Promise<{ items: unknown[] }>
   /** needsDelete=true: ya se envió; la app debe borrar el gasto en el servidor y luego llamar dismissAutoSaved. */
@@ -249,12 +251,7 @@ export interface ContigoNativePlugin {
   // ---- CONTRATO PENDIENTE DEL BACKEND (diseñado por tipos; confirmar en docs/mobile/backend-android.md) ----
   /** Versión y número de compilación reales del APK instalado: { versionName, versionCode } */
   getAppInfo(): Promise<unknown>
-  /** Avisos nativos (FCM): permiso de Android y si el token ya quedó registrado: { permission: 'granted'|'denied'|'default', tokenRegistered } */
-  getPushStatus(): Promise<unknown>
-  /** Pide el permiso de notificaciones (Android 13+) y registra el token FCM. El token no llega a la interfaz. */
-  enablePush(): Promise<unknown>
-  /** Da de baja el token FCM de este teléfono */
-  disablePush(): Promise<void>
+  // Los avisos (push) ya no pasan por este plugin: ver lib/nativePush.ts (plugin oficial @capacitor/push-notifications)
   /** { available, versionName?, notes?, sizeBytes? }. Rechaza con code NETWORK si no hay conexión. */
   checkForUpdate(): Promise<unknown>
   /** Descarga el APK; el avance llega por el evento `updateProgress`. Rechaza con code NETWORK | NO_SPACE | CORRUPT. */
@@ -336,6 +333,18 @@ export function parseNativeDraft(raw: unknown): NativeDraft | null {
     ...(raw['syncRejected'] === true ? { syncRejected: true } : {}),
     ...(typeof raw['sourcePackage'] === 'string' && raw['sourcePackage'].length <= 200 ? { sourcePackage: raw['sourcePackage'] } : {}),
   }
+}
+
+export interface RescanResult {
+  processed: number
+  connected: boolean
+}
+
+/** Valida el resultado de `rescanNotifications` (frontera): cualquier cosa rara cuenta como «nada nuevo». */
+export function parseRescan(raw: unknown): RescanResult {
+  if (!isRecord(raw)) return { processed: 0, connected: false }
+  const p = raw['processed']
+  return { processed: isCount(p) && p <= 10_000 ? p : 0, connected: raw['connected'] === true }
 }
 
 /** Dueño activo del teléfono: `usuario:hogar` con solo caracteres seguros (lo valida también el plugin). */

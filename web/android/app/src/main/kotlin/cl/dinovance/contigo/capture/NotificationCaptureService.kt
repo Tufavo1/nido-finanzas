@@ -14,9 +14,11 @@ class NotificationCaptureService : NotificationListenerService() {
     private val graph by lazy { CaptureGraph.get(applicationContext) }
 
     override fun onListenerConnected() {
+        instance = this
         graph.prefs.heartbeat(System.currentTimeMillis(), connected = true)
         // Bancos instalados despues de abrir la app tambien se detectan
         try { graph.refreshBanks(applicationContext) } catch (e: Exception) { graph.prefs.recordFailure(e.javaClass.simpleName, System.currentTimeMillis()) }
+        rescanActive()
         // Tras un reinicio se pierden las alarmas: si quedan gastos por enviar, se vuelve a agendar el recordatorio.
         if (ReminderPolicy.pendingToSend(graph.drafts.list(), graph.prefs.activeOwner()) > 0) {
             ReminderScheduler.schedule(applicationContext, ReminderPolicy.FIRST_REMINDER_MILLIS)
@@ -24,6 +26,7 @@ class NotificationCaptureService : NotificationListenerService() {
     }
 
     override fun onListenerDisconnected() {
+        if (instance === this) instance = null
         graph.prefs.heartbeat(System.currentTimeMillis(), connected = false)
         // El sistema puede desconectarnos (ahorro de batería, fabricante): pedimos volver a conectar.
         requestRebind(ComponentName(this, NotificationCaptureService::class.java))
@@ -52,10 +55,34 @@ class NotificationCaptureService : NotificationListenerService() {
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.take(MAX_TEXT)
         val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))
             ?.toString()?.take(MAX_TEXT)
-        if (graph.processor.process(posted.packageName, title, text, posted.postTime) == Outcome.STORED) DraftEvents.changed()
+        val outcome = graph.processor.process(posted.packageName, title, text, posted.postTime)
+        graph.seen.mark(posted.packageName, posted.key, posted.postTime) // el reescaneo no lo vuelve a tomar
+        if (outcome == Outcome.STORED) DraftEvents.changed()
     }
 
-    private companion object {
-        const val MAX_TEXT = 2_000
+    /** Avisos que ya estaban en la barra (el servicio solo recibe los NUEVOS). Nunca lanza. Devuelve cuantos proceso. */
+    fun rescanActive(): Int = try {
+        val active = (activeNotifications ?: emptyArray()).map { sbn ->
+            ActiveNotice(sbn.packageName, sbn.key, sbn.postTime) {
+                val extras = sbn.notification?.extras
+                val title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.take(MAX_TEXT)
+                val text = (extras?.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras?.getCharSequence(Notification.EXTRA_TEXT))?.toString()?.take(MAX_TEXT)
+                title to text
+            }
+        }
+        val n = graph.rescanner.rescan(active)
+        if (n > 0) DraftEvents.changed()
+        n
+    } catch (e: Throwable) {
+        graph.prefs.recordFailure(e.javaClass.simpleName, System.currentTimeMillis())
+        0
+    }
+
+    companion object {
+        private const val MAX_TEXT = 2_000
+
+        /** Servicio conectado ahora mismo (null si no lo esta); lo usa el plugin para `rescanNotifications`. */
+        @Volatile
+        var instance: NotificationCaptureService? = null
     }
 }

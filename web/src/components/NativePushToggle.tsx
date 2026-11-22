@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { nativeCopy, parsePushStatus } from '../lib/appUpdate'
 import type { NativePushStatus } from '../lib/appUpdate'
 import { ContigoNative } from '../lib/nativeBridge'
+import { disablePush, enablePush, getPushStatus, pushErrorCopy, PushError } from '../lib/nativePush'
 import { logError } from '../lib/safeLog'
 import { SkeletonCard } from './Skeleton'
 import Spin from './Spin'
@@ -15,7 +16,7 @@ export default function NativePushToggle({ onToast }: { onToast: Notify }) {
 
   useEffect(() => {
     let alive = true
-    ContigoNative.getPushStatus()
+    getPushStatus()
       .then((r) => alive && setSt(parsePushStatus(r)))
       .catch((e: unknown) => {
         logError(e, 'NativePushToggle')
@@ -33,14 +34,19 @@ export default function NativePushToggle({ onToast }: { onToast: Notify }) {
     setBusy(true)
     try {
       if (on) {
-        await ContigoNative.disablePush()
+        await disablePush()
         setSt(parsePushStatus({ permission: 'granted', tokenRegistered: false }))
       } else {
-        setSt(parsePushStatus(await ContigoNative.enablePush()))
+        setSt(parsePushStatus(await enablePush()))
       }
     } catch (e) {
-      logError(e, 'NativePushToggle')
-      onToast('No se pudo cambiar\nInténtalo de nuevo en un momento.', 'error')
+      if (e instanceof PushError && e.code === 'DENIED') {
+        // Sin permiso: el botón «Abrir ajustes» ocupa el lugar del interruptor
+        setSt(parsePushStatus({ permission: 'denied', tokenRegistered: false }))
+      } else {
+        logError(e, 'NativePushToggle')
+        onToast(pushErrorCopy(e) ?? 'No se pudo cambiar\nInténtalo de nuevo en un momento.', 'error')
+      }
     }
     setBusy(false)
   }

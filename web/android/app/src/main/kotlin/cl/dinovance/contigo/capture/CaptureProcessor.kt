@@ -63,6 +63,7 @@ class CaptureProcessor(
     /** RF-01: el servicio pregunta ANTES de leer el contenido del aviso. */
     fun accepts(packageName: String): Boolean = packageName != ownPackage && packageName in whitelist()
 
+    @Synchronized
     fun process(packageName: String, title: String?, text: String?, postedAtMillis: Long): Outcome {
         val now = clock()
         return try {
