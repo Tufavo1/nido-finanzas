@@ -139,3 +139,21 @@ describe('registro automático: contratos', () => {
     expect(out.some((e) => e.key === 'algo')).toBe(false)
   })
 })
+
+describe('actualizaciones', () => {
+  it('parseUpdateCheck valida la respuesta', async () => {
+    const { parseUpdateCheck } = await import('./nativeBridge')
+    expect(parseUpdateCheck({ available: false })).toEqual({ available: false })
+    expect(parseUpdateCheck(null)).toEqual({ available: false })
+    expect(parseUpdateCheck({ available: true, versionName: '1.3.0' })).toEqual({ available: false })
+    expect(parseUpdateCheck({ available: true, versionName: '1.3.0', versionCode: 10300, sizeBytes: 5, notes: 'x' })).toEqual({ available: true, versionName: '1.3.0', versionCode: 10300, sizeBytes: 5, notes: 'x' })
+    expect(parseUpdateCheck({ available: true, versionName: '1.3.0', versionCode: 10300, sizeBytes: 5, notes: null }).notes).toBeNull()
+  })
+  it('updateErrorCode reconoce codigos y cae a INSTALL_FAILED', async () => {
+    const { updateErrorCode } = await import('./nativeBridge')
+    expect(updateErrorCode({ code: 'HASH_MISMATCH' })).toBe('HASH_MISMATCH')
+    expect(updateErrorCode({ code: 'INSTALL_NOT_ALLOWED' })).toBe('INSTALL_NOT_ALLOWED')
+    expect(updateErrorCode({ code: 'raro' })).toBe('INSTALL_FAILED')
+    expect(updateErrorCode(null)).toBe('INSTALL_FAILED')
+  })
+})

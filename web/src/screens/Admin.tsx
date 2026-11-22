@@ -1,3 +1,4 @@
+import { isNativeApp } from '../lib/nativeBridge'
 import ScreenLoader from '../components/ScreenLoader'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FREE_LIMITS, adminNotes, adminRates, deleteHouseholds, fetchAdminStats, fetchAdminStorage, fetchEmptyHouseholds, removeMember, useAdminStatus } from '../lib/admin'
@@ -501,7 +502,7 @@ function AdminPanel({ onBack, onToast }: { onBack: () => void; onToast: Notify }
               />
               <span className="line-help">{fillForecast(storage.db_bytes, FREE_LIMITS.dbBytes, storage.bytes_per_day).text}</span>
               <span className="line-help">
-                La app cuida el espacio sola: borra cada día las invitaciones vencidas y nunca guarda copias de los datos en el navegador.
+                La app cuida el espacio sola: borra cada día las invitaciones vencidas y nunca guarda copias de los datos {isNativeApp() ? 'fuera de tu teléfono' : 'en el navegador'}.
               </span>
             </section>
           ) : (

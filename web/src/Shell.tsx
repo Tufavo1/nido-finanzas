@@ -21,6 +21,8 @@ import { errorScreen } from './lib/screenState'
 import { supabase } from './lib/supabase'
 import Icon from './components/Icon'
 import InstallBanner from './components/InstallBanner'
+import { checkUpdates } from './lib/appUpdateStore'
+import NativeUpdateSheet from './components/NativeUpdateSheet'
 import UpdateBanner from './components/UpdateBanner'
 import LockScreen from './components/LockScreen'
 import OfflineBar from './components/OfflineBar'
@@ -116,6 +118,11 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   const { config: capture, save: saveCapture } = useCaptureConfig()
   const queue = useExpenseQueue(hh.household.id, hh.me.user_id, data.refresh, setToast)
   const detected = useDetected({ hh, data, config: capture, queue, notify: setToast })
+  // App Android: busca versión nueva al abrir (máx. 1 vez cada 12 h; sin molestar durante el arranque)
+  useEffect(() => {
+    const t = window.setTimeout(() => void checkUpdates(), 4000)
+    return () => window.clearTimeout(t)
+  }, [])
   useAutoSync({ userId: hh.me.user_id, householdId: hh.household.id, shared: capture.shared, categories: data.categories, history: detected.ctx.history, ready: data.ready })
   const [reviewId, setReviewId] = useState<string | null>(null)
   const [linkCandidate, setLinkCandidate] = useState<ParsedCandidate | null>(null)
@@ -377,6 +384,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
       )}
       <InstallBanner onToast={setToast} />
       <UpdateBanner />
+      <NativeUpdateSheet />
       {toast && <Toast key={`${toast.id}-${toast.expiresAt}`} toast={toast} onDismiss={dismissToast} onAction={actToast} />}
       <PullIndicator view={pull.view} refreshing={pull.refreshing} />
     </div>

@@ -1,4 +1,8 @@
 import { getLockMinutes } from './applock'
+import { isNativeApp } from './nativeBridge'
+
+/** Comprobaciones que solo tienen sentido en el navegador: en la app Android no se muestran */
+export const WEB_ONLY_CHECKS = ['cache', 'sw', 'install', 'persist'] as const
 
 export interface Check {
   id: string
@@ -36,7 +40,7 @@ export async function runSecurityChecks(): Promise<Check[]> {
   const lock = getLockMinutes()
   const sw = 'serviceWorker' in navigator ? navigator.serviceWorker.controller !== null : null
 
-  return [
+  const all: Check[] = [
     {
       id: 'tls',
       label: 'Conexión cifrada (HTTPS)',
@@ -84,4 +88,5 @@ export async function runSecurityChecks(): Promise<Check[]> {
             : 'El navegador podría limpiar el almacenamiento si falta espacio. Tus datos siguen seguros en el servidor.',
     },
   ]
+  return isNativeApp() ? all.filter((c) => !(WEB_ONLY_CHECKS as readonly string[]).includes(c.id)) : all
 }

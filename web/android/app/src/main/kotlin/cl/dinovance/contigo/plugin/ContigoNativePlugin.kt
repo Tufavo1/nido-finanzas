@@ -18,7 +18,18 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
 import androidx.credentials.exceptions.GetCredentialException
+import java.io.File
 import cl.dinovance.contigo.auth.GoogleSignInLogic
+import cl.dinovance.contigo.update.CheckResult
+import cl.dinovance.contigo.update.UpdateEvents
+import cl.dinovance.contigo.update.HttpUrlGet
+import cl.dinovance.contigo.update.PackageApkInspector
+import cl.dinovance.contigo.update.SafeFetcher
+import cl.dinovance.contigo.update.UpdateError
+import cl.dinovance.contigo.update.UpdateException
+import cl.dinovance.contigo.update.UpdateInfo
+import cl.dinovance.contigo.update.UpdateInstaller
+import cl.dinovance.contigo.update.UpdateService
 import cl.dinovance.contigo.capture.AutoProfile
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -437,6 +448,92 @@ class ContigoNativePlugin : Plugin() {
                 }
             },
         )
+    }
+
+    // ---- Actualizaciones desde el release publicado en GitHub ----
+
+    private val updateService by lazy {
+        val repo = context.getString(cl.dinovance.contigo.R.string.update_repo).takeIf { Regex("[A-Za-z0-9_.-]{1,60}/[A-Za-z0-9_.-]{1,100}").matches(it) } ?: ""
+        UpdateService(
+            SafeFetcher(HttpUrlGet()), PackageApkInspector(context), { installedVersionCode() }, context.packageName,
+            "https://api.github.com/repos/$repo/releases/latest", File(context.cacheDir, UpdateInstaller.DIR),
+        )
+    }
+    @Volatile private var lastUpdate: UpdateInfo? = null
+    private val updateExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+    @Suppress("DEPRECATION")
+    private fun installedVersionCode(): Long = context.packageManager.getPackageInfo(context.packageName, 0).let { if (Build.VERSION.SDK_INT >= 28) it.longVersionCode else it.versionCode.toLong() }
+
+    private fun PluginCall.updateError(e: Throwable) {
+        reject("Actualización: " + ((e as? UpdateException)?.error?.name ?: UpdateError.INSTALL_FAILED.name), (e as? UpdateException)?.error?.name ?: UpdateError.INSTALL_FAILED.name)
+    }
+
+    @PluginMethod
+    fun getAppInfo(call: PluginCall) {
+        val info = context.packageManager.getPackageInfo(context.packageName, 0)
+        call.resolve(JSObject().put("versionName", info.versionName ?: "").put("versionCode", installedVersionCode()))
+    }
+
+    /** Pide a GitHub (anonimo: se ve la IP, nada mas) el ultimo release PUBLICADO y lo compara con el instalado. */
+    @PluginMethod
+    fun checkForUpdate(call: PluginCall) {
+        updateExecutor.execute {
+            try {
+                when (val r = updateService.check()) {
+                    is CheckResult.UpToDate -> { lastUpdate = null; call.resolve(JSObject().put("available", false)) }
+                    is CheckResult.Available -> {
+                        lastUpdate = r.info
+                        call.resolve(JSObject().put("available", true).put("versionName", r.info.versionName).put("versionCode", r.info.versionCode)
+                            .put("sizeBytes", r.info.sizeBytes).put("notes", r.info.notes ?: JSONObject.NULL))
+                    }
+                }
+            } catch (e: Exception) { call.updateError(e) }
+        }
+    }
+
+    /** Descarga, verifica hash/paquete/version/firma y avisa el progreso con el evento `updateProgress`. */
+    @PluginMethod
+    fun downloadUpdate(call: PluginCall) {
+        val info = lastUpdate ?: return call.reject("Primero comprueba si hay actualización", UpdateError.NOTHING_DOWNLOADED.name)
+        updateExecutor.execute {
+            try {
+                var last = 0L
+                updateService.download(info) { done, total ->
+                    if (done - last >= 256 * 1024 || done == total) { last = done; notifyListeners("updateProgress", JSObject().put("downloaded", done).put("total", total)) }
+                }
+                call.resolve(JSObject().put("versionName", info.versionName).put("versionCode", info.versionCode))
+            } catch (e: Exception) { updateService.cleanup(); call.updateError(e) }
+        }
+    }
+
+    @PluginMethod
+    fun installUpdate(call: PluginCall) {
+        if (!UpdateInstaller.canInstall(context)) return call.reject("Permite instalar apps desconocidas para Contigo", UpdateError.INSTALL_NOT_ALLOWED.name)
+        updateExecutor.execute {
+            try {
+                UpdateEvents.onInstall = { status, error -> notifyListeners("updateInstall", JSObject().put("status", status).put("error", error ?: JSONObject.NULL)) }
+                UpdateInstaller.install(context, updateService.pendingFile())
+                call.resolve()
+            } catch (e: Exception) { updateService.cleanup(); call.updateError(e) }
+        }
+    }
+
+    /** Abre «Instalar apps desconocidas» de Contigo en Ajustes. */
+    @PluginMethod
+    fun openInstallSettings(call: PluginCall) {
+        val i = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:" + context.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(i)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun canInstallUpdates(call: PluginCall) = call.resolve(JSObject().put("allowed", UpdateInstaller.canInstall(context)))
+
+    @PluginMethod
+    fun discardUpdate(call: PluginCall) {
+        updateService.cleanup()
+        call.resolve()
     }
 
     // ---- Diagnóstico ----
