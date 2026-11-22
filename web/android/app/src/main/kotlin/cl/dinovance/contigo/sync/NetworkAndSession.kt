@@ -8,7 +8,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
 
-/** HTTP nativo sin cabecera Origin (el Worker lo permite solo asi; ver DEC-01). Solo https. */
+/** HTTP nativo. El llamador pone el Origin del Worker (DEC-01 revisada); aqui se envia tal cual y jamas Sec-Fetch-Site. Solo https. */
 class UrlConnectionTransport(private val timeoutMs: Int = 20_000) : HttpTransport {
     override fun post(url: String, headers: Map<String, String>, body: String): HttpResult {
         require(url.startsWith("https://")) { "solo https" }
@@ -19,7 +19,7 @@ class UrlConnectionTransport(private val timeoutMs: Int = 20_000) : HttpTranspor
             c.readTimeout = timeoutMs
             c.instanceFollowRedirects = false
             c.doOutput = true
-            headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
+            headers.forEach { (k, v) -> if (!k.equals("Sec-Fetch-Site", true)) c.setRequestProperty(k, v) }
             c.setRequestProperty("x-request-id", UUID.randomUUID().toString())
             c.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             val status = c.responseCode
@@ -60,7 +60,7 @@ class KeystoreSessionSource(
             val refresh = old.optString("refresh_token").takeIf { it.isNotEmpty() } ?: return false
             val r = transport.post(
                 "$base/auth/v1/token?grant_type=refresh_token",
-                mapOf("apikey" to ExpenseSyncer.API_KEY_PLACEHOLDER, "Content-Type" to "application/json"),
+                mapOf("apikey" to ExpenseSyncer.API_KEY_PLACEHOLDER, "Content-Type" to "application/json", "Origin" to ExpenseSyncer.apiOrigin(base)),
                 JSONObject().put("refresh_token", refresh).toString(),
             )
             if (r.status !in 200..299) return false

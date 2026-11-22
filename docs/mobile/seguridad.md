@@ -46,7 +46,7 @@ No encontré ningún hallazgo **crítico** (nada que exponga datos de otra cuent
 
 ### ALTO
 
-**S-01. La app nativa no podría escribir contra el Worker real (login incluido): `isSameSite` exige `Origin` en toda escritura.**
+**S-01 (OBSOLETO: resuelto en la app enviando el Origin del Worker; el Worker no se toca, ver DEC-01 revisada). La app nativa no podría escribir contra el Worker real (login incluido): `isSameSite` exige `Origin` en toda escritura.**
 - Evidencia: `web/worker/proxy.ts` (`if (isWrite(method)) return origin === selfOrigin && ...`). Ejecuté la función real (`node --experimental-strip-types`): `POST` sin Origin ni Sec-Fetch-Site -> `false`; `GET` sin Origin -> `true`. DEC-01 dice lo contrario («isSameSite solo rechaza un Origin distinto»).
 - Impacto: todas las escrituras de la app (incluido `POST /auth/v1/token`) darían 403. Además empuja a «arreglarlo» aflojando el Worker sin criterio.
 - Reproducción: el script del párrafo anterior; la prueba existente `proxy.test.ts` solo cubre Origin propio/ajeno.

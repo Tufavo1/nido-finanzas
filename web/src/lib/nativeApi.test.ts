@@ -86,3 +86,41 @@ describe('createNativeFetch', () => {
     await expect(f('https://api.ejemplo.test/supabase/rest/v1/expenses')).rejects.toThrow(/fetch/i)
   })
 })
+
+// DEC-01 revisada: el Worker real exige Origin propio en toda escritura y Sec-Fetch-Site ausente o same-origin.
+import { apiOrigin } from './nativeApi'
+
+/** Copia LITERAL de la logica de web/worker/proxy.ts (isWrite + isSameSite). Si el Worker cambia, esta copia debe seguirlo. */
+const isWrite = (m: string) => !['GET', 'HEAD', 'OPTIONS'].includes(m.toUpperCase())
+function isSameSite(headers: Headers, selfOrigin: string, method = 'GET'): boolean {
+  const origin = headers.get('origin')
+  const site = headers.get('sec-fetch-site')
+  if (isWrite(method)) return origin === selfOrigin && (site === null || site === 'same-origin')
+  if (origin !== null && origin !== selfOrigin) return false
+  return site === null || site === 'same-origin' || site === 'none'
+}
+
+describe('Origin del Worker en las peticiones nativas', () => {
+  const WORKER = 'https://contigo.dinovance.cl'
+  it('apiOrigin deja solo esquema, host y puerto', () => {
+    expect(apiOrigin('https://contigo.dinovance.cl/supabase')).toBe(WORKER)
+    expect(apiOrigin('https://api.test:8443/x/y?z=1')).toBe('https://api.test:8443')
+    expect(apiOrigin('/supabase')).toMatch(/^https?:\/\//)
+  })
+
+  it.each(['POST', 'PATCH', 'DELETE', 'PUT', 'GET'])('%s lleva Origin exacto, sin Sec-Fetch-Site, y el Worker lo acepta', async (method) => {
+    const { calls, transport } = fakeTransport()
+    const f = createNativeFetch(transport, apiOrigin(`${WORKER}/supabase`))
+    await f(`${WORKER}/supabase/rest/v1/expenses`, { method, body: method === 'GET' ? undefined : '{}', headers: { 'Sec-Fetch-Site': 'cross-site', ORIGIN: 'https://malo.test' } })
+    const h = calls[0]!.headers
+    const names = Object.keys(h).map((k) => k.toLowerCase())
+    expect(names.filter((k) => k === 'origin')).toHaveLength(1)
+    expect(names).not.toContain('sec-fetch-site')
+    expect(isSameSite(new Headers(h), WORKER, method)).toBe(true)
+  })
+
+  it('sin Origin el Worker sigue rechazando las escrituras (la regla no se debilita)', () => {
+    for (const m of ['POST', 'PATCH', 'DELETE']) expect(isSameSite(new Headers(), WORKER, m)).toBe(false)
+    expect(isSameSite(new Headers({ origin: 'https://otro.test' }), WORKER, 'POST')).toBe(false)
+  })
+})

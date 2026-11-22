@@ -137,7 +137,8 @@ class ExpenseSyncer(
     private fun post(base: String, path: String, token: String, body: String): HttpResult? = try {
         transport.post(
             base + path,
-            mapOf("Authorization" to "Bearer $token", "apikey" to API_KEY_PLACEHOLDER, "Content-Type" to "application/json", "Prefer" to "return=minimal"),
+            // Origin = el del Worker (esquema + host, sin ruta); sin Sec-Fetch-Site. El Worker rechaza escrituras sin Origin propio.
+            mapOf("Authorization" to "Bearer $token", "apikey" to API_KEY_PLACEHOLDER, "Content-Type" to "application/json", "Prefer" to "return=minimal", "Origin" to apiOrigin(base)),
             body,
         )
     } catch (e: IOException) {
@@ -169,6 +170,12 @@ class ExpenseSyncer(
     }
 
     companion object {
+        /** Origen (esquema + host [+ puerto], sin ruta) de la direccion del Worker. */
+        fun apiOrigin(base: String): String {
+            val u = java.net.URI(base)
+            return u.scheme + "://" + u.host + (if (u.port != -1) ":" + u.port else "")
+        }
+
         private val UUID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
         const val MAX_NOTE = 120
         /** notify solo acepta gastos de menos de 5 minutos; pasado ese plazo no se insiste. */

@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from './database.types'
-import { nativeFetch, resolveApiBase } from './nativeApi'
+import { createNativeApiFetch, resolveApiBase } from './nativeApi'
 import { ContigoNative, createPluginSecureBackend, isNativeApp } from './nativeBridge'
 import { createSecureStorage } from './secureSession'
 import { trackedFetch } from './trackedFetch'
@@ -17,11 +17,12 @@ const native = isNativeApp()
 
 /**
  * En la app nativa la dirección sale de VITE_API_BASE (DEC-01), la sesión vive en el Keystore (DEC-03) y las
- * peticiones salen por HTTP nativo, sin cabecera Origin. En la web sigue todo como antes.
+ * peticiones salen por HTTP nativo CON el Origin del Worker (DEC-01 revisada). En la web sigue todo como antes.
  */
+const apiBase = native ? resolveApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD) : PROXY_PREFIX
+
 function apiUrl(): string {
-  const base = native ? resolveApiBase(import.meta.env.VITE_API_BASE, import.meta.env.PROD) : PROXY_PREFIX
-  return base.startsWith('/') ? `${globalThis.location?.origin ?? 'http://localhost'}${base}` : base
+  return apiBase.startsWith('/') ? `${globalThis.location?.origin ?? 'http://localhost'}${apiBase}` : apiBase
 }
 
 export const supabase = createClient<Database>(apiUrl(), PLACEHOLDER_KEY, {
@@ -32,5 +33,5 @@ export const supabase = createClient<Database>(apiUrl(), PLACEHOLDER_KEY, {
     storageKey: 'contigo-auth',
     ...(native ? { storage: createSecureStorage(createPluginSecureBackend(ContigoNative)) } : {}),
   },
-  global: { fetch: native ? nativeFetch : trackedFetch },
+  global: { fetch: native ? createNativeApiFetch(apiBase) : trackedFetch },
 })
