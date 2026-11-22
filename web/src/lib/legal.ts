@@ -2,7 +2,7 @@ import { COPYRIGHT_HOLDER, CONTACT_EMAIL } from './about'
 
 /** Versión de los textos: si cambian de fondo, se sube y se guarda con cada cuenta nueva */
 export const LEGAL_VERSION = '2026-11-02'
-export const LEGAL_DATE = '29 de octubre de 2026'
+export const LEGAL_DATE = '22 de noviembre de 2026'
 
 export interface LegalSection {
   title: string
@@ -30,10 +30,27 @@ export const PRIVACY: LegalDoc = {
       title: 'Qué datos guardamos',
       items: [
         'Tu correo electrónico y tu contraseña. La contraseña se guarda protegida, así que nosotros no podemos verla.',
+        'Si entras con Google, recibimos tu nombre, tu correo y tu foto de perfil de esa cuenta. Los usamos solo para crear tu cuenta o dejarte entrar. No tenemos acceso a tu Gmail, tus contactos ni tu Drive.',
         'Tu nombre dentro del hogar y el color que eliges.',
         'Lo que anotas en la app: gastos, categorías, metas, aportes, deudas, pagos, gastos fijos, sueldo, ingresos extra y tu perfil financiero.',
         'Si activas los avisos en el celular, un identificador de tu dispositivo para poder enviártelos.',
         'La fecha en que aceptaste estos textos.',
+      ],
+    },
+    {
+      title: 'La app de Android y los avisos de tu banco',
+      paragraphs: [
+        'La app de Android puede leer los avisos de tus apps de banco para anotar tus gastos más rápido. Solo funciona si tú lo permites.',
+      ],
+      items: [
+        'Solo lee los avisos de las apps de banco que tú aceptas. Para eso debes activar el acceso a las notificaciones en los ajustes de Android.',
+        'El aviso se revisa dentro de tu teléfono para sacar el monto, el comercio y el tipo: compra, ingreso o pago de tarjeta. El texto del aviso no se guarda ni se envía a nuestros servidores.',
+        'En tu teléfono se guardan cifrados los borradores: monto, comercio, tipo y los últimos 4 dígitos de la tarjeta o la cuenta. Esperan a que los apruebes, o se guardan solos si tú activaste Guardar solos mis gastos.',
+        'Al servidor solo llega el gasto ya confirmado, igual que cualquier otro gasto que anotas.',
+        'Puedes apagarlo cuando quieras y borrar todo lo capturado desde Ajustes.',
+        'Si un aviso no se puede leer, el diagnóstico guarda como máximo 120 caracteres de ese aviso, con todos los números tapados y con parte de los nombres tapados. Aun así puede quedar algún nombre o comercio visible. Se queda solo en tu teléfono y solo se comparte si tú tocas Copiar.',
+        'Los avisos a tu pareja usan Firebase, de Google. El aviso de gasto mayor, si tu pareja lo activó, incluye el monto y la categoría del gasto, y no incluye el comercio.',
+        'Las actualizaciones de la app se descargan desde GitHub Releases y se comprueban con un código de verificación y la firma de la app antes de instalarlas.',
       ],
     },
     {
