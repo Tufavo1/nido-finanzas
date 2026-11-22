@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/gen-legal.mjs && tsc -b && vite build",
     "lint": "oxlint",
+    "gen:legal": "node scripts/gen-legal.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:db": "docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/rls.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/hogares.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/admin.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/aislamiento.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/deudas_perfil_invitacion.sql && docker exec -i supabase_db_nido psql -U postgres -v ON_ERROR_STOP=1 < ../supabase/tests/fecha_nacimiento.sql",
