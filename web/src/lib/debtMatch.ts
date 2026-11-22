@@ -74,3 +74,16 @@ export function matchDebt<D extends DebtLite>(account: string | null | undefined
   if (scored.length > 1) return { kind: 'choose', debts: scored.map((x) => x.d).slice(0, MAX_CHOICES) }
   return { kind: 'choose', debts: active.slice(0, MAX_CHOICES) }
 }
+
+/** Flechas del teclado sobre una lista de opciones (radio): arriba/izquierda atrás, abajo/derecha adelante, con vuelta; null si la tecla no mueve. */
+export function moveChoice(index: number, key: string, len: number): number | null {
+  if (len <= 0) return null
+  if (key === 'ArrowDown' || key === 'ArrowRight') return (index + 1) % len
+  if (key === 'ArrowUp' || key === 'ArrowLeft') return (index - 1 + len) % len
+  if (key === 'Home') return 0
+  if (key === 'End') return len - 1
+  return null
+}
+
+/** La opción elegida; si no hay una válida, la más probable (la primera de la lista). */
+export const chosenId = (choice: string | undefined, debts: readonly DebtLite[]): string | null => (choice && debts.some((d) => d.id === choice) ? choice : (debts[0]?.id ?? null))

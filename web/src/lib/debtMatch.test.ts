@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Dinovance
 import { describe, expect, it } from 'vitest'
-import { matchDebt, normalize } from './debtMatch'
+import { chosenId, matchDebt, moveChoice, normalize } from './debtMatch'
 
 const d = (id: string, name: string, archived = false) => ({ id, name, archived })
 
@@ -36,5 +36,25 @@ describe('matchDebt', () => {
   })
   it('normalize quita tildes y signos', () => {
     expect(normalize('Débito · Ñandú')).toBe('debito nandu')
+  })
+})
+
+describe('opciones tipo radio', () => {
+  const ds = [d('a', 'A'), d('b', 'B'), d('c', 'C')]
+  it('sin elección, la más probable (primera) queda marcada; una elegida válida manda; una inválida se ignora', () => {
+    expect(chosenId(undefined, ds)).toBe('a')
+    expect(chosenId('c', ds)).toBe('c')
+    expect(chosenId('zzz', ds)).toBe('a')
+    expect(chosenId(undefined, [])).toBeNull()
+  })
+  it('flechas mueven con vuelta; otras teclas no', () => {
+    expect(moveChoice(0, 'ArrowDown', 3)).toBe(1)
+    expect(moveChoice(2, 'ArrowRight', 3)).toBe(0)
+    expect(moveChoice(0, 'ArrowUp', 3)).toBe(2)
+    expect(moveChoice(1, 'ArrowLeft', 3)).toBe(0)
+    expect(moveChoice(1, 'Home', 3)).toBe(0)
+    expect(moveChoice(1, 'End', 3)).toBe(2)
+    expect(moveChoice(1, 'Enter', 3)).toBeNull()
+    expect(moveChoice(0, 'ArrowDown', 0)).toBeNull()
   })
 })

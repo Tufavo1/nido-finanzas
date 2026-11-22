@@ -32,12 +32,12 @@ interface Props {
 
 function Switch({ id, label, hint, on, onChange }: { id: string; label: string; hint: string; on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="row between">
+    <div className="row between tap" onClick={() => onChange(!on)}>
       <div className="stack tight">
         <strong id={id}>{label}</strong>
         <span className="muted small-text">{hint}</span>
       </div>
-      <button type="button" role="switch" className="switch" aria-checked={on} aria-labelledby={id} onClick={() => onChange(!on)} />
+      <button type="button" role="switch" className="switch" aria-checked={on} aria-labelledby={id} onClick={(e) => { e.stopPropagation(); onChange(!on) }} />
     </div>
   )
 }

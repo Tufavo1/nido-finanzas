@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Dinovance
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import CategoryPicker from './CategoryPicker'
 import EmptyState from './EmptyState'
 import { SkeletonList } from './Skeleton'
@@ -8,7 +8,7 @@ import { money } from '../lib/format'
 import { suggestCategory } from '../lib/categorize'
 import type { AutoSavedItem, NativeDraft } from '../lib/nativeBridge'
 import { logError } from '../lib/safeLog'
-import { matchDebt } from '../lib/debtMatch'
+import { chosenId, matchDebt, moveChoice } from '../lib/debtMatch'
 import type { DebtLite } from '../lib/debtMatch'
 
 interface Props {
@@ -41,6 +41,12 @@ interface Props {
   onGoMoney?: () => void
 }
 
+const GROUPS = [
+  { kind: 'EXPENSE', title: 'Gastos', cls: 'kind-expense' },
+  { kind: 'INCOME', title: 'Ingresos', cls: 'kind-income' },
+  { kind: 'DEBT_PAYMENT', title: 'Pagos de tarjeta', cls: 'kind-debt' },
+] as const
+
 const dayFmt = new Intl.DateTimeFormat('es-CL', { day: 'numeric', month: 'short' })
 
 /** «Movimientos detectados»: lo que el teléfono encontró en tus avisos del banco, para que tú lo apruebes. */
@@ -48,7 +54,11 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
   const [picking, setPicking] = useState<NativeDraft | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  /** Deuda elegida por borrador (si no hay, la más probable) */
+  const [choice, setChoice] = useState<Record<string, string>>({})
   const marks = duplicateMarks(drafts ?? [])
+  const groups = GROUPS.map((g) => ({ ...g, items: (drafts ?? []).filter((d) => d.kind === g.kind) })).filter((g) => g.items.length > 0)
+  const headed = groups.length > 1
 
   /** Guarda sin duplicar toques; un fallo se muestra y NO quita el borrador (lo decide quien guarda) */
   async function run(d: NativeDraft, job: (() => Promise<void>) | undefined) {
@@ -96,14 +106,17 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
         </section>
       )}
       {drafts !== null && !failed && <EmptyState section="drafts" count={drafts.length} onCta={onSettings} />}
-      {drafts?.map((d) => {
+      {groups.map((g) => (
+        <Fragment key={g.kind}>
+          {headed && <h2 className={`mov-title ${g.cls}`}>{g.title}</h2>}
+          {g.items.map((d) => {
         if (d.kind === 'INCOME' || d.kind === 'DEBT_PAYMENT') {
           const income = d.kind === 'INCOME'
           const title = income ? `Ingreso de ${money(d.amountClp)}` : `Pago de tarjeta ${money(d.amountClp)}`
           const match = income ? null : matchDebt(d.account, debts)
           const off = busy !== null
           return (
-            <section className="card detected" key={d.id} aria-label={title}>
+            <section className={`card detected ${income ? "kind-income" : "kind-debt"}`} key={d.id} aria-label={title}>
               <div className="row between">
                 <strong className="num">{title}</strong>
                 <span className="muted small-text">{dayFmt.format(d.postedAtMillis)}</span>
@@ -114,7 +127,7 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
                   <span>¿Es plata tuya que entró?</span>
                   <span className="muted small-text">Si es un movimiento entre tus cuentas, no es un ingreso.</span>
                   <div className="row detected-actions">
-                    <button type="button" className="btn small" disabled={off} onClick={() => void run(d, onSaveIncome && (() => onSaveIncome(d)))}>
+                    <button type="button" className="btn" disabled={off} onClick={() => void run(d, onSaveIncome && (() => onSaveIncome(d)))}>
                       Sí, es un ingreso
                     </button>
                     <button type="button" className="btn ghost small" disabled={off} onClick={() => onIgnore(d)}>
@@ -127,7 +140,7 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
                   <span className="muted small-text">Los pagos de tu tarjeta no cuentan como gasto: tus compras ya están registradas.</span>
                   {match?.kind === 'one' && (
                     <div className="row detected-actions">
-                      <button type="button" className="btn small" disabled={off} onClick={() => void run(d, onPayDebt && (() => onPayDebt(d, match.debt.id)))}>
+                      <button type="button" className="btn" disabled={off} onClick={() => void run(d, onPayDebt && (() => onPayDebt(d, match.debt.id)))}>
                         Registrar pago en «{match.debt.name}»
                       </button>
                       <button type="button" className="btn ghost small" disabled={off} onClick={() => onIgnore(d)}>
@@ -136,16 +149,45 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
                     </div>
                   )}
                   {match?.kind === 'choose' && (
-                    <div className="stack" role="group" aria-label="Elige a qué deuda va">
-                      <strong className="small-text">Elige a qué deuda va</strong>
-                      {match.debts.map((x) => (
-                        <button type="button" className="btn ghost small" key={x.id} disabled={off} onClick={() => void run(d, onPayDebt && (() => onPayDebt(d, x.id)))}>
-                          {x.name}
+                    <div className="stack">
+                      <strong className="small-text" id={`pick-${d.id}`}>
+                        Elige a qué deuda va
+                      </strong>
+                      <div className="radio-list" role="radiogroup" aria-labelledby={`pick-${d.id}`}>
+                        {match.debts.map((x, i) => {
+                          const sel = chosenId(choice[d.id], match.debts) === x.id
+                          return (
+                            <button
+                              type="button"
+                              role="radio"
+                              key={x.id}
+                              className="radio-opt"
+                              aria-checked={sel}
+                              tabIndex={sel ? 0 : -1}
+                              disabled={off}
+                              onClick={() => setChoice((c) => ({ ...c, [d.id]: x.id }))}
+                              onKeyDown={(e) => {
+                                const n = moveChoice(i, e.key, match.debts.length)
+                                if (n === null) return
+                                e.preventDefault()
+                                setChoice((c) => ({ ...c, [d.id]: match.debts[n]!.id }))
+                                ;(e.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role=radio]')[n])?.focus()
+                              }}
+                            >
+                              <span className="radio-dot" aria-hidden="true" />
+                              {x.name}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <div className="row detected-actions">
+                        <button type="button" className="btn" disabled={off} onClick={() => void run(d, onPayDebt && (() => onPayDebt(d, chosenId(choice[d.id], match.debts) ?? '')))}>
+                          Registrar pago
                         </button>
-                      ))}
-                      <button type="button" className="btn ghost small" disabled={off} onClick={() => onIgnore(d)}>
-                        No es de mis deudas
-                      </button>
+                        <button type="button" className="btn ghost small" disabled={off} onClick={() => onIgnore(d)}>
+                          No es de mis deudas
+                        </button>
+                      </div>
                     </div>
                   )}
                   {match?.kind === 'none' && (
@@ -153,7 +195,7 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
                       <span>No tienes una deuda parecida. Puedes crearla en Dinero.</span>
                       <div className="row detected-actions">
                         {onGoMoney && (
-                          <button type="button" className="btn small" onClick={onGoMoney}>
+                          <button type="button" className="btn" onClick={onGoMoney}>
                             Ir a Dinero
                           </button>
                         )}
@@ -172,7 +214,7 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
         const name = categories.find((c) => c.id === suggested)?.name
         const duplicate = marks.has(d.id) && !kept.has(d.id)
         return (
-          <section className={duplicate ? 'card detected dup' : 'card detected'} key={d.id} aria-label={`${money(d.amountClp)} ${d.merchant ?? ''}`}>
+          <section className={duplicate ? 'card detected kind-expense dup' : 'card detected kind-expense'} key={d.id} aria-label={`${money(d.amountClp)} ${d.merchant ?? ''}`}>
             <div className="row between">
               <strong className="num">{money(d.amountClp)}</strong>
               <span className="muted small-text">{dayFmt.format(d.postedAtMillis)}</span>
@@ -200,29 +242,36 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
             )}
             <div className="row detected-actions">
               {suggested ? (
-                <>
-                  <button type="button" className="btn small" onClick={() => void pick(d, suggested)}>
-                    Guardar
-                  </button>
-                  <button type="button" className="btn ghost small" onClick={() => onReview(d)}>
-                    Revisar
-                  </button>
-                </>
+                <button type="button" className="btn" onClick={() => void pick(d, suggested)}>
+                  Guardar
+                </button>
               ) : (
-                <button type="button" className="btn small" onClick={() => onReview(d)}>
+                <button type="button" className="btn" onClick={() => onReview(d)}>
                   Revisar y guardar
                 </button>
               )}
-              <button type="button" className="btn ghost small" onClick={() => setPicking(d)}>
-                Cambiar categoría
-              </button>
               <button type="button" className="btn ghost small" onClick={() => onIgnore(d)}>
                 Ignorar
               </button>
             </div>
+            <details className="more">
+              <summary>Más opciones</summary>
+              <div className="row">
+                {suggested && (
+                  <button type="button" className="btn ghost small" onClick={() => onReview(d)}>
+                    Revisar
+                  </button>
+                )}
+                <button type="button" className="btn ghost small" onClick={() => setPicking(d)}>
+                  Cambiar categoría
+                </button>
+              </div>
+            </details>
           </section>
         )
       })}
+        </Fragment>
+      ))}
       {autoSaved.length > 0 && (
         <section className="stack" aria-label="Guardados automáticamente">
           <h2 className="perm-title">Guardados automáticamente</h2>
