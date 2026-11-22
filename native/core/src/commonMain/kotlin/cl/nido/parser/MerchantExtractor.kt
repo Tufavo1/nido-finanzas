@@ -28,6 +28,8 @@ internal object MerchantExtractor {
 
     // «Pagaste $100 a tu CMR Mastercard Premium»: no hay comercio, el aviso solo nombra la tarjeta. Para CMR se usa un nombre fijo
     // y estable (así la categoría se aprende una vez); con otras tarjetas no se inventa nada.
+    // Los avisos de CMR cierran con «Ciudad Chl» (Santiago Chl): se quita para que el comercio sea estable. Solo si «Chl» es la ultima palabra.
+    private val CITY_COUNTRY = Regex("\\s+\\S+\\s+chl$", RegexOption.IGNORE_CASE)
     private val CMR_CARD = Regex("^(?:tu|su)\\s+cmr\\b", RegexOption.IGNORE_CASE)
     const val CMR_MERCHANT = "Compra con CMR"
 
@@ -46,7 +48,8 @@ internal object MerchantExtractor {
     private fun cutAtEnd(rest: String): String = END_OF_NAME.find(rest)?.let { rest.substring(0, it.range.first) } ?: rest
 
     private fun clean(raw: String): String {
-        val name = UnsafeChars.strip(raw.map { if (it == '\t' || it == '\r' || it == '\n' || it.category == CharCategory.SPACE_SEPARATOR) ' ' else it }.joinToString("")).replace(Regex("\\s+"), " ").trim().trimEnd('.', ',', ';', ':')
+        val name0 = UnsafeChars.strip(raw.map { if (it == '\t' || it == '\r' || it == '\n' || it.category == CharCategory.SPACE_SEPARATOR) ' ' else it }.joinToString("")).replace(Regex("\\s+"), " ").trim().trimEnd('.', ',', ';', ':')
+        val name = CITY_COUNTRY.replace(name0, "").ifEmpty { name0 }
         val readable = if (isAllCaps(name)) toTitleCase(name) else name
         return readable.take(MAX_LENGTH)
     }
