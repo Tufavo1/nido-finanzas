@@ -16,7 +16,9 @@ export interface CaptureConfig {
   enabled: boolean
 }
 
-export const LIMIT_CHOICES = [20_000, 50_000, 100_000, 200_000] as const
+/** Rango del tope del modo automático (pesos enteros) */
+export const MIN_CAP_CLP = 1_000
+export const MAX_CAP_CLP = 5_000_000
 
 export const DEFAULT_CAPTURE_CONFIG: CaptureConfig = { ...DEFAULT_CAPTURE_SETTINGS, shared: true, savedPackages: [], enabled: true }
 
@@ -34,7 +36,7 @@ export function parseCaptureConfig(raw: string | null): CaptureConfig {
   const d = DEFAULT_CAPTURE_CONFIG
   return {
     mode: v['mode'] === 'AUTO' ? 'AUTO' : d.mode,
-    maxClp: (LIMIT_CHOICES as readonly unknown[]).includes(v['maxClp']) ? (v['maxClp'] as number) : d.maxClp,
+    maxClp: typeof v['maxClp'] === 'number' && Number.isInteger(v['maxClp']) && v['maxClp'] >= MIN_CAP_CLP && v['maxClp'] <= MAX_CAP_CLP ? v['maxClp'] : d.maxClp,
     shared: typeof v['shared'] === 'boolean' ? v['shared'] : d.shared,
     savedPackages: Array.isArray(v['savedPackages']) ? v['savedPackages'].filter((p): p is string => typeof p === 'string' && isPackageName(p)) : [],
     enabled: typeof v['enabled'] === 'boolean' ? v['enabled'] : d.enabled,

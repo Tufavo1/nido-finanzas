@@ -50,3 +50,12 @@ describe('expenseRow', () => {
     expect(() => expenseRow('h1', 'id-1', { ...form, category_id: null }, 'u1')).toThrow(/categor/i)
   })
 })
+
+describe('planDrafts: el interruptor del banco manda sobre el modo automático global', () => {
+  it('un borrador de un banco con el guardado apagado se pregunta aunque el modo global esté encendido', () => {
+    const cfg = { ...DEFAULT_CAPTURE_CONFIG, mode: 'AUTO' as const }
+    const base = draft({ id: 'b', status: 'PENDING', bankAutoOff: true })
+    expect(planDrafts([base], cfg, ctx, new Set()).auto).toEqual([])
+    expect(planDrafts([base], cfg, ctx, new Set()).ask).toHaveLength(1)
+  })
+})

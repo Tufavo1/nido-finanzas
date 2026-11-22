@@ -22,6 +22,12 @@ data class Draft(
     val ownerKey: String? = null,
     /** Hay otro borrador igual (monto y comercio) de menos de 2 minutos: se conserva y se marca, la persona decide (H-04). */
     val possibleDuplicate: Boolean = false,
+    /** Categoria con que se guardo solo (registro automatico); null = la elegira la persona. */
+    val categoryId: String? = null,
+    /** Guardado automaticamente por el telefono, sin pulsar «Guardar». */
+    val autoSaved: Boolean = false,
+    /** La base rechazo este gasto (4xx): no se reenvia solo; queda visible como «rechazado» (R3-09). */
+    val syncRejected: Boolean = false,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id)
@@ -37,6 +43,9 @@ data class Draft(
         .put("sourcePackage", sourcePackage)
         .put("ownerKey", ownerKey ?: JSONObject.NULL)
         .put("possibleDuplicate", possibleDuplicate)
+        .put("categoryId", categoryId ?: JSONObject.NULL)
+        .put("autoSaved", autoSaved)
+        .put("syncRejected", syncRejected)
 
     companion object {
         fun fromJson(o: JSONObject): Draft {
@@ -58,6 +67,9 @@ data class Draft(
                 sourcePackage = o.optString("sourcePackage", ""),
                 ownerKey = if (o.isNull("ownerKey")) null else o.optString("ownerKey"),
                 possibleDuplicate = o.optBoolean("possibleDuplicate", false),
+                categoryId = if (o.isNull("categoryId")) null else o.optString("categoryId"),
+                autoSaved = o.optBoolean("autoSaved", false),
+                syncRejected = o.optBoolean("syncRejected", false),
             )
         }
     }

@@ -37,6 +37,10 @@ export interface NativeDraft extends ParsedCandidate {
   possibleDuplicate?: boolean
   /** App que avisó (trazabilidad) */
   sourcePackage?: string
+  /** Es de un banco con el guardado automático apagado: el modo automático global tampoco lo guarda solo */
+  bankAutoOff?: boolean
+  /** La base rechazó este gasto al enviarlo en segundo plano: no se reenvía solo */
+  syncRejected?: boolean
 }
 
 /** Cierre inesperado sin datos personales (clase de la excepción y marcos de pila). */
@@ -45,6 +49,15 @@ export interface CrashReport {
   appVersion: string
   errorClass: string
   frames: string[]
+}
+
+export interface AutoProfileOptions {
+  ownerKey: string
+  userId: string
+  householdId: string
+  paidBy: string
+  shared: boolean
+  categories: { key: string; categoryId: string }[]
 }
 
 export interface ContigoNativePlugin {
@@ -81,6 +94,28 @@ export interface ContigoNativePlugin {
   secureRemove(options: { key: string }): Promise<void>
   /** Cierre de sesión o borrado de cuenta: vacía sesión, cola y notificaciones propias */
   wipe(): Promise<void>
+
+  // ---- Registro automático por banco (opt-in, apagado por defecto) y envío en segundo plano ----
+  /** Los cuatro bancos con su app asociada y si guardan solos. `candidatePackages` va vacío: no se inventan paquetes. */
+  getBankPresets(): Promise<{ banks: unknown[]; maxClp?: number }>
+  /** Asocia (o quita con null) la app del banco: lo que guarda el «modo aprender». Quitarla apaga el guardado automático. */
+  setBankPackage(options: { bankId: string; packageName: string | null }): Promise<void>
+  /** Rechaza con código NO_PACKAGE si el banco no tiene app asociada. */
+  setBankAutoSave(options: { bankId: string; enabled: boolean }): Promise<void>
+  /** Tope por gasto en CLP (inclusivo); por defecto 50.000. Sobre el tope se pide confirmación. */
+  setAutoCap(options: { maxClp: number }): Promise<void>
+  /** Dueño, hogar y categorías aprendidas, para guardar y enviar con la app cerrada. Llamar al iniciar sesión y al cambiar el historial. */
+  /** Solo acepta el perfil del dueño activo (rechaza con OWNER_MISMATCH si no); devuelve el dueño con que quedó guardado. */
+  setAutoProfile(options: AutoProfileOptions): Promise<{ ownerKey: string }>
+  /** Dirección del Worker (VITE_API_BASE), solo https. */
+  configureSync(options: { apiBase: string | null }): Promise<void>
+  getSyncState(): Promise<unknown>
+  syncNow(): Promise<void>
+  /** Gastos guardados solos (por enviar o ya enviados), los más nuevos primero. */
+  listAutoSaved(): Promise<{ items: unknown[] }>
+  /** needsDelete=true: ya se envió; la app debe borrar el gasto en el servidor y luego llamar dismissAutoSaved. */
+  undoAutoSaved(options: { id: string }): Promise<{ undone: boolean; needsDelete: boolean }>
+  dismissAutoSaved(options: { id: string }): Promise<void>
 
   peekCrashReports(): Promise<{ reports: unknown[] }>
   clearCrashReports(): Promise<void>
@@ -130,6 +165,8 @@ export function parseNativeDraft(raw: unknown): NativeDraft | null {
     createdAtMillis,
     status,
     ...(raw['possibleDuplicate'] === true ? { possibleDuplicate: true } : {}),
+    ...(raw['bankAutoOff'] === true ? { bankAutoOff: true } : {}),
+    ...(raw['syncRejected'] === true ? { syncRejected: true } : {}),
     ...(typeof raw['sourcePackage'] === 'string' && raw['sourcePackage'].length <= 200 ? { sourcePackage: raw['sourcePackage'] } : {}),
   }
 }
@@ -185,4 +222,67 @@ export function createPluginSecureBackend(plugin: Pick<ContigoNativePlugin, 'sec
 /** ¿Hay que volver a guiar a la persona? (permiso revocado o servicio sin conectar con la lista llena). */
 export function needsPermissionGuide(status: CaptureStatus): boolean {
   return status.revokedSinceConnected || (status.whitelistCount > 0 && !status.listenerAllowed)
+}
+
+export interface AutoSavedItem {
+  /** Id del gasto (el mismo del borrador) */
+  id: string
+  amount: number
+  note: string
+  at: number
+  /** true: ya está en el servidor */
+  synced: boolean
+  /** pending: en el teléfono; synced: ya enviado; rejected: la base lo rechazó */
+  status?: 'pending' | 'synced' | 'rejected'
+}
+
+/** Valida la lista de guardados automáticos que llega del plugin (frontera). */
+export function parseAutoSaved(raw: unknown): AutoSavedItem[] {
+  const items = isRecord(raw) && Array.isArray(raw['items']) ? raw['items'] : []
+  const out: AutoSavedItem[] = []
+  for (const r of items) {
+    if (!isRecord(r)) continue
+    const { id, amount, note, at, synced } = r
+    if (typeof id !== 'string' || id === '' || !isCount(amount) || amount < 1 || amount >= MAX_AMOUNT) continue
+    if (typeof note !== 'string' || note.length > 120 || !isCount(at) || typeof synced !== 'boolean') continue
+    out.push({ id, amount, note, at, synced, status: r['status'] === 'rejected' ? 'rejected' : synced ? 'synced' : 'pending' })
+  }
+  return out
+}
+
+const normKey = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+
+/**
+ * Categorías aprendidas por comercio para el plugin: clave exacta (nombre normalizado) y «w:primera palabra» (≥ 4
+ * letras), con la categoría MÁS USADA; en empate gana la del gasto más reciente (la lista viene de más nuevo a más viejo).
+ * Es la misma regla de `learnedCategory`, calculada de antemano. Tope de 1000 claves.
+ */
+export function buildAutoCategories(history: { note: string | null; category_id: string }[], validCategoryIds: ReadonlySet<string>): { key: string; categoryId: string }[] {
+  const counts = new Map<string, Map<string, number>>()
+  const bump = (key: string, cat: string) => {
+    const m = counts.get(key) ?? new Map<string, number>()
+    m.set(cat, (m.get(cat) ?? 0) + 1)
+    counts.set(key, m)
+  }
+  for (const h of history) {
+    if (!h.note || !validCategoryIds.has(h.category_id)) continue
+    const k = normKey(h.note)
+    if (!k || k.length > 70) continue
+    bump(k, h.category_id)
+    const first = k.split(' ')[0] ?? ''
+    if (first.length >= 4) bump(`w:${first}`, h.category_id)
+  }
+  const out: { key: string; categoryId: string }[] = []
+  for (const [key, m] of counts) {
+    let best: string | null = null
+    for (const [cat, n] of m) if (best === null || n > (m.get(best) ?? 0)) best = cat
+    if (best) out.push({ key, categoryId: best })
+  }
+  return out.slice(0, 1000)
 }

@@ -60,6 +60,29 @@ Flujo: aviso del banco → plugin (borrador cifrado) → `useDetected` → bande
 - **«Tienes N gastos por enviar»:** usa `pendingToSendCount` del plugin cuando hay algo que atender en la bandeja (`unsentCount`); si no hay número del plugin, el cálculo local.
 - **Borradores:** `possibleDuplicate` (del plugin; entre 45 s y 2 min; dentro de 45 s se descarta por diseño) y `sourcePackage` («Detectado desde <app>», con el nombre de `readRecentApps` si se conoce, si no el paquete).
 
+## Guardado automático por banco y avisos de la pareja (fase 5)
+**Diseñado por tipos: los contratos del backend aún no existen** en `nativeBridge.ts` ni en Supabase. Hay que confirmar los nombres cuando se documenten en `backend-android.md`.
+- `lib/bankAuto.ts` define `BankAutoApi` (supuesto): `getBankPresets`, `setBankAutoSave({bankId, enabled})`, `setBankPackage({bankId, packageName|null})` (nombre inventado para asociar la app), `setAutoCap({maxClp})`, `getSyncState`. Si el plugin no los tiene, la sección muestra «Esta versión de la app todavía no incluye el guardado automático» en vez de tarjetas que no funcionan.
+- Ajustes > Captura de gastos: una tarjeta por banco (Santander, Banco Estado, Banco Falabella, Banco de Chile) con «Guardar solos los gastos de <banco>», apagado por defecto, que explica que solo aplica a gastos bajo el tope, nunca a abonos, y que se puede deshacer. Muestra «Sin app asociada» o «App asociada: <paquete>»; asociar usa el modo aprender (`readRecentApps`). Sin app asociada el interruptor no se puede encender.
+- Tope editable: campo en pesos (`MIN_CAP_CLP` 1.000 a `MAX_CAP_CLP` 5.000.000) que reemplaza al selector fijo; se guarda en la configuración y con `setAutoCap`. `captureConfig` ya no limita el tope a 4 opciones.
+- `SyncStatus`: estado del envío y gastos por enviar, con «Enviar ahora».
+- `PartnerAlerts` («Avisarme cuando mi pareja haga un gasto mayor», umbral por defecto 50.000, validado con `parseThreshold`). Usa `lib/partnerAlerts.ts` con un `PartnerAlertStore`; hoy es `unavailableStore` y la tarjeta dice que se activa con una próxima actualización. Cuando exista la tabla o RPC, basta reemplazar `partnerAlertStore`.
+- Bandeja: sección «Guardados automáticamente» con la marca «Guardado automático» y Deshacer. Es solo de la sesión de la app (no persiste) y se alimenta de lo que guarda `useDetected` solo; los gastos que guarde el plugin en segundo plano necesitarán que el backend los exponga.
+
+## Contratos reales del plugin conectados (fase 6)
+- Los nombres de `getBankPresets`, `setBankAutoSave`, `setBankPackage`, `setAutoCap`, `getSyncState` y `syncNow` **coinciden** con `nativeBridge.ts` (el supuesto de la fase 5 era correcto). `getSyncState` devuelve `idle|error` y `parseSyncState` lo lee.
+- **Perfil para guardar solo:** `useAutoSync` (en Shell) llama `configureSync({apiBase})` al arrancar (solo https; si no hay, `null` y no se envía nada en segundo plano), y `setActiveOwner` + `setAutoProfile(buildAutoProfile(...))` al iniciar sesión, al cambiar de hogar o cuenta, y cuando cambia el historial o la preferencia de compartido. `buildAutoProfile` usa `buildAutoCategories` solo con categorías que existen. Sin perfil del dueño activo el teléfono no guarda ni envía nada solo.
+- **Guardados automáticamente:** la lista sale de `listAutoSaved` (validada con `parseAutoSaved`), con «Guardado automático», si ya está en la cuenta o solo en el teléfono, y Deshacer: `undoAutoSaved`; si `needsDelete`, la app borra el gasto con `deleteExpense` y luego llama `dismissAutoSaved`. Un error muestra un aviso con «Reintentar». Se eliminó la lista local de la sesión (`addAutoSaved`/`removeAutoSaved`).
+- **Enviar ahora:** `sendNow` llama `syncNow()` del plugin y relee borradores.
+- **Avisos de la pareja:** usa el `partnerAlertStore` real (tabla `big_spend_alert_prefs` + RPC `set_big_spend_alert`). Si la migración no está aplicada (42P01/PGRST205/42883/PGRST202) la tarjeta dice que falta una actualización del servicio y el resto de Ajustes sigue funcionando; un fallo al guardar ofrece «Reintentar».
+- Pendiente de decisión: el modo automático «global» (interruptor de Ajustes) y los guardados por banco del teléfono conviven; no se comprobó que no se solapen en un teléfono real.
+
+## Ronda 3: carrera al cambiar de cuenta (R3-03)
+
+- `lib/nativeSerial.ts`: cola serial de las llamadas nativas que fijan o borran al dueño, con un número de generación. `enqueueNative` sale en el acto si la cola está libre y si no espera su turno; `emitNow` emite de inmediato (borrados) y lo encolado después espera su respuesta; `invalidateOwner` sube la generación.
+- `useAutoSync`: `setActiveOwner` y luego `setAutoProfile` van en la cola, y el perfil solo se envía si no hubo borrado/cambio de cuenta ni cancelación del efecto entre ambas. `wipeSessionData` y `wipeForAccountSwitch` invalidan la generación. `useDetected.load` fija el dueño por la misma cola.
+- No se requiere cambio de contrato. Defensa en el teléfono (R3-04/05) queda a cargo del backend.
+
 ## Cómo probar
 - `npm --prefix web test` (todo) o `npx --prefix web vitest run src/lib/toastQueue.test.ts src/components`.
 - `npm --prefix web run lint` · `npm --prefix web exec -- tsc -b web` (desde la raíz).

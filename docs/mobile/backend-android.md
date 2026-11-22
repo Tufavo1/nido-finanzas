@@ -128,3 +128,42 @@ Alarmas y notificación de recordatorio en teléfono real, `SecureKeyValueStore.
 | R2-10 | Solo se rechaza como comercio «3 cuotas/pagos» o un numero solo; «7-ELEVEN» y «99 Centavos» se conservan. |
 | R2-13/14 | ZWJ entre emoji se conserva (Kotlin y TS); espacios Unicode (U+00A0...) pasan a espacio normal. |
 | R2-15 | Migracion `20261121180000_ingesta_detalle_numerico.sql`: `count`, `status`, `window_s` solo enteros en rango. Idempotente, probada en staging. |
+
+## Registro automático por banco y aviso de gasto mayor
+
+### A) Registro automático (opt-in por banco, apagado por defecto)
+Bancos (ids que ya usa `bankAuto.ts`): `santander`, `banco-estado`, `banco-falabella`, `banco-chile`. **No se inventó ningún nombre de paquete**: `candidatePackages` va vacío. La persona asocia el banco con la app real usando el «modo aprender» (`getRecentNotifyingApps`) y `setBankPackage`. Los parsers siguen siendo SINTÉTICOS: **no verificados con avisos reales** de esos bancos.
+
+Un aviso se guarda solo (estado CONFIRMED, sin pulsar «Guardar») únicamente si: el paquete está asociado a un banco con guardado automático activo, hay sesión y el dueño del perfil coincide, es gasto (abonos nunca) con confianza ALTA, monto <= tope (inclusivo, default 50.000), hay categoría aprendida para el comercio y no es posible duplicado. Todo lo demás pide confirmación como antes.
+
+Envío con la app cerrada: `ExpenseSyncWorker` (WorkManager, requiere red, retroceso exponencial desde 30 s) lee la sesión del Keystore (`contigo-auth`), hace `POST {apiBase}/rest/v1/expenses` sin cabecera Origin, con el id del borrador (mismo en cada reintento; 23505 = éxito), fecha en America/Santiago. 401 renueva la sesión una vez (solo con la app cerrada, para no chocar con supabase-js); 5xx/429/red reintenta; otro 4xx queda como rechazado y el gasto sigue en la cola cifrada con el recordatorio «Tienes N gastos por enviar».
+
+Contratos en `nativeBridge.ts` (`ContigoNative.*`):
+- `getBankPresets() -> { banks: [{ id, name, packageName|null, autoSave, candidatePackages }], maxClp }`
+- `setBankPackage({ bankId, packageName|null })` (agrega el paquete a la lista de vigilados; `null` apaga el guardado de ese banco)
+- `setBankAutoSave({ bankId, enabled })` rechaza con código `NO_PACKAGE` si no hay app asociada
+- `setAutoCap({ maxClp })` (1 a 9.999.999.999)
+- `configureSync({ apiBase })` con `VITE_API_BASE` (solo https): llamar al arrancar la app nativa
+- `setAutoProfile({ ownerKey, userId, householdId, paidBy, shared, categories: [{ key, categoryId }] })`: llamar al iniciar sesión y cuando cambie el historial. `buildAutoCategories(history, validIds)` genera `categories` (clave exacta y `w:primera palabra`, igual que `learnedCategory`). Sin perfil vigente del dueño activo NADA se guarda solo ni se envía.
+- `getSyncState() -> { state: 'idle'|'error', pending, lastSyncAt|null, lastError }`; `syncNow()`
+- `listAutoSaved() -> { items: [{ id, amount, note, at, synced }] }` (14 días, tope 50) para «Guardados automáticamente»; `parseAutoSaved` valida.
+- `undoAutoSaved({ id }) -> { undone, needsDelete }`: si aún no se envió lo borra del teléfono (`undone: true`); si ya se envió `needsDelete: true` y la app debe llamar `deleteExpense(id)` (el id es el del gasto) y luego `dismissAutoSaved({ id })`.
+`wipe`, `wipeForAccountSwitch` y `clearCaptured` borran perfil y registro de guardados.
+
+### B) Aviso «Tu pareja hizo un gasto mayor»
+- Migración `supabase/migrations/20261122100000_alerta_gasto_mayor.sql`: tabla `big_spend_alert_prefs (user_id, enabled=false, threshold_clp=50000)` con RLS (solo la fila propia, sin escritura directa) y RPC `set_big_spend_alert(p_enabled, p_threshold_clp)` (rango 1 a 9.999.999.999, solo `authenticated`). Test: `supabase/tests/alerta_gasto_mayor.sql` (en staging, ROLLBACK).
+- `web/src/lib/partnerAlerts.ts`: `partnerAlertStore` ya es la implementación real (lee la tabla, guarda por la RPC; `NotAvailableError` si la migración aún no está). El front solo la usa en vez del stub.
+- `supabase/functions/notify`: para gastos, quien activó la preferencia y cuyo umbral <= monto recibe el título «Tu pareja hizo un gasto mayor» con monto y categoría; los demás, el aviso de siempre. Si la tabla no existe o falla la lectura, todos reciben el aviso normal. La lógica de selección es pura (`recipients.ts`) y se prueba con vitest (`web/src/lib/pushRecipients.test.ts`); Deno no está instalado aquí, así que `index.ts` NO se ejecutó.
+
+## Fase VERDE ronda 3 (QA ronda 3)
+| ID | Decisión |
+|---|---|
+| R3-01 | Tras insertar (o 23505), `ExpenseSyncer` llama `POST {apiBase}/functions/v1/notify` con el mismo token de la sesión del dueño; el cuerpo es solo `{"kind":"expense","id":...}` (sin monto ni comercio). `notify` marca el gasto de forma atómica, así que repetir la llamada no duplica avisos. Si `notify` falla (red, 5xx, 429, 401) el gasto ya está guardado: se registra solo la clase `NOTIFY` y el Worker reintenta; `notify` solo acepta gastos de menos de 5 min, pasado ese plazo no se insiste. |
+| R3-02 | Antes de enviar se compara el `sub` del JWT con `userId` del perfil. Si no coincide: no se envía, se registra `OWNER` y se borra el perfil. Un token que no se pueda leer como JWT no se puede comprobar y se deja pasar (el servidor lo valida). |
+| R3-04 | `setAutoProfile` rechaza con `OWNER_MISMATCH` si `ownerKey` no es el dueño activo; devuelve `{ ownerKey }`. Para R3-03 (front): llamar `setActiveOwner` y esperar su promesa ANTES de `setAutoProfile`, y tratar `OWNER_MISMATCH` como «otra persona entró, no reintentar». Con este rechazo una respuesta tardía de la persona anterior ya no deja su perfil guardado. |
+| R3-05 | `clearCaptured` borra también el perfil automático. |
+| R3-06/07 | `undoAutoSaved` corre bajo el mismo cerrojo que `syncOnce`. Solo devuelve `undone: true` si el borrador sigue en la cola del teléfono y no se envió; en cualquier otro caso (enviado, en vuelo, sacado por la app abierta) devuelve `needsDelete: true` y la app borra el gasto por id. |
+| R3-08 | El registro de guardados lleva `ownerKey`; `listAutoSaved`, `undoAutoSaved` y `dismissAutoSaved` solo ven los de la persona activa. |
+| R3-09 | Una fila rechazada (4xx) se marca `syncRejected` y no se reenvía sola ni tapa el éxito de las demás. Es visible: `listAutoSaved` trae `status: 'pending' \| 'synced' \| 'rejected'`, `getSyncState` trae `rejected` y `state: 'error'`, y `listDrafts` trae `syncRejected`. No cuenta en «gastos por enviar». |
+| R3-10/11 | UUID validado con la forma real; la nota se corta sin partir pares sustitutos. |
+| INFO | Un borrador de un banco con el guardado automático apagado llega con `bankAutoOff: true`; `planDrafts` lo pregunta aunque el modo global esté encendido (banco apagado = nunca solo). |

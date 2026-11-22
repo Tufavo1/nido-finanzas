@@ -14,6 +14,7 @@ import { linkToDraft } from './lib/linkGuard'
 import { registerOverlay } from './lib/overlays'
 import { useCaptureConfig } from './lib/useCaptureConfig'
 import { useDeepLink } from './lib/useDeepLink'
+import { useAutoSync } from './lib/useAutoSync'
 import { useDetected } from './lib/useDetected'
 import { useExpenseQueue } from './lib/useExpenseQueue'
 import { errorScreen } from './lib/screenState'
@@ -115,6 +116,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   const { config: capture, save: saveCapture } = useCaptureConfig()
   const queue = useExpenseQueue(hh.household.id, hh.me.user_id, data.refresh, setToast)
   const detected = useDetected({ hh, data, config: capture, queue, notify: setToast })
+  useAutoSync({ userId: hh.me.user_id, householdId: hh.household.id, shared: capture.shared, categories: data.categories, history: detected.ctx.history, ready: data.ready })
   const [reviewId, setReviewId] = useState<string | null>(null)
   const [linkCandidate, setLinkCandidate] = useState<ParsedCandidate | null>(null)
   useDeepLink((url) => {
@@ -265,6 +267,8 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
         onSettings={() => setTab('security')}
         kept={detected.kept}
         appNames={detected.appNames}
+        autoSaved={detected.autoSaved}
+        onUndoAuto={(id) => void detected.undoAuto(id)}
         onKeepBoth={detected.keepBoth}
       />
     )
@@ -300,7 +304,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   } else if (tab === 'help') {
     body = <Help onBack={() => setTab('security')} />
   } else {
-    body = <Security hh={hh} reload={reload} onToast={setToast} onHelp={() => setTab('help')} capture={capture} onCapture={saveCapture} onCleared={() => void detected.reload()} onProfile={() => {
+    body = <Security hh={hh} reload={reload} onToast={setToast} onHelp={() => setTab('help')} capture={capture} onCapture={saveCapture} onCleared={() => void detected.reload()} onSendNow={detected.sendNow} onProfile={() => {
       setProfileOpen('fin')
       setTab('profile')
     }} />

@@ -13,6 +13,9 @@ interface DraftNotifier {
 
     /** La bandeja está llena y no se pudo guardar un gasto: hay que avisar a la persona, no perderlo en silencio. */
     fun queueFull() {}
+
+    /** Un gasto se guardo solo (registro automatico): aviso discreto y recordatorio por si el envio no sale. */
+    fun autoSaved(draft: Draft) = show(draft)
 }
 
 /** Lo que el servicio informa de su salud: sin datos personales ni montos. */
@@ -40,6 +43,12 @@ class CaptureProcessor(
     private val ownerProvider: () -> String? = { null },
     /** En producción sin sesión no se captura nada (no habría dueño al que mostrarlo). */
     private val requireOwner: Boolean = false,
+    /** Registro automatico por banco (opt-in). Sin configuracion todo pide confirmacion. */
+    private val auto: AutoConfig? = null,
+    private val profile: () -> AutoProfile? = { null },
+    /** Se llama tras guardar un gasto confirmado automaticamente: agenda el envio en segundo plano. */
+    private val onAutoSaved: () -> Unit = {},
+    private val autoLog: AutoSavedLog? = null,
 ) {
     private class Stored(val fingerprint: String, val key: String, val amount: Long, var blankMerchant: Boolean, val draftId: String, val at: Long)
 
@@ -87,7 +96,13 @@ class CaptureProcessor(
         }
         // Otro aviso igual pero dentro de 2 min: puede ser otro cafe. Se guarda marcado, la persona decide (H-04).
         val maybe = recent.any { it.key == key }
-        val draft = Draft(newId(), candidate, postedAtMillis, now, DraftStatus.PENDING, packageName, owner, maybe)
+        // Registro automatico: banco asociado y activado, dentro del tope, confianza ALTA, gasto, categoria aprendida, dueno con
+        // perfil vigente y sin duda de duplicado. Cualquier otra cosa pide confirmacion como siempre.
+        val autoCategory = if (orphan || maybe) null else autoCategory(packageName, candidate, owner)
+        val draft = Draft(
+            newId(), candidate, postedAtMillis, now, if (autoCategory != null) DraftStatus.CONFIRMED else DraftStatus.PENDING,
+            packageName, owner, maybe, autoCategory, autoCategory != null,
+        )
         if (!addOrMakeRoom(draft, owner)) {
             health.recordFailure("QueueFull", now)
             notifier.queueFull()
@@ -99,8 +114,26 @@ class CaptureProcessor(
             health.recordFailure("NoSession", now)
             return Outcome.NO_SESSION
         }
-        notifier.show(draft)
+        if (draft.autoSaved) {
+            val merchant = candidate.merchant?.trim().orEmpty()
+            autoLog?.add(AutoSavedEntry(draft.id.lowercase(), candidate.amountClp, merchant.ifEmpty { "Gasto" }, now, false, owner))
+            notifier.autoSaved(draft)
+            onAutoSaved()
+        } else {
+            notifier.show(draft)
+        }
         return Outcome.STORED
+    }
+
+    private fun autoCategory(packageName: String, candidate: cl.nido.parser.ParsedCandidate, owner: String?): String? {
+        val cfg = auto ?: return null
+        val bank = cfg.bankOfPackage(packageName) ?: return null
+        if (!cfg.autoEnabled(bank)) return null
+        val p = profile() ?: return null
+        if (owner == null || p.ownerKey != owner) return null
+        val category = p.categoryFor(candidate.merchant)
+        val decision = cl.nido.parser.AutoCaptureRules.decide(candidate, cl.nido.parser.CaptureSettings(cl.nido.parser.CaptureMode.AUTO, cfg.maxClp()), category != null)
+        return if (decision == cl.nido.parser.CaptureDecision.AUTO_SAVE) category else null
     }
 
     // Si la bandeja esta llena se limpian SOLO borradores de otro dueno de hace mas de 30 dias (nadie los vera). Lo de la

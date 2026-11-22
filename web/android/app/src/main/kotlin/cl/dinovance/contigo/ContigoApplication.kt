@@ -8,5 +8,6 @@ class ContigoApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashRecorder.install(this)
+        registerActivityLifecycleCallbacks(cl.dinovance.contigo.sync.ForegroundTracker)
     }
 }

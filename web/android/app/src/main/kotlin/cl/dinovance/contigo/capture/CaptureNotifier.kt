@@ -43,6 +43,24 @@ class CaptureNotifier(private val context: Context, private val prefs: CapturePr
         manager.notify(draft.id.hashCode(), builder.build())
     }
 
+    /** Guardado automatico: aviso discreto sin botones y recordatorio por si el envio en segundo plano no sale. */
+    override fun autoSaved(draft: Draft) {
+        if (canPost()) {
+            ensureChannel()
+            val amount = ClpAmount.format(draft.candidate.amountClp)
+            val text = draft.candidate.merchant?.let { "$amount en $it" } ?: amount
+            val b = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_stat_capture)
+                .setContentTitle(context.getString(R.string.capture_auto_saved_title))
+                .setContentText(if (prefs.hideOnLockScreen()) context.getString(R.string.capture_auto_saved_public) else text)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setAutoCancel(true)
+                .setContentIntent(openIntent(draft.id, ACTION_OPEN))
+            manager.notify(draft.id.hashCode(), b.build())
+        }
+        ReminderScheduler.schedule(context, ReminderPolicy.FIRST_REMINDER_MILLIS)
+    }
+
     override fun queueFull() = showReminder(context.getString(R.string.capture_queue_full))
 
     /** «Tienes N gastos por enviar»: abre la app, que envía lo confirmado. */

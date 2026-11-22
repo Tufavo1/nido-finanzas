@@ -6,7 +6,7 @@ import { SkeletonList } from './Skeleton'
 import { DUPLICATE_EXPLANATION, duplicateMarks, sourceLabel } from '../lib/draftFlags'
 import { money } from '../lib/format'
 import { suggestCategory } from '../lib/categorize'
-import type { NativeDraft } from '../lib/nativeBridge'
+import type { AutoSavedItem, NativeDraft } from '../lib/nativeBridge'
 import { logError } from '../lib/safeLog'
 
 interface Props {
@@ -26,12 +26,15 @@ interface Props {
   onKeepBoth: (id: string) => void
   /** Nombre visible de cada app (paquete → nombre) para «Detectado desde» */
   appNames?: ReadonlyMap<string, string>
+  /** Gastos que se guardaron solos en esta sesión */
+  autoSaved?: AutoSavedItem[]
+  onUndoAuto?: (id: string) => void
 }
 
 const dayFmt = new Intl.DateTimeFormat('es-CL', { day: 'numeric', month: 'short' })
 
 /** «Gastos detectados»: lo que el teléfono encontró en tus avisos del banco, para que tú lo apruebes. */
-export default function DetectedInbox({ drafts, failed, categories, history, onReview, onSaveWith, onIgnore, onRetry, onSettings, kept, onKeepBoth, appNames = new Map() }: Props) {
+export default function DetectedInbox({ drafts, failed, categories, history, onReview, onSaveWith, onIgnore, onRetry, onSettings, kept, onKeepBoth, appNames = new Map(), autoSaved = [], onUndoAuto }: Props) {
   const [picking, setPicking] = useState<NativeDraft | null>(null)
   const [error, setError] = useState<string | null>(null)
   const marks = duplicateMarks(drafts ?? [])
@@ -111,6 +114,26 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
           </section>
         )
       })}
+      {autoSaved.length > 0 && (
+        <section className="stack" aria-label="Guardados automáticamente">
+          <h2 className="perm-title">Guardados automáticamente</h2>
+          {autoSaved.map((a) => (
+            <div className="card detected" key={a.id}>
+              <div className="row between">
+                <strong className="num">{money(a.amount)}</strong>
+                <span className="sev sev-info">Guardado automático</span>
+              </div>
+              <span>{a.note || 'Sin detalle'}</span>
+              <span className="muted small-text">{a.synced ? 'Ya está en tu cuenta.' : 'Está en tu teléfono y se enviará solo.'}</span>
+              {onUndoAuto && (
+                <button type="button" className="btn ghost small" onClick={() => onUndoAuto(a.id)}>
+                  Deshacer
+                </button>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
       {picking && <CategoryPicker categories={categories} selected={null} onPick={(id) => void pick(picking, id)} onClose={() => setPicking(null)} />}
     </main>
   )

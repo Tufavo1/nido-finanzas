@@ -26,3 +26,4 @@ keystore.properties
 web/android/.gradle/
 web/android/**/build/
 web/android/local.properties
+web/android/app/google-services.json

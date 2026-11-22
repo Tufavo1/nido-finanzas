@@ -22,7 +22,7 @@ export interface DraftPlan {
 
 /**
  * Un borrador ya confirmado en la notificación se guarda tal cual. Los demás solo se guardan solos en modo
- * automático y dentro de sus reglas (`decideCapture`). Los abonos siempre se preguntan. `busy` evita guardar dos veces.
+ * automático y dentro de sus reglas (`decideCapture`); si vienen de un banco con el guardado automático apagado, nunca solos. Los abonos siempre se preguntan. `busy` evita guardar dos veces.
  */
 export function planDrafts(drafts: NativeDraft[], config: CaptureConfig, ctx: Ctx, busy: ReadonlySet<string>): DraftPlan {
   const plan: DraftPlan = { auto: [], ask: [] }
@@ -30,7 +30,7 @@ export function planDrafts(drafts: NativeDraft[], config: CaptureConfig, ctx: Ct
     if (busy.has(d.id)) continue
     // Para guardar sin preguntar hace falta una categoría; si no se conoce, la persona la elige en la bandeja
     const confirmed = d.status === 'CONFIRMED' && d.kind === 'EXPENSE' && !!d.merchant && suggestCategory(d.merchant, ctx.categories, ctx.history) !== null
-    const auto = confirmed || (d.status === 'PENDING' && decideCapture(d, config, ctx) === 'AUTO_SAVE')
+    const auto = confirmed || (d.status === 'PENDING' && !d.bankAutoOff && decideCapture(d, config, ctx) === 'AUTO_SAVE')
     plan[auto ? 'auto' : 'ask'].push(d)
   }
   return plan

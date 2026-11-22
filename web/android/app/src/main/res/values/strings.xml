@@ -25,4 +25,6 @@
     <string name="capture_possible_duplicate"> · posible duplicado</string>
     <string name="capture_reminder_title">Gastos pendientes</string>
     <string name="capture_queue_full">No pude guardar un gasto: la bandeja está llena. Abre Contigo y revísala.</string>
+    <string name="capture_auto_saved_title">Gasto guardado automáticamente</string>
+    <string name="capture_auto_saved_public">Desbloquea el teléfono para verlo</string>
 </resources>

@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
 import { fetchAccessToken, loadFcmAccount, sendFcm } from './fcm.ts'
+import { BIG_SPEND_TITLE, bigSpendBody, splitRecipients, type BigSpendPref } from './recipients.ts'
 
 const ALLOWED = [
   'https://contigo.dinovance.cl',
@@ -64,6 +65,47 @@ async function sendNative(admin: ReturnType<typeof createClient>, recipients: st
   return sent
 }
 
+async function deliver(admin: ReturnType<typeof createClient>, recipients: string[], title: string, body: string): Promise<number> {
+  const { data: subs } = await admin
+    .from('push_subscriptions')
+    .select('id, endpoint, p256dh, auth_key')
+    .in('user_id', recipients)
+
+  webpush.setVapidDetails(
+    Deno.env.get('VAPID_SUBJECT')!,
+    Deno.env.get('VAPID_PUBLIC_KEY')!,
+    Deno.env.get('VAPID_PRIVATE_KEY')!,
+  )
+  const payload = JSON.stringify({ title, body, url: '/' })
+  let sent = 0
+  const dead: string[] = []
+
+  await Promise.all(
+    (subs ?? []).map(async (s: { id: string; endpoint: string; p256dh: string; auth_key: string }) => {
+      if (!isKnownPushEndpoint(s.endpoint)) {
+        dead.push(s.id) // no debería existir (la base ya lo impide); se descarta sin contactarlo
+        return
+      }
+      try {
+        await webpush.sendNotification(
+          { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth_key } },
+          payload,
+          { TTL: 3600 },
+        )
+        sent++
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode
+        if (status === 404 || status === 410) dead.push(s.id)
+        else console.error('push error', status, String(err))
+      }
+    }),
+  )
+
+  if (dead.length) await admin.from('push_subscriptions').delete().in('id', dead)
+  sent += await sendNative(admin, recipients, title, body)
+  return sent
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin') ?? ''
   const cors = {
@@ -105,6 +147,9 @@ Deno.serve(async (req) => {
     let title = ''
     let body = ''
     let recipients: string[] = []
+    // Solo para gastos: permite el aviso «gasto mayor» a quien lo activo (preferencia por persona)
+    let bigAmount: number | null = null
+    let bigBody = ''
 
     if (kind === 'test') {
       title = 'Aviso de prueba'
@@ -137,6 +182,8 @@ Deno.serve(async (req) => {
         if (!e.shared && meRow.share_personal === false) return reply(200, { sent: 0 })
         title = `${meRow.display_name} registró un gasto`
         body = `${money(e.amount)} en ${c?.name ?? 'una categoría'}${e.shared ? '' : ' (personal)'}`
+        bigAmount = Number(e.amount)
+        bigBody = bigSpendBody(money(e.amount), c?.name, e.shared)
       } else {
         const { data: k } = await me
           .from('contributions')
@@ -170,43 +217,24 @@ Deno.serve(async (req) => {
       if (!claimed || claimed.length === 0) return reply(200, { sent: 0 })
     }
 
-    const { data: subs } = await admin
-      .from('push_subscriptions')
-      .select('id, endpoint, p256dh, auth_key')
-      .in('user_id', recipients)
-
-    webpush.setVapidDetails(
-      Deno.env.get('VAPID_SUBJECT')!,
-      Deno.env.get('VAPID_PUBLIC_KEY')!,
-      Deno.env.get('VAPID_PRIVATE_KEY')!,
-    )
-    const payload = JSON.stringify({ title, body, url: '/' })
+    // Gasto: quien activo «avisarme de gastos mayores» y llega a su umbral recibe el titulo de gasto mayor; el resto, el de siempre.
+    // Si la tabla aun no existe (migracion sin aplicar) o falla la lectura, todos reciben el aviso normal.
+    let groups: { ids: string[]; title: string; body: string }[] = [{ ids: recipients, title, body }]
+    if (kind === 'expense' && bigAmount !== null) {
+      const { data: prefs, error: prefsErr } = await admin
+        .from('big_spend_alert_prefs')
+        .select('user_id, enabled, threshold_clp')
+        .in('user_id', recipients)
+      if (!prefsErr) {
+        const { major, normal } = splitRecipients(recipients, (prefs ?? []) as BigSpendPref[], bigAmount)
+        groups = [
+          { ids: major, title: BIG_SPEND_TITLE, body: bigBody },
+          { ids: normal, title, body },
+        ].filter((g) => g.ids.length > 0)
+      }
+    }
     let sent = 0
-    const dead: string[] = []
-
-    await Promise.all(
-      (subs ?? []).map(async (s: { id: string; endpoint: string; p256dh: string; auth_key: string }) => {
-        if (!isKnownPushEndpoint(s.endpoint)) {
-          dead.push(s.id) // no debería existir (la base ya lo impide); se descarta sin contactarlo
-          return
-        }
-        try {
-          await webpush.sendNotification(
-            { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth_key } },
-            payload,
-            { TTL: 3600 },
-          )
-          sent++
-        } catch (err) {
-          const status = (err as { statusCode?: number }).statusCode
-          if (status === 404 || status === 410) dead.push(s.id)
-          else console.error('push error', status, String(err))
-        }
-      }),
-    )
-
-    if (dead.length) await admin.from('push_subscriptions').delete().in('id', dead)
-    sent += await sendNative(admin, recipients, title, body)
+    for (const g of groups) sent += await deliver(admin, g.ids, g.title, g.body)
     return reply(200, { sent })
   } catch (e) {
     console.error(e)
