@@ -65,6 +65,7 @@ dependencies {
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
     implementation "androidx.core:core-ktx:$androidxCoreVersion"
+    implementation "androidx.work:work-runtime:2.9.1"
     implementation 'cl.nido:core'
     testImplementation "junit:junit:$junitVersion"
     testImplementation 'org.json:json:20240303'

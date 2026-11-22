@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Dinovance
+import { enqueueNative } from './nativeSerial'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Household } from '../App'
 import type { Notify } from '../components/Toast'
@@ -10,8 +11,8 @@ import { money } from './format'
 import { draftExpenseId } from './draftExpenseId'
 import { newId } from './idempotency'
 import { expenseRow, planDrafts } from './inbox'
-import { ContigoNative, isNativeApp, ownerKeyOf, pendingToSendCount, readDrafts, readRecentApps } from './nativeBridge'
-import type { NativeDraft } from './nativeBridge'
+import { ContigoNative, isNativeApp, ownerKeyOf, parseAutoSaved, pendingToSendCount, readDrafts, readRecentApps } from './nativeBridge'
+import type { AutoSavedItem, NativeDraft } from './nativeBridge'
 import type { OfflineQueue } from './offlineQueue'
 import { unsentCount, unsentDrafts } from './draftFlags'
 import { enqueueWithNotice } from './queueNotice'
@@ -38,6 +39,7 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
   const native = isNativeApp()
   const [drafts, setDrafts] = useState<NativeDraft[] | null>(native ? null : [])
   const [failed, setFailed] = useState(false)
+  const [autoSaved, setAutoSaved] = useState<AutoSavedItem[]>([])
   const [pending, setPending] = useState<number | null>(null)
   const [appNames, setAppNames] = useState<ReadonlyMap<string, string>>(new Map())
   const [openId, setOpenId] = useState<string | null>(null)
@@ -52,10 +54,12 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
     if (!native) return
     try {
       // Sin dueño el teléfono no captura y no entrega borradores: se fija antes de leer (usuario + hogar activo)
-      await ContigoNative.setActiveOwner({ ownerKey: ownerKeyOf(hh.me.user_id, hh.household.id) })
+      const ownerKey = ownerKeyOf(hh.me.user_id, hh.household.id)
+      await enqueueNative(() => ContigoNative.setActiveOwner({ ownerKey }))
       const [list, toSend] = await Promise.all([readDrafts(ContigoNative), pendingToSendCount(ContigoNative)])
       setDrafts(list)
       setPending(toSend)
+      setAutoSaved(parseAutoSaved(await ContigoNative.listAutoSaved()))
       // Los nombres de las apps son un extra: sin ellos se muestra el paquete
       setAppNames(new Map((await readRecentApps(ContigoNative).catch(() => [])).map((a) => [a.packageName, a.label])))
       setFailed(false)
@@ -135,14 +139,41 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
     [load, notify],
   )
 
+  /**
+   * Deshacer un guardado automático. Si el gasto ya llegó al servidor, la app lo borra por la ruta de datos de
+   * siempre y recién entonces le dice al teléfono que lo quite de la lista. Un error se avisa con «Reintentar».
+   */
+  const undoAuto = useCallback(
+    async function run(id: string): Promise<void> {
+      try {
+        const r = await ContigoNative.undoAutoSaved({ id })
+        if (r.needsDelete) {
+          await deleteExpense(id)
+          await ContigoNative.dismissAutoSaved({ id })
+          await data.refresh()
+        }
+        notify('Gasto deshecho\nLo quité de tus gastos.', 'info')
+        await load()
+      } catch (e) {
+        logError(e, 'useDetected')
+        notify('No se pudo deshacer\nRevisa tu conexión e inténtalo de nuevo.', 'error', { label: 'Reintentar', onAction: () => void run(id) })
+      }
+    },
+    [data, notify, load],
+  )
+
   /** «Conservar ambos»: la persona dice que no es un duplicado */
   const keepBoth = useCallback((id: string) => setKept((prev) => new Set(prev).add(id)), [])
 
   /** «Enviar ahora»: vuelve a intentar lo que quedó trabado */
   const sendNow = useCallback(async () => {
     setStuck(new Set())
+    if (native) {
+      // El teléfono envía lo que guardó solo en segundo plano; un fallo ya queda en su estado de envío
+      await ContigoNative.syncNow().catch((e: unknown) => logError(e, 'useDetected'))
+    }
     await load()
-  }, [load])
+  }, [load, native])
 
   // Guardado automático de lo que ya está confirmado o cumple las reglas del modo automático
   useEffect(() => {
@@ -166,5 +197,5 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
   const waiting = (drafts ?? []).filter((d) => stuck.has(d.id) || !autoIds.has(d.id))
   const localUnsent = unsentDrafts(waiting)
   const unsent = { count: unsentCount(pending, localUnsent.length) }
-  return { drafts: drafts === null ? null : waiting, unsent, appNames, kept, keepBoth, sendNow, failed, openId, clearOpen, save, ignore, reload: load, ctx }
+  return { drafts: drafts === null ? null : waiting, unsent, appNames, autoSaved, undoAuto, kept, keepBoth, sendNow, failed, openId, clearOpen, save, ignore, reload: load, ctx }
 }

@@ -37,7 +37,7 @@ describe('DetectedInbox', () => {
 
 describe('CaptureSettings en el navegador', () => {
   it('explica que la captura solo está en la app del teléfono', () => {
-    const html = renderToStaticMarkup(<CaptureSettings config={DEFAULT_CAPTURE_CONFIG} onConfig={async () => undefined} onToast={noop} onCleared={noop} />)
+    const html = renderToStaticMarkup(<CaptureSettings config={DEFAULT_CAPTURE_CONFIG} onConfig={async () => undefined} onToast={noop} onCleared={noop} onSendNow={async () => undefined} />)
     expect(html).toContain('Solo está en la app del teléfono')
   })
 })
@@ -76,5 +76,15 @@ describe('origen del gasto', () => {
   })
   it('sin paquete de origen no dice nada', () => {
     expect(renderToStaticMarkup(<DetectedInbox {...base} drafts={[draft]} failed={false} />)).not.toContain('Detectado desde')
+  })
+})
+
+describe('guardados automáticamente en la bandeja', () => {
+  it('se marcan «Guardado automático» y ofrecen Deshacer', () => {
+    const html = renderToStaticMarkup(<DetectedInbox {...base} drafts={[]} failed={false} autoSaved={[{ id: 'x', amount: 4_500, note: 'Cafe Demo', at: 1, synced: false }]} onUndoAuto={noop} />)
+    expect(html).toContain('Guardado automático')
+    expect(html).toContain('Deshacer')
+    expect(html).toContain('Cafe Demo')
+    expect(html).toContain('se enviará solo')
   })
 })

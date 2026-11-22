@@ -8,7 +8,7 @@ import android.content.SharedPreferences
  * Preferencias no secretas de la captura: lista blanca de paquetes, privacidad y salud del servicio.
  * Son SharedPreferences normales porque no contienen montos, textos ni credenciales.
  */
-class CapturePrefs(context: Context) : HealthRecorder, RecentStore {
+class CapturePrefs(context: Context) : HealthRecorder, RecentStore, AutoConfig, cl.dinovance.contigo.sync.SyncStatusStore {
     private val prefs: SharedPreferences = context.applicationContext.getSharedPreferences(NAME, Context.MODE_PRIVATE)
 
     fun whitelist(): Set<String> = prefs.getStringSet(KEY_WHITELIST, emptySet()).orEmpty().toSet()
@@ -24,6 +24,48 @@ class CapturePrefs(context: Context) : HealthRecorder, RecentStore {
     override fun save(apps: Map<String, Long>) {
         prefs.edit().putStringSet(KEY_RECENT, apps.map { "${it.key}|${it.value}" }.toSet()).apply()
     }
+
+    // ---- Registro automatico por banco (opt-in, apagado por defecto) ----
+    fun bankPackage(bank: String): String? = prefs.getString("bank_pkg_$bank", null)
+
+    fun setBankPackage(bank: String, packageName: String?) {
+        prefs.edit().apply { if (packageName == null) remove("bank_pkg_$bank") else putString("bank_pkg_$bank", packageName) }.apply()
+    }
+
+    fun bankAutoSave(bank: String): Boolean = prefs.getBoolean("bank_auto_$bank", false)
+
+    fun setBankAutoSave(bank: String, enabled: Boolean) {
+        prefs.edit().putBoolean("bank_auto_$bank", enabled).apply()
+    }
+
+    override fun bankOfPackage(packageName: String): String? = BankPresets.ALL.firstOrNull { bankPackage(it.id) == packageName }?.id
+
+    override fun autoEnabled(bank: String): Boolean = bankAutoSave(bank) && bankPackage(bank) != null
+
+    override fun maxClp(): Long = prefs.getLong(KEY_AUTO_CAP, cl.nido.parser.CaptureSettings.DEFAULT_MAX_CLP)
+
+    fun setMaxClp(value: Long) {
+        prefs.edit().putLong(KEY_AUTO_CAP, value).apply()
+    }
+
+    /** Direccion del Worker (VITE_API_BASE), solo https; la fija la app. */
+    fun apiBase(): String? = prefs.getString(KEY_API_BASE, null)
+
+    fun setApiBase(value: String?) {
+        prefs.edit().apply { if (value == null) remove(KEY_API_BASE) else putString(KEY_API_BASE, value) }.apply()
+    }
+
+    override fun recordSuccess(nowMillis: Long) {
+        prefs.edit().putLong(KEY_SYNC_OK_AT, nowMillis).remove(KEY_SYNC_ERROR).apply()
+    }
+
+    override fun recordError(kind: String, nowMillis: Long) {
+        prefs.edit().putString(KEY_SYNC_ERROR, kind).putLong(KEY_SYNC_ERROR_AT, nowMillis).apply()
+    }
+
+    fun lastSyncOkAt(): Long = prefs.getLong(KEY_SYNC_OK_AT, 0)
+
+    fun lastSyncError(): String? = prefs.getString(KEY_SYNC_ERROR, null)
 
     /** Usuario/hogar activo (lo fija la app al iniciar sesión); null = sin sesión. */
     fun activeOwner(): String? = prefs.getString(KEY_OWNER, null)
@@ -79,6 +121,11 @@ class CapturePrefs(context: Context) : HealthRecorder, RecentStore {
         const val NAME = "contigo_capture"
         const val KEY_WHITELIST = "whitelist"
         const val KEY_OWNER = "active_owner"
+        const val KEY_AUTO_CAP = "auto_cap"
+        const val KEY_API_BASE = "api_base"
+        const val KEY_SYNC_OK_AT = "sync_ok_at"
+        const val KEY_SYNC_ERROR = "sync_error"
+        const val KEY_SYNC_ERROR_AT = "sync_error_at"
         const val KEY_LAST_USER = "last_user"
         const val KEY_RECENT = "recent_apps"
         const val KEY_HIDE_ON_LOCK = "hide_on_lock"

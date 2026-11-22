@@ -1,14 +1,14 @@
 // Copyright (c) 2026 Dinovance
 import { useState } from 'react'
+import BankAutoSection from './BankAutoSection'
 import CaptureAppsPicker from './CaptureAppsPicker'
+import PartnerAlerts from './PartnerAlerts'
 import Modal from './Modal'
 import NotificationPermission from './NotificationPermission'
 import { SkeletonCard } from './Skeleton'
 import type { Notify } from './Toast'
 import { effectivePackages } from '../lib/captureApps'
-import { LIMIT_CHOICES } from '../lib/captureConfig'
 import type { CaptureConfig } from '../lib/captureConfig'
-import { money } from '../lib/format'
 import { ContigoNative } from '../lib/nativeBridge'
 import { useCaptureStatus } from '../lib/useCaptureStatus'
 import { logError } from '../lib/safeLog'
@@ -19,6 +19,8 @@ interface Props {
   onToast: Notify
   /** Después de borrar lo capturado, para que la bandeja se actualice */
   onCleared: () => void
+  /** «Enviar ahora»: reintenta lo que quedó sin enviar */
+  onSendNow: () => Promise<void>
 }
 
 function Switch({ id, label, hint, on, onChange }: { id: string; label: string; hint: string; on: boolean; onChange: (v: boolean) => void }) {
@@ -34,7 +36,7 @@ function Switch({ id, label, hint, on, onChange }: { id: string; label: string; 
 }
 
 /** Ajustes > Captura de gastos: permiso, interruptor, apps, modo automático, privacidad y borrado. Solo funciona en la app del teléfono. */
-export default function CaptureSettings({ config, onConfig, onToast, onCleared }: Props) {
+export default function CaptureSettings({ config, onConfig, onToast, onCleared, onSendNow }: Props) {
   const { state, reload } = useCaptureStatus()
   const [confirmWipe, setConfirmWipe] = useState(false)
 
@@ -109,21 +111,12 @@ export default function CaptureSettings({ config, onConfig, onToast, onCleared }
 
       <section className="card">
         <Switch id="cap-auto" label="Modo automático" hint="Guarda solo los gastos seguros que ya conoces, sin preguntar. Siempre puedes deshacer durante 10 segundos." on={config.mode === 'AUTO'} onChange={(on) => void apply({ ...config, mode: on ? 'AUTO' : 'CONFIRM' })} />
-        {config.mode === 'AUTO' && (
-          <div className="field">
-            <label htmlFor="cap-limit">Monto máximo para guardar solo</label>
-            <select id="cap-limit" className="input" value={config.maxClp} onChange={(e) => void apply({ ...config, maxClp: Number(e.target.value) })}>
-              {LIMIT_CHOICES.map((m) => (
-                <option key={m} value={m}>
-                  {money(m)}
-                </option>
-              ))}
-            </select>
-            <span className="line-help">Lo que supere este monto siempre te lo preguntamos.</span>
-          </div>
-        )}
         <Switch id="cap-shared" label="Marcar como compartidos" hint="Los gastos detectados parten como compartidos con tu pareja." on={config.shared} onChange={(shared) => void apply({ ...config, shared })} />
       </section>
+
+      <BankAutoSection config={config} onConfig={onConfig} onToast={onToast} onSendNow={onSendNow} />
+
+      <PartnerAlerts onToast={onToast} />
 
       <section className="card">
         <Switch id="cap-hide" label="Ocultar montos con el teléfono bloqueado" hint="La notificación no muestra cuánto ni dónde. Recomendado." on={status.hideOnLockScreen} onChange={(v) => void setHide(v)} />

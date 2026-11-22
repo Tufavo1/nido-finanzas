@@ -13,5 +13,5 @@ object ReminderPolicy {
     }
 
     fun pendingToSend(drafts: List<Draft>, activeOwner: String?): Int =
-        OwnerFilter.visible(drafts, activeOwner).count { it.status == DraftStatus.CONFIRMED }
+        OwnerFilter.visible(drafts, activeOwner).count { it.status == DraftStatus.CONFIRMED && !it.syncRejected }
 }

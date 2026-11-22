@@ -34,6 +34,7 @@ export default function Security({
   capture,
   onCapture,
   onCleared,
+  onSendNow,
 }: {
   hh: Household
   reload: () => Promise<void>
@@ -43,6 +44,7 @@ export default function Security({
   capture: CaptureConfig
   onCapture: (next: CaptureConfig) => Promise<void>
   onCleared: () => void
+  onSendNow: () => Promise<void>
 }) {
   const [open, setOpen] = useState<string | null>(null)
   const toggle = (id: string) => setOpen((cur) => (cur === id ? null : id))
@@ -127,7 +129,7 @@ export default function Security({
       <h2 className="set-group">Captura de gastos</h2>
       <div className="set-list">
         <SettingsItem {...item} id="capture" icon="bell" title="Captura de gastos" summary="Detecta gastos en los avisos de tu banco" open={open === 'capture'}>
-          <CaptureSettings config={capture} onConfig={onCapture} onToast={onToast} onCleared={onCleared} />
+          <CaptureSettings config={capture} onConfig={onCapture} onToast={onToast} onCleared={onCleared} onSendNow={onSendNow} />
         </SettingsItem>
       </div>
 

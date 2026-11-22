@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Dinovance
 import { describe, expect, it } from 'vitest'
-import { ownerKeyOf, pendingToSendCount, createPluginSecureBackend, needsPermissionGuide, parseNativeDraft, parseNotifyingApp, readDrafts, readRecentApps, type CaptureStatus } from './nativeBridge'
+import { buildAutoCategories, parseAutoSaved, ownerKeyOf, pendingToSendCount, createPluginSecureBackend, needsPermissionGuide, parseNativeDraft, parseNotifyingApp, readDrafts, readRecentApps, type CaptureStatus } from './nativeBridge'
 
 const valid = {
   id: 'd-1',
@@ -112,5 +112,30 @@ describe('dueño, duplicados y contador (fase verde QA)', () => {
   })
   it('ownerKeyOf une usuario y hogar', () => {
     expect(ownerKeyOf('u1', 'h1')).toBe('u1:h1')
+  })
+})
+
+describe('registro automático: contratos', () => {
+  it('parseAutoSaved descarta lo que no tenga la forma exacta', () => {
+    const ok = { id: 'a', amount: 6500, note: 'Cafe Demo', at: 1, synced: false }
+    expect(parseAutoSaved({ items: [{ ...ok, status: 'rejected' }] })[0]?.status).toBe('rejected')
+    expect(parseAutoSaved({ items: [ok, { ...ok, id: '' }, { ...ok, amount: 0 }, { ...ok, synced: 'si' }, null, 3] })).toEqual([{ ...ok, status: 'pending' }])
+    expect(parseAutoSaved(undefined)).toEqual([])
+  })
+  it('buildAutoCategories usa la más usada y la clave de primera palabra, sin tildes', () => {
+    const valid = new Set(['c1', 'c2'])
+    const out = buildAutoCategories(
+      [
+        { note: 'Café Demo Norte', category_id: 'c1' },
+        { note: 'cafe demo norte', category_id: 'c2' },
+        { note: 'Cafe Demo Norte', category_id: 'c2' },
+        { note: 'Algo', category_id: 'zzz' },
+        { note: null, category_id: 'c1' },
+      ],
+      valid,
+    )
+    expect(out).toContainEqual({ key: 'cafe demo norte', categoryId: 'c2' })
+    expect(out).toContainEqual({ key: 'w:cafe', categoryId: 'c2' })
+    expect(out.some((e) => e.key === 'algo')).toBe(false)
   })
 })

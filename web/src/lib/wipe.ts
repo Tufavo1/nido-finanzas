@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Dinovance
 import { toAppError } from './appError'
 import { ContigoNative, isNativeApp } from './nativeBridge'
+import { emitNow, invalidateOwner } from './nativeSerial'
 
 /**
  * Al cerrar sesión se borra de este dispositivo lo que dejó la persona: avisos ya mostrados (con montos),
@@ -32,7 +33,9 @@ const logWipeFailure = (e: unknown): void => console.error('[contigo] no se pudo
  */
 export function wipeSessionData(): void {
   wipeLocal()
-  if (isNativeApp()) void ContigoNative.wipe().catch(logWipeFailure)
+  if (!isNativeApp()) return
+  invalidateOwner()
+  void emitNow(ContigoNative.wipe()).catch(logWipeFailure)
 }
 
 /** Clave donde se guardan las preferencias de captura (ver useCaptureConfig) */
@@ -46,6 +49,7 @@ export const CAPTURE_CONFIG_KEY = 'capture-config'
 export function wipeForAccountSwitch(): void {
   wipeLocal()
   if (!isNativeApp()) return
-  void ContigoNative.wipeForAccountSwitch({ ownerKey: null }).catch(logWipeFailure)
-  void ContigoNative.secureRemove({ key: CAPTURE_CONFIG_KEY }).catch(logWipeFailure)
+  invalidateOwner()
+  void emitNow(ContigoNative.wipeForAccountSwitch({ ownerKey: null })).catch(logWipeFailure)
+  void emitNow(ContigoNative.secureRemove({ key: CAPTURE_CONFIG_KEY })).catch(logWipeFailure)
 }

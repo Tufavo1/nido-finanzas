@@ -11,7 +11,11 @@ import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import cl.dinovance.contigo.capture.CaptureGraph
 import cl.dinovance.contigo.capture.Draft
+import cl.dinovance.contigo.capture.AutoProfile
+import cl.dinovance.contigo.capture.BankPresets
 import cl.dinovance.contigo.capture.OwnerFilter
+import cl.dinovance.contigo.sync.SyncScheduler
+import org.json.JSONObject
 import cl.dinovance.contigo.capture.ReminderPolicy
 import cl.dinovance.contigo.capture.CaptureNotifier
 import cl.dinovance.contigo.diagnostics.CrashRecorder
@@ -187,6 +191,8 @@ class ContigoNativePlugin : Plugin() {
         graph.drafts.list().forEach { graph.notifier.cancel(it.id) }
         graph.drafts.clear()
         graph.recent.clear()
+        graph.autoLog.clear()
+        graph.clearProfile()
         call.resolve()
     }
 
@@ -220,6 +226,8 @@ class ContigoNativePlugin : Plugin() {
         val key = call.getString("ownerKey")
         if (key != null && !OWNER_KEY.matches(key)) return call.reject("Dueño no válido", "INVALID_ARGUMENT")
         graph.session.removeByPrefix("queue-")
+        graph.clearProfile()
+        graph.autoLog.clear()
         if (key != null) OwnerFilter.adoptable(graph.drafts.list(), key, graph.prefs.lastUser()).forEach { d -> graph.drafts.update(d.id) { it.copy(ownerKey = key) } }
         OwnerFilter.foreign(graph.drafts.list(), key).forEach {
             graph.notifier.cancel(it.id)
@@ -240,6 +248,136 @@ class ContigoNativePlugin : Plugin() {
         graph.session.clear()
         graph.prefs.setActiveOwner(null)
         graph.prefs.setLastUser(null)
+        call.resolve()
+    }
+
+    // ---- Registro automatico por banco (opt-in) y envio en segundo plano ----
+
+    @PluginMethod
+    fun getBankPresets(call: PluginCall) {
+        val banks = JSArray()
+        BankPresets.ALL.forEach {
+            banks.put(
+                JSObject().put("id", it.id).put("name", it.displayName).put("packageName", graph.prefs.bankPackage(it.id))
+                    .put("autoSave", graph.prefs.autoEnabled(it.id)).put("candidatePackages", JSArray(it.candidatePackages)),
+            )
+        }
+        call.resolve(JSObject().put("banks", banks).put("maxClp", graph.prefs.maxClp()))
+    }
+
+    /** Asocia (o quita con null) la app de un banco; es lo que guarda el «modo aprender». Quitarla apaga el guardado automatico. */
+    @PluginMethod
+    fun setBankPackage(call: PluginCall) {
+        val bank = call.getString("bankId")?.let(BankPresets::byId) ?: return call.reject("Banco no válido", "INVALID_ARGUMENT")
+        val pkg = if (call.data.isNull("packageName")) null else call.getString("packageName")
+        if (pkg != null && (!PACKAGE_NAME.matches(pkg) || pkg == context.packageName)) return call.reject("Paquete no válido", "INVALID_ARGUMENT")
+        graph.prefs.setBankPackage(bank.id, pkg)
+        if (pkg == null) graph.prefs.setBankAutoSave(bank.id, false) else graph.prefs.setWhitelist(graph.prefs.whitelist() + pkg)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun setBankAutoSave(call: PluginCall) {
+        val bank = call.getString("bankId")?.let(BankPresets::byId) ?: return call.reject("Banco no válido", "INVALID_ARGUMENT")
+        val enabled = call.getBoolean("enabled") ?: return call.reject("Falta enabled", "INVALID_ARGUMENT")
+        if (enabled && graph.prefs.bankPackage(bank.id) == null) return call.reject("Asocia primero la app del banco", "NO_PACKAGE")
+        graph.prefs.setBankAutoSave(bank.id, enabled)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun setAutoCap(call: PluginCall) {
+        val max = call.getLong("maxClp") ?: return call.reject("Falta maxClp", "INVALID_ARGUMENT")
+        if (max < 1 || max >= MAX_CLP) return call.reject("Tope no válido", "INVALID_ARGUMENT")
+        graph.prefs.setMaxClp(max)
+        call.resolve()
+    }
+
+    /** La app entrega dueño, hogar y categorias aprendidas para poder guardar con la app cerrada. */
+    @PluginMethod
+    fun setAutoProfile(call: PluginCall) {
+        val profile = AutoProfile.fromJs(
+            call.getString("ownerKey").orEmpty(), call.getString("userId").orEmpty(), call.getString("householdId").orEmpty(),
+            call.getString("paidBy").orEmpty(), call.getBoolean("shared") ?: false, call.getArray("categories") ?: JSArray(),
+        ) ?: return call.reject("Perfil no válido", "INVALID_ARGUMENT")
+        // Solo el perfil del dueño activo: una respuesta tardía de otra persona no puede dejar su perfil guardado (R3-04)
+        if (profile.ownerKey != graph.prefs.activeOwner()) return call.reject("El perfil no es del dueño activo", "OWNER_MISMATCH")
+        graph.saveProfile(profile)
+        SyncScheduler.enqueue(context)
+        call.resolve(JSObject().put("ownerKey", profile.ownerKey))
+    }
+
+    /** Direccion del Worker (VITE_API_BASE): solo https. */
+    @PluginMethod
+    fun configureSync(call: PluginCall) {
+        val base = call.getString("apiBase")?.trimEnd('/')
+        if (base != null && (!base.startsWith("https://") || base.length > 200)) return call.reject("Dirección no válida", "INVALID_ARGUMENT")
+        graph.prefs.setApiBase(base)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun getSyncState(call: PluginCall) {
+        val owner = graph.prefs.activeOwner()
+        val all = OwnerFilter.visible(graph.drafts.list(), owner)
+        val pending = ReminderPolicy.pendingToSend(graph.drafts.list(), owner)
+        val rejected = all.count { it.syncRejected }
+        val error = graph.prefs.lastSyncError()
+        val last = graph.prefs.lastSyncOkAt()
+        call.resolve(
+            JSObject().put("state", if ((error != null && pending > 0) || rejected > 0) "error" else "idle").put("pending", pending)
+                .put("rejected", rejected).put("lastSyncAt", if (last > 0) last else JSONObject.NULL).put("lastError", error ?: JSONObject.NULL),
+        )
+    }
+
+    @PluginMethod
+    fun syncNow(call: PluginCall) {
+        SyncScheduler.enqueue(context)
+        call.resolve()
+    }
+
+    /** Gastos guardados solos de la persona activa (otra persona del mismo telefono no ve los ajenos). status: pending | synced | rejected. */
+    @PluginMethod
+    fun listAutoSaved(call: PluginCall) {
+        val items = JSArray()
+        graph.autoLog.listFor(graph.prefs.activeOwner()).forEach {
+            val status = if (it.rejected) "rejected" else if (it.synced) "synced" else "pending"
+            items.put(JSObject().put("id", it.id).put("amount", it.amountClp).put("note", it.note).put("at", it.at).put("synced", it.synced).put("status", status))
+        }
+        call.resolve(JSObject().put("items", items))
+    }
+
+    /**
+     * Deshacer, coordinado con el envio (mismo cerrojo que syncOnce): solo es «deshecho» si el borrador AUN esta en la cola del
+     * telefono. Si ya salio (por el servicio o por la app abierta) o esta en vuelo, `needsDelete` = la app debe borrarlo en el servidor.
+     */
+    @PluginMethod
+    fun undoAutoSaved(call: PluginCall) {
+        val id = call.getString("id")?.lowercase() ?: return call.reject("Falta el id", "INVALID_ARGUMENT")
+        val owner = graph.prefs.activeOwner()
+        val result = graph.syncer.coordinated {
+            val entry = graph.autoLog.listFor(owner).firstOrNull { it.id == id }
+            if (entry == null) {
+                Pair(false, false) // no es de la persona activa o ya no existe: nada que deshacer
+            } else {
+                val stillHere = graph.drafts.list().any { it.id == id && it.ownerKey == owner } // aun no salio
+                if (stillHere && !entry.synced) {
+                    graph.drafts.remove(id)
+                    graph.notifier.cancel(id)
+                    graph.autoLog.remove(id)
+                    Pair(true, false)
+                } else {
+                    Pair(false, true)
+                }
+            }
+        }
+        call.resolve(JSObject().put("undone", result.first).put("needsDelete", result.second))
+    }
+
+    @PluginMethod
+    fun dismissAutoSaved(call: PluginCall) {
+        val id = call.getString("id")?.lowercase() ?: return call.reject("Falta el id", "INVALID_ARGUMENT")
+        if (graph.autoLog.listFor(graph.prefs.activeOwner()).any { it.id == id }) graph.autoLog.remove(id)
         call.resolve()
     }
 
@@ -264,7 +402,11 @@ class ContigoNativePlugin : Plugin() {
         packageName
     }
 
-    private fun Draft.toJs(): JSObject = JSObject(toJson().toString())
+    /** Con `bankAutoOff` el borrador es de un banco con el guardado automatico APAGADO: el modo global de Ajustes tampoco lo guarda solo. */
+    private fun Draft.toJs(): JSObject {
+        val bank = graph.prefs.bankOfPackage(sourcePackage)
+        return JSObject(toJson().toString()).put("bankAutoOff", bank != null && !graph.prefs.autoEnabled(bank))
+    }
 
     private fun Intent.draftIdIfOpenAction(): String? =
         if (action == CaptureNotifier.ACTION_OPEN || action == CaptureNotifier.ACTION_CHANGE_CATEGORY) getStringExtra(CaptureNotifier.EXTRA_DRAFT_ID) else null
@@ -287,6 +429,7 @@ class ContigoNativePlugin : Plugin() {
         const val EVENT_DRAFT_OPEN = "draftOpen"
         const val REQUEST_POST_NOTIFICATIONS = 4101
         const val MAX_PACKAGES = 50
+        private const val MAX_CLP = 10_000_000_000L
         private val OWNER_KEY = Regex("[A-Za-z0-9:_-]{1,100}")
         const val PLAY_STORE = "com.android.vending"
         val PACKAGE_NAME = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
