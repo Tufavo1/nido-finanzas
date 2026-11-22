@@ -1986,3 +1986,36 @@ button.setup-item:focus-visible { outline: 3px solid var(--accent-ink); outline-
 .sheet .picker > .btn:not(.ghost):not(.danger) { font-weight: 700; box-shadow: 0 2px 10px color-mix(in srgb, var(--accent-ink) 30%, transparent); }
 .sheet .picker > .btn.ghost { color: var(--text); border-color: var(--field-line); }
 .sheet .chip { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+
+/* ---------- Movimientos detectados: grupos, un solo botón principal y salida secundaria ---------- */
+.mov-title { margin: var(--sp-4, 16px) 0 0; font-family: var(--font-display); font-size: 17px; color: var(--text); }
+.card.detected { gap: 8px; border-left: 4px solid var(--line); }
+.card.detected.kind-expense { border-left-color: var(--accent-ink); }
+.card.detected.kind-income { border-left-color: var(--accent); }
+.card.detected.kind-debt { border-left-color: var(--blue); }
+.card.detected .detected-actions { margin-top: 12px; gap: 16px; align-items: stretch; flex-wrap: wrap; }
+.card.detected .detected-actions > .btn:not(.ghost) { flex: 1 1 160px; min-height: 52px; }
+.card.detected .detected-actions > .btn.ghost { flex: none; min-height: 48px; }
+.card.detected .stack > .btn.ghost { min-height: 48px; width: 100%; justify-content: flex-start; text-align: left; }
+.card.detected .more { margin-top: 4px; }
+.card.detected .more > summary { min-height: 48px; display: flex; align-items: center; cursor: pointer; color: var(--accent-ink); font-weight: 600; }
+.card.detected .more > summary:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.card.detected .more .row { gap: 12px; flex-wrap: wrap; }
+
+/* Interruptores: toda la fila se toca, la explicación queda pegada a su etiqueta */
+.row.tap { min-height: 56px; cursor: pointer; }
+.row.tap .stack.tight { gap: 2px; }
+
+/* Elegir deuda: opciones tipo radio, fila entera tocable */
+.radio-list { display: flex; flex-direction: column; gap: 8px; }
+.radio-opt { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; text-align: left; border-radius: 14px; border: 1.5px solid var(--field-line); background: var(--surface); color: var(--text); font-weight: 600; }
+.radio-opt[aria-checked='true'] { border-color: var(--accent-ink); background: var(--surface-2); }
+.radio-dot { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--field-line); position: relative; }
+.radio-opt[aria-checked='true'] .radio-dot { border-color: var(--accent-ink); }
+.radio-opt[aria-checked='true'] .radio-dot::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--accent-ink); }
+.radio-opt:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
+
+/* Bordes de controles con 3:1 (WCAG 1.4.11): interruptor y botón secundario */
+.switch { border: 1.5px solid var(--field-line); }
+.switch[aria-checked='true'] { border-color: var(--accent-ink); }
+.btn.ghost { border-color: var(--field-line); }

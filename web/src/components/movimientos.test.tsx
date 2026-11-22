@@ -57,3 +57,45 @@ describe('Movimientos detectados', () => {
     expect(DEFAULT_CAPTURE_CONFIG.mode).toBeDefined()
   })
 })
+
+describe('UX: una acción principal por tarjeta, resto secundario', () => {
+  const buttonsOutsideMore = (html: string) => html.replace(/<details[\s\S]*?<\/details>/g, '').match(/<button[^>]*>/g) ?? []
+  const primaries = (btns: string[]) => btns.filter((b) => !/ghost|danger|switch/.test(b))
+  const cards = (html: string) => html.split('<section').slice(1).filter((c) => c.includes('card detected'))
+  it('cada tarjeta tiene a lo más 2 acciones visibles y exactamente 1 principal', () => {
+    const html = render([mk({ kind: 'EXPENSE', merchant: 'Almacen', id: 'e' }), mk({ kind: 'INCOME', id: 'i' }), mk({ id: 'p', account: 'CMR' })], { debts: [{ id: 'd1', name: 'CMR Premium' }], onPayDebt: async () => undefined })
+    const cs = cards(html)
+    expect(cs).toHaveLength(3)
+    for (const c of cs) {
+      const btns = buttonsOutsideMore(c)
+      expect(btns.length).toBeLessThanOrEqual(2)
+      expect(primaries(btns)).toHaveLength(1)
+    }
+  })
+  it('las opciones extra del gasto quedan en «Más opciones», cerrado por defecto', () => {
+    const html = render([mk({ kind: 'EXPENSE', merchant: 'Almacen' })])
+    expect(html).toContain('<details class="more">')
+    expect(html).not.toMatch(/<details[^>]*\sopen/)
+    expect(html).toContain('Más opciones')
+  })
+  it('con más de un tipo hay encabezados por grupo; con uno solo no', () => {
+    expect(render([mk({ kind: 'INCOME' }), mk({ id: 'z' })])).toMatch(/Ingresos[\s\S]*Pagos de tarjeta/)
+    expect(render([mk({ kind: 'INCOME' })])).not.toContain('mov-title')
+  })
+})
+
+describe('pago con varias deudas: opciones tipo radio', () => {
+  const html = render([mk({ account: 'CMR Mastercard Premium' })], { debts: [{ id: 'd1', name: 'Auto' }, { id: 'd2', name: 'Casa' }], onPayDebt: async () => undefined })
+  it('radiogroup con una sola opción marcada (la más probable) y un solo botón principal «Registrar pago»', () => {
+    expect(html).toContain('role="radiogroup"')
+    expect(html.match(/role="radio"/g)).toHaveLength(2)
+    expect(html.match(/aria-checked="true"/g)).toHaveLength(1)
+    expect(html.match(/tabindex="0"/g)).toHaveLength(1)
+    expect(html.match(/Registrar pago/g)).toHaveLength(1)
+    expect(html).toContain('No es de mis deudas')
+  })
+  it('elegir no registra: ningún guardado hasta tocar «Registrar pago»', () => {
+    // las opciones son role=radio, no botones de acción
+    expect(html.replace(/<button[^>]*role="radio"[\s\S]*?<\/button>/g, '').match(/<button[^>]*>/g)!.filter((b) => !/ghost|switch/.test(b))).toHaveLength(1)
+  })
+})
