@@ -37,6 +37,7 @@ data class Draft(
         .put("confidence", candidate.confidence.name)
         .put("installment", candidate.installment?.let { JSONObject().put("n", it.n).put("total", it.total) } ?: JSONObject.NULL)
         .put("fingerprint", candidate.fingerprint)
+        .put("account", candidate.account ?: JSONObject.NULL)
         .put("postedAtMillis", postedAtMillis)
         .put("createdAtMillis", createdAtMillis)
         .put("status", status.name)
@@ -57,6 +58,7 @@ data class Draft(
                 confidence = Confidence.valueOf(o.getString("confidence")),
                 installment = installment,
                 fingerprint = o.getString("fingerprint"),
+                account = if (o.isNull("account")) null else o.optString("account").ifBlank { null },
             )
             return Draft(
                 id = o.getString("id"),

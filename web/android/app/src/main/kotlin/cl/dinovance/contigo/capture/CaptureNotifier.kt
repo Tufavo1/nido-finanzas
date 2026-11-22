@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import cl.dinovance.contigo.MainActivity
 import cl.dinovance.contigo.R
 import cl.nido.parser.ClpAmount
+import cl.nido.parser.Kind
 
 /** Notificación propia de cada borrador, con las acciones Guardar, Cambiar categoría e Ignorar (RF-06). */
 class CaptureNotifier(private val context: Context, private val prefs: CapturePrefs) : DraftNotifier {
@@ -24,19 +25,28 @@ class CaptureNotifier(private val context: Context, private val prefs: CapturePr
         if (!canPost()) return
         ensureChannel()
         val amount = ClpAmount.format(draft.candidate.amountClp)
-        val base = draft.candidate.merchant?.let { "$amount en $it" } ?: amount
+        val kind = draft.candidate.kind
+        val base = when (kind) {
+            Kind.INCOME -> context.getString(R.string.capture_income_body, amount)
+            Kind.DEBT_PAYMENT -> context.getString(R.string.capture_debt_body, amount)
+            Kind.EXPENSE -> draft.candidate.merchant?.let { "$amount en $it" } ?: amount
+        }
         val body = if (draft.possibleDuplicate) base + context.getString(R.string.capture_possible_duplicate) else base
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_capture)
-            .setContentTitle(context.getString(R.string.capture_notification_title))
+            .setContentTitle(context.getString(when (kind) { Kind.INCOME -> R.string.capture_income_title; Kind.DEBT_PAYMENT -> R.string.capture_debt_title; Kind.EXPENSE -> R.string.capture_notification_title }))
             .setContentText(body)
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(openIntent(draft.id, ACTION_OPEN))
-            .addAction(0, context.getString(R.string.capture_action_save), receiverIntent(draft.id, ACTION_SAVE))
-            .addAction(0, context.getString(R.string.capture_action_category), openIntent(draft.id, ACTION_CHANGE_CATEGORY))
-            .addAction(0, context.getString(R.string.capture_action_ignore), receiverIntent(draft.id, ACTION_IGNORE))
+        if (kind == Kind.EXPENSE) {
+            builder.addAction(0, context.getString(R.string.capture_action_save), receiverIntent(draft.id, ACTION_SAVE))
+                .addAction(0, context.getString(R.string.capture_action_category), openIntent(draft.id, ACTION_CHANGE_CATEGORY))
+        } else {
+            builder.addAction(0, context.getString(R.string.capture_action_review), openIntent(draft.id, ACTION_OPEN))
+        }
+        builder.addAction(0, context.getString(R.string.capture_action_ignore), receiverIntent(draft.id, ACTION_IGNORE))
         if (prefs.hideOnLockScreen()) {
             builder.setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setPublicVersion(publicVersion())
         }

@@ -11,14 +11,15 @@ class CmrNoticeTest {
     private fun parse(t: String) = p.parseDetailed("cl.demo.cmr", null, t, 1_700_000_000_000)
 
     @Test
-    fun `el aviso de pago con CMR es un gasto de confianza alta`() {
+    fun `el aviso de pago a la tarjeta CMR es un pago de deuda, no un gasto`() {
         val r = parse("Pagaste \$100 a tu CMR Mastercard Premium. Revisa más detalles en tu app")
         assertNotNull(r.candidate, "rechazo=${r.rejection}")
         val c = r.candidate!!
         assertEquals(100L, c.amountClp)
-        assertEquals(Kind.EXPENSE, c.kind)
+        assertEquals(Kind.DEBT_PAYMENT, c.kind)
         assertEquals(Confidence.HIGH, c.confidence)
-        assertEquals("Compra con CMR", c.merchant)
+        assertEquals(null, c.merchant)
+        assertEquals("CMR Mastercard Premium", c.account)
     }
 
     @Test

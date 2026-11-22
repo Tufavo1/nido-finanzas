@@ -66,7 +66,7 @@ class ExpenseSyncer(
         val me = owner() ?: return SyncResult.NO_SESSION
         val p = profile()?.takeIf { it.ownerKey == me } ?: return SyncResult.NO_SESSION
         val base = apiBase()?.takeIf { it.startsWith("https://") } ?: return SyncResult.NO_SESSION
-        val todo = repository.list().filter { it.status == DraftStatus.CONFIRMED && it.ownerKey == me && !it.syncRejected }
+        val todo = repository.list().filter { it.status == DraftStatus.CONFIRMED && it.candidate.kind == cl.nido.parser.Kind.EXPENSE && it.ownerKey == me && !it.syncRejected }
             .mapNotNull { d -> rowOf(d, p)?.let { d to it } }
         val pendingNotify = log?.listFor(me)?.filter { it.synced && !it.notified && !it.rejected && clock() - it.at < NOTIFY_WINDOW_MILLIS }.orEmpty()
         if (todo.isEmpty() && pendingNotify.isEmpty()) return SyncResult.NOTHING_TO_SEND
@@ -158,6 +158,8 @@ class ExpenseSyncer(
 
     /** Fila de expenses; null si el borrador no se puede enviar solo (sin categoria o id raro): lo envia la app. */
     internal fun rowOf(d: Draft, p: AutoProfile): JSONObject? {
+        // Segunda barrera: solo los GASTOS se envian como fila de expenses; un ingreso o un pago de deuda jamas (R4).
+        if (d.candidate.kind != cl.nido.parser.Kind.EXPENSE) return null
         val category = d.categoryId ?: p.categoryFor(d.candidate.merchant) ?: return null
         val id = d.id.lowercase().takeIf { UUID.matches(it) } ?: return null
         val merchant = d.candidate.merchant?.trim().orEmpty()

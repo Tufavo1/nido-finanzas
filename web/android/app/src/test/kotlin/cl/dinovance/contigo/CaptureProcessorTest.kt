@@ -72,13 +72,12 @@ class CaptureProcessorTest {
     }
 
     @Test
-    fun `OTP, promociones, saldos y abonos no generan borrador`() {
+    fun `OTP, promociones y saldos no generan borrador`() {
         val p = processor()
         listOf(
             "Clave para compra de $35.000 en COMERCIO DEMO: 771204. No compartas este código.",
             "¡Oferta exclusiva! Ahorra $5.000 en tu próxima compra.",
             "Tu saldo disponible es de $210.000 al 14/11.",
-            "Abono de $350.000 en tu cuenta corriente demo.",
         ).forEach { assertEquals(Outcome.NOT_A_MOVEMENT, p.process(bank, null, it, now)) }
         assertTrue(repo.list().isEmpty())
         assertTrue(notifier.shown.isEmpty())
@@ -123,4 +122,29 @@ class CaptureProcessorTest {
         assertTrue(repo.list().isEmpty())
         assertEquals(null, storage.bytes)
     }
+
+    @Test
+    fun `ingresos y pagos a la tarjeta llegan a la bandeja como pendientes y nunca se guardan solos`() {
+        val p = processor()
+        assertEquals(Outcome.STORED, p.process(bank, null, "Recibiste \$10.000 Te transfirieron \$10.000 a tu Cuenta Banco Falabella 2236. !Ingresa a la App y revisa tus movimientos!", now))
+        now += 200_000
+        assertEquals(Outcome.STORED, p.process(bank, null, "Pagaste \$34.400 a tu CMR Mastercard Premium. Revisa más detalles en tu app", now))
+        val list = repo.list()
+        val income = list.single { it.candidate.kind == cl.nido.parser.Kind.INCOME }
+        val debt = list.single { it.candidate.kind == cl.nido.parser.Kind.DEBT_PAYMENT }
+        assertEquals("Cuenta Banco Falabella ·2236", income.account())
+        assertEquals("CMR Mastercard Premium", debt.account())
+        assertTrue(list.all { it.status == cl.dinovance.contigo.capture.DraftStatus.PENDING && !it.autoSaved && it.categoryId == null })
+        // la cuenta viaja al guardar y leer el borrador
+        assertEquals("CMR Mastercard Premium", cl.dinovance.contigo.capture.Draft.fromJson(debt.toJson()).candidate.account)
+    }
+
+    @Test
+    fun `un ingreso y un gasto del mismo monto no se confunden como duplicado`() {
+        val p = processor()
+        assertEquals(Outcome.STORED, p.process(bank, null, "Compraste \$1.000 en Kiosco Demo Santiago Chl Con tu Debito Banco Falabella", now))
+        assertEquals(Outcome.STORED, p.process(bank, null, "Recibiste \$1.000 Te transfirieron \$1.000 a tu Cuenta Banco Falabella 2236.", now + 1_000))
+        assertEquals(2, repo.list().size)
+    }
 }
+private fun cl.dinovance.contigo.capture.Draft.account() = candidate.account

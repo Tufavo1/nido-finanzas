@@ -17,6 +17,8 @@ import type { OfflineQueue } from './offlineQueue'
 import { unsentCount, unsentDrafts } from './draftFlags'
 import { enqueueWithNotice } from './queueNotice'
 import { deleteExpense, insertExpenseRow } from './saveExpense'
+import { debtPaymentRow, incomeRow, saveMovement } from './movements'
+import { insertDebtPaymentRow, insertIncomeRow } from './saveMovement'
 import { useAppResume } from './useAppResume'
 import { logError } from './safeLog'
 
@@ -125,12 +127,42 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
     [hh.household.id, hh.me.user_id, data, notify, queue, undo, load],
   )
 
+  /** «Sí, es un ingreso»: lo guarda directo; si falla lanza y el borrador queda. */
+  const saveIncome = useCallback(
+    async (d: NativeDraft) => {
+      await saveMovement(d, 'INCOME', {
+        insert: () => insertIncomeRow(incomeRow(hh.household.id, d)),
+        removeDraft: (id) => ContigoNative.removeDraft({ id }),
+        onRemoveError: (e) => logError(e, 'useDetected'),
+      })
+      notify(`Ingreso guardado\n**${money(d.amountClp)}** sumados a tu balance.`, 'success')
+      await data.refresh()
+      await load()
+    },
+    [hh.household.id, data, notify, load],
+  )
+
+  /** «Registrar pago»: abona a la deuda elegida; si falla lanza y el borrador queda. */
+  const saveDebtPayment = useCallback(
+    async (d: NativeDraft, debtId: string) => {
+      await saveMovement(d, 'DEBT_PAYMENT', {
+        insert: () => insertDebtPaymentRow(debtPaymentRow(hh.household.id, d, debtId, hh.me.user_id)),
+        removeDraft: (id) => ContigoNative.removeDraft({ id }),
+        onRemoveError: (e) => logError(e, 'useDetected'),
+      })
+      notify(`Pago registrado\nSe abonaron **${money(d.amountClp)}** a la deuda.`, 'success')
+      await data.refresh()
+      await load()
+    },
+    [hh.household.id, hh.me.user_id, data, notify, load],
+  )
+
   const ignore = useCallback(
     async (d: NativeDraft) => {
       try {
         await ContigoNative.removeDraft({ id: d.id })
         await load()
-        notify('Gasto descartado\nNo lo anotamos.', 'info')
+        notify('Descartado\nNo lo anotamos.', 'info')
       } catch (e) {
         logError(e, 'useDetected')
         notify('No se pudo descartar\nInténtalo de nuevo.', 'error')
@@ -197,5 +229,5 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
   const waiting = (drafts ?? []).filter((d) => stuck.has(d.id) || !autoIds.has(d.id))
   const localUnsent = unsentDrafts(waiting)
   const unsent = { count: unsentCount(pending, localUnsent.length) }
-  return { drafts: drafts === null ? null : waiting, unsent, appNames, autoSaved, undoAuto, kept, keepBoth, sendNow, failed, openId, clearOpen, save, ignore, reload: load, ctx }
+  return { drafts: drafts === null ? null : waiting, unsent, appNames, autoSaved, undoAuto, kept, keepBoth, sendNow, failed, openId, clearOpen, save, saveIncome, saveDebtPayment, ignore, reload: load, ctx }
 }

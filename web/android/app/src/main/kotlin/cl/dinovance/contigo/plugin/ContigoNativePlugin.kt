@@ -21,6 +21,7 @@ import androidx.credentials.exceptions.GetCredentialException
 import java.io.File
 import cl.dinovance.contigo.auth.GoogleSignInLogic
 import cl.dinovance.contigo.capture.BankSetup
+import cl.dinovance.contigo.sync.ApiBasePolicy
 import cl.dinovance.contigo.update.CheckResult
 import cl.dinovance.contigo.update.UpdateEvents
 import cl.dinovance.contigo.update.HttpUrlGet
@@ -339,8 +340,11 @@ class ContigoNativePlugin : Plugin() {
     @PluginMethod
     fun configureSync(call: PluginCall) {
         val base = call.getString("apiBase")?.trimEnd('/')
-        if (base != null && (!base.startsWith("https://") || base.length > 200)) return call.reject("Dirección no válida", "INVALID_ARGUMENT")
-        graph.prefs.setApiBase(base)
+        // S-18: fijada la primera direccion valida, el JS solo puede repetir el mismo origen
+        when (val r = ApiBasePolicy.decide(graph.prefs.apiBase(), base)) {
+            is ApiBasePolicy.Decision.Reject -> return call.reject(if (r.code == "API_BASE_LOCKED") "La dirección del servidor ya está fijada" else "Dirección no válida", r.code)
+            is ApiBasePolicy.Decision.Accept -> graph.prefs.setApiBase(r.base)
+        }
         call.resolve()
     }
 

@@ -84,18 +84,17 @@ class CaptureProcessor(
         val candidate = parsed.candidate
         val bankId = auto?.bankOfPackage(packageName)
         val raw = listOfNotNull(title?.takeIf { it.isNotBlank() }, text).joinToString(" | ")
-        if (candidate == null || candidate.kind != Kind.EXPENSE) {
-            val reason = when {
-                candidate != null && candidate.kind == Kind.INCOME -> DiagReason.INCOME
-                parsed.rejection == ParseRejection.DISCARDED -> DiagReason.NOT_AN_EXPENSE
-                else -> DiagReason.NO_AMOUNT
-            }
+        if (candidate == null) {
+            val reason = if (parsed.rejection == ParseRejection.DISCARDED) DiagReason.NOT_AN_EXPENSE else DiagReason.NO_AMOUNT
             diag(reason, bankId, raw)
             return Outcome.NOT_A_MOVEMENT
         }
+        // Ingresos («Recibiste») y pagos a tu tarjeta («Pagaste ... a tu CMR») tambien llegan a la bandeja, pero NUNCA se guardan solos:
+        // la persona decide si es un ingreso o a que deuda corresponde el pago.
+        val isExpense = candidate.kind == Kind.EXPENSE
         health.recordEvent(now)
         recent.removeAll { now - it.at >= DEDUPE_WINDOW_MILLIS }
-        val key = dedupeKey(candidate.amountClp, candidate.merchant)
+        val key = dedupeKey(candidate.kind, candidate.amountClp, candidate.merchant)
         // Mismo aviso repetido: misma huella o mismo monto y comercio a menos de 45 s de lo ULTIMO GUARDADO (el sistema reenvia
         // el aviso, p. ej. al cambiar de minuto). Se mide en segundos, no por el minuto de la huella (R2-01); no renueva la ventana.
         if (recent.any { (it.fingerprint == candidate.fingerprint || it.key == key) && now - it.at < SAME_NOTICE_WINDOW_MILLIS }) {
@@ -104,7 +103,7 @@ class CaptureProcessor(
         }
         // Un cargo sin comercio que se actualiza con mas detalle completa SU borrador, una sola vez (H-14, R2-02).
         // Con otro comercio despues ya no se fusiona: son compras distintas.
-        val refined = recent.firstOrNull { it.blankMerchant && it.amount == candidate.amountClp && candidate.merchant != null && now - it.at < REFINE_WINDOW_MILLIS }
+        val refined = recent.firstOrNull { it.blankMerchant && it.amount == candidate.amountClp && candidate.merchant != null && isExpense && now - it.at < REFINE_WINDOW_MILLIS }
         if (refined != null) {
             val updated = repository.list().firstOrNull { it.id == refined.draftId }?.copy(candidate = candidate)
             if (updated != null && repository.update(refined.draftId) { updated }) {
@@ -117,7 +116,7 @@ class CaptureProcessor(
         val maybe = recent.any { it.key == key }
         // Registro automatico: banco asociado y activado, dentro del tope, confianza ALTA, gasto, categoria aprendida, dueno con
         // perfil vigente y sin duda de duplicado. Cualquier otra cosa pide confirmacion como siempre.
-        val autoCategory = if (orphan || maybe) null else autoCategory(packageName, candidate, owner)
+        val autoCategory = if (orphan || maybe || !isExpense) null else autoCategory(packageName, candidate, owner)
         val draft = Draft(
             newId(), candidate, postedAtMillis, now, if (autoCategory != null) DraftStatus.CONFIRMED else DraftStatus.PENDING,
             packageName, owner, maybe, autoCategory, autoCategory != null,
@@ -128,7 +127,7 @@ class CaptureProcessor(
             notifier.queueFull()
             return Outcome.QUEUE_FULL
         }
-        recent.add(Stored(candidate.fingerprint, key, candidate.amountClp, candidate.merchant.isNullOrBlank(), draft.id, now))
+        recent.add(Stored(candidate.fingerprint, key, candidate.amountClp, isExpense && candidate.merchant.isNullOrBlank(), draft.id, now))
         while (recent.size > MAX_RECENT) recent.removeAt(0)
         if (orphan) {
             health.recordFailure("NoSession", now)
@@ -136,7 +135,7 @@ class CaptureProcessor(
             return Outcome.NO_SESSION
         }
         if (parsed.ambiguousAmount) diag(DiagReason.AMBIGUOUS_AMOUNT, bankId, raw)
-        if (draft.status == DraftStatus.PENDING) whyNotAuto(packageName, candidate, owner, maybe, bankId, raw)
+        if (draft.status == DraftStatus.PENDING && isExpense) whyNotAuto(packageName, candidate, owner, maybe, bankId, raw)
         if (!notificationsAllowed()) diag(DiagReason.NOTIFICATIONS_OFF, bankId, raw)
         if (draft.autoSaved) {
             val merchant = candidate.merchant?.trim().orEmpty()
@@ -190,7 +189,7 @@ class CaptureProcessor(
         return repository.add(draft)
     }
 
-    private fun dedupeKey(amountClp: Long, merchant: String?) = "$amountClp|${merchant?.lowercase().orEmpty()}"
+    private fun dedupeKey(kind: Kind, amountClp: Long, merchant: String?) = "${kind.name}|$amountClp|${merchant?.lowercase().orEmpty()}"
 
     companion object {
         const val DEDUPE_WINDOW_MILLIS = 2L * 60 * 1000

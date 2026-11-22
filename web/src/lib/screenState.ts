@@ -92,7 +92,7 @@ const EMPTY: Record<EmptySection, EmptySpec> = {
   },
   drafts: {
     title: 'No hay gastos por confirmar',
-    hint: 'Cuando Contigo detecte un gasto en tus avisos del banco, aparecerá aquí para que lo confirmes.',
+    hint: 'Cuando Contigo detecte un movimiento en tus avisos del banco, aparecerá aquí para que lo confirmes.',
     cta: { label: 'Revisar los avisos', target: 'settings' },
   },
 }

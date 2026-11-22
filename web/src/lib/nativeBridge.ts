@@ -41,6 +41,8 @@ export interface NativeDraft extends ParsedCandidate {
   bankAutoOff?: boolean
   /** La base rechazó este gasto al enviarlo en segundo plano: no se reenvía solo */
   syncRejected?: boolean
+  /** Cuenta o tarjeta del aviso («Débito Banco Falabella»); texto corto y saneado, solo para mostrar y emparejar */
+  account?: string
 }
 
 /** Cierre inesperado sin datos personales (clase de la excepción y marcos de pila). */
@@ -284,10 +286,19 @@ export const ContigoNative: ContigoNativePlugin = new Proxy(rawNative, {
 /** true dentro de la app Android o iOS; false en el navegador (PWA). */
 export const isNativeApp = (): boolean => Capacitor.isNativePlatform()
 
-const KINDS: readonly CandidateKind[] = ['EXPENSE', 'INCOME']
+const KINDS: readonly CandidateKind[] = ['EXPENSE', 'INCOME', 'DEBT_PAYMENT']
 const CONFIDENCES: readonly CandidateConfidence[] = ['HIGH', 'MEDIUM', 'LOW']
 const MAX_AMOUNT = 10_000_000_000
 const MAX_MERCHANT = 60
+const MAX_ACCOUNT = 60
+
+/** Texto de cuenta que llega del teléfono: sin caracteres de control ni marcas, espacios simples, largo acotado. null si no sirve. */
+export function sanitizeAccount(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  // eslint-disable-next-line no-control-regex
+  const t = v.replace(/[\u0000-\u001f\u007f-\u009f\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff\ufff9-\ufffb<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_ACCOUNT).trim()
+  return t === '' ? null : t
+}
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0
@@ -319,6 +330,7 @@ export function parseNativeDraft(raw: unknown): NativeDraft | null {
     postedAtMillis,
     createdAtMillis,
     status,
+    ...(sanitizeAccount(raw['account']) ? { account: sanitizeAccount(raw['account']) as string } : {}),
     ...(raw['possibleDuplicate'] === true ? { possibleDuplicate: true } : {}),
     ...(raw['bankAutoOff'] === true ? { bankAutoOff: true } : {}),
     ...(raw['syncRejected'] === true ? { syncRejected: true } : {}),
@@ -332,7 +344,7 @@ export const ownerKeyOf = (userId: string, householdId: string): string => `${us
 /** Gastos que la persona guardó en la notificación y faltan por enviar (el plugin ya filtra por dueño). */
 export async function pendingToSendCount(plugin: Pick<ContigoNativePlugin, 'listDrafts'>): Promise<number> {
   const drafts = await readDrafts(plugin)
-  return drafts.filter((d) => d.status === 'CONFIRMED').length
+  return drafts.filter((d) => d.status === 'CONFIRMED' && d.kind === 'EXPENSE').length
 }
 
 export interface NotifyingApp {

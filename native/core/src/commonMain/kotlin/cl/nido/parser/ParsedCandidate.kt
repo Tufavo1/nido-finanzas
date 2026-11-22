@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Dinovance
 package cl.nido.parser
 
-enum class Kind { EXPENSE, INCOME }
+/** DEBT_PAYMENT: «Pagaste $X a tu tarjeta»: es plata que se mueve a una deuda, no un gasto nuevo. */
+enum class Kind { EXPENSE, INCOME, DEBT_PAYMENT }
 
 enum class Confidence { HIGH, MEDIUM, LOW }
 
@@ -18,4 +19,6 @@ data class ParsedCandidate(
     val confidence: Confidence,
     val installment: Installment?,
     val fingerprint: String,
+    /** Medio de pago o cuenta que nombra el aviso («Débito Banco Falabella», «CMR Mastercard Premium ·5766»). Solo los ultimos 4 digitos. */
+    val account: String? = null,
 )

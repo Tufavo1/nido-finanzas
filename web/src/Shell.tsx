@@ -142,7 +142,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
     else setToast(`Enlace no válido\n${r.reason}`, 'warn')
   })
   const draftOpts = useMemo(() => ({ paidBy: hh.me.user_id, shared: capture.shared, categories: data.categories, history: detected.ctx.history }), [hh.me.user_id, capture.shared, data.categories, detected.ctx.history])
-  const reviewDraft = detected.drafts?.find((d) => d.id === (reviewId ?? detected.openId))
+  const reviewDraft = detected.drafts?.find((d) => d.kind === 'EXPENSE' && d.id === (reviewId ?? detected.openId))
   const review = useMemo(() => {
     if (!data.ready) return null
     if (reviewDraft) return { key: reviewDraft.id, nativeId: reviewDraft.id, expense: candidateToDraft(reviewDraft, draftOpts) }
@@ -287,6 +287,10 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
         autoSaved={detected.autoSaved}
         onUndoAuto={(id) => void detected.undoAuto(id)}
         onKeepBoth={detected.keepBoth}
+        debts={data.debts.filter((x) => !x.archived)}
+        onSaveIncome={detected.saveIncome}
+        onPayDebt={detected.saveDebtPayment}
+        onGoMoney={() => setTab('money')}
       />
     )
   } else if (tab === 'home') {
@@ -372,7 +376,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
             {t.key === 'home' && (detected.drafts?.length ?? 0) > 0 && (
               <span className="badge">
                 {detected.drafts?.length}
-                <span className="sr-only"> gastos detectados</span>
+                <span className="sr-only"> movimientos detectados</span>
               </span>
             )}
           </button>

@@ -78,7 +78,7 @@ class AutoSaveTest {
         processor().process(bank, null, text("$7.000"), now)
         assertTrue(repo.list().none { it.autoSaved })
         assertEquals(0, synced)
-        assertEquals(Outcome.NOT_A_MOVEMENT, processor().process(bank, null, "Abono recibido por $20.000 de CAFE DEMO NORTE", now))
+        assertEquals(Outcome.STORED, processor().process(bank, null, "Abono recibido por $20.000 de CAFE DEMO NORTE", now))
     }
 
     @Test
