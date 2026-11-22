@@ -19,6 +19,14 @@ internal object TextNormalizer {
         return plain.lowercase().collapseSpaces()
     }
 
+    /** Minusculas y sin tildes, caracter por caracter (misma longitud): sirve para ubicar posiciones en el texto original. */
+    fun fold(text: String): String = buildString(text.length) {
+        for (c in text) {
+            val i = ACCENTED.indexOf(c)
+            append((if (i >= 0) PLAIN[i] else c).lowercaseChar())
+        }
+    }
+
     /** Minusculas y espacios simples, conservando tildes y letras: base de la huella. */
     fun forFingerprint(text: String): String = text.lowercase().collapseSpaces()
 

@@ -15,6 +15,8 @@ class DraftActionReceiver : BroadcastReceiver() {
         val graph = CaptureGraph.get(context)
         when (intent.action) {
             CaptureNotifier.ACTION_SAVE -> {
+                // Solo los gastos se guardan desde la notificacion; ingresos y pagos de deuda se deciden dentro de la app.
+                if (graph.drafts.list().firstOrNull { it.id == id }?.candidate?.kind != cl.nido.parser.Kind.EXPENSE) return
                 graph.drafts.setStatus(id, DraftStatus.CONFIRMED)
                 ReminderScheduler.schedule(context, ReminderPolicy.FIRST_REMINDER_MILLIS)
             }

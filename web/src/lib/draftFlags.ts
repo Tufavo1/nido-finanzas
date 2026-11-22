@@ -16,7 +16,7 @@ const key = (d: NativeDraft): string => `${d.amountClp}|${(d.merchant ?? '').tri
 export function duplicateMarks(drafts: FlaggedDraft[]): Map<string, string> {
   const marks = new Map<string, string>()
   const first = new Map<string, string>()
-  for (const d of [...drafts].sort((a, b) => a.createdAtMillis - b.createdAtMillis)) {
+  for (const d of [...drafts].filter((x) => x.kind === 'EXPENSE').sort((a, b) => a.createdAtMillis - b.createdAtMillis)) {
     const k = key(d)
     const earlier = first.get(k)
     if (earlier) marks.set(d.id, earlier)
@@ -27,7 +27,7 @@ export function duplicateMarks(drafts: FlaggedDraft[]): Map<string, string> {
 }
 
 /** Gastos que la persona confirmó en la notificación y que todavía no llegaron al servidor */
-export const unsentDrafts = (drafts: NativeDraft[]): NativeDraft[] => drafts.filter((d) => d.status === 'CONFIRMED')
+export const unsentDrafts = (drafts: NativeDraft[]): NativeDraft[] => drafts.filter((d) => d.status === 'CONFIRMED' && d.kind === 'EXPENSE')
 
 export const unsentMessage = (n: number): string => `Tienes ${n} ${n === 1 ? 'gasto' : 'gastos'} por enviar`
 

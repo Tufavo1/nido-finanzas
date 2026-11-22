@@ -18,6 +18,7 @@ internal object MerchantExtractor {
             "\\s+a\\s+las\\b",
             "\\s+desde\\b",
             "\\s+terminada\\b",
+            "\\s+en\\s+\\d{1,3}\\s+cuotas?\\b",
             "\\s+por\\b",
             "\\s+\\d{1,2}[/-]\\d{1,2}",
             "[.,;:](?:\\s|$)",
@@ -29,7 +30,16 @@ internal object MerchantExtractor {
     // «Pagaste $100 a tu CMR Mastercard Premium»: no hay comercio, el aviso solo nombra la tarjeta. Para CMR se usa un nombre fijo
     // y estable (así la categoría se aprende una vez); con otras tarjetas no se inventa nada.
     // Los avisos de CMR cierran con «Ciudad Chl» (Santiago Chl): se quita para que el comercio sea estable. Solo si «Chl» es la ultima palabra.
-    private val CITY_COUNTRY = Regex("\\s+\\S+\\s+chl$", RegexOption.IGNORE_CASE)
+    private val COMMUNES = listOf(
+        "santiago", "las condes", "providencia", "nunoa", "la florida", "maipu", "puente alto", "san bernardo", "vitacura", "lo barnechea",
+        "penalolen", "la reina", "macul", "san miguel", "estacion central", "quilicura", "huechuraba", "recoleta", "independencia", "conchali",
+        "renca", "cerro navia", "pudahuel", "lo prado", "quinta normal", "cerrillos", "lampa", "colina", "pedro aguirre cerda", "san joaquin",
+        "la cisterna", "el bosque", "la granja", "la pintana", "san ramon", "lo espejo", "padre hurtado", "penaflor", "talagante", "buin",
+        "valparaiso", "vina del mar", "concon", "quilpue", "villa alemana", "concepcion", "talcahuano", "san pedro de la paz", "hualpen",
+        "temuco", "antofagasta", "iquique", "arica", "la serena", "coquimbo", "rancagua", "talca", "chillan", "los angeles", "osorno",
+        "puerto montt", "valdivia", "punta arenas", "copiapo", "calama", "curico", "linares", "quillota", "melipilla", "san antonio",
+    ).sortedByDescending { it.length }
+    private val CITY_COUNTRY = Regex("\\s+(?:${COMMUNES.joinToString("|")}|\\S+)\\s+chl$")
     private val CMR_CARD = Regex("^(?:tu|su)\\s+cmr\\b", RegexOption.IGNORE_CASE)
     const val CMR_MERCHANT = "Compra con CMR"
 
@@ -49,9 +59,14 @@ internal object MerchantExtractor {
 
     private fun clean(raw: String): String {
         val name0 = UnsafeChars.strip(raw.map { if (it == '\t' || it == '\r' || it == '\n' || it.category == CharCategory.SPACE_SEPARATOR) ' ' else it }.joinToString("")).replace(Regex("\\s+"), " ").trim().trimEnd('.', ',', ';', ':')
-        val name = CITY_COUNTRY.replace(name0, "").ifEmpty { name0 }
+        val name = stripCity(name0)
         val readable = if (isAllCaps(name)) toTitleCase(name) else name
         return readable.take(MAX_LENGTH)
+    }
+
+    private fun stripCity(name: String): String {
+        val m = CITY_COUNTRY.find(TextNormalizer.fold(name)) ?: return name
+        return name.substring(0, m.range.first).trim().ifEmpty { name }
     }
 
     private fun isAllCaps(s: String) = s.any { it.isLetter() } && s == s.uppercase()

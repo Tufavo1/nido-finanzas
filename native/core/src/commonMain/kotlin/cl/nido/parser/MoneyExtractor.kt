@@ -20,11 +20,13 @@ internal object MoneyExtractor {
         Regex("\\$\\s*$DIGITS"),
         Regex("\\bCLP\\s*$DIGITS", RegexOption.IGNORE_CASE),
         Regex("\\b$DIGITS\\s*pesos\\b", RegexOption.IGNORE_CASE),
+        Regex("\\b$DIGITS\\s*CLP\\b", RegexOption.IGNORE_CASE),
     )
 
     /** Todos los montos validos (> 0 y bajo el limite), en orden de aparicion. */
     fun findAll(text: String): List<MoneyToken> =
         PATTERNS.flatMap { it.findAll(text).mapNotNull { m -> toToken(m, text) } }.sortedBy { it.start }
+            .fold(ArrayList<MoneyToken>()) { acc, t -> if (acc.isNotEmpty() && t.start < acc.last().end) acc else acc.apply { add(t) } } // «$6.778 CLP»: un solo monto
 
     private fun toToken(match: MatchResult, text: String): MoneyToken? {
         if (COMMA_THOUSANDS.containsMatchIn(text.substring(match.groups[1]!!.range.last + 1))) return null

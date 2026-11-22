@@ -28,7 +28,7 @@ class NotificationParser(private val allowedPackages: Set<String>) {
         val installmentInfo = InstallmentExtractor.find(body)
         val charged = installmentInfo?.let { info -> tokens.firstOrNull { it.start >= info.markerEnd } } ?: first
         val kind = MovementClassifier.classify(body)
-        val merchant = if (kind.type == Kind.INCOME || kind.isWithdrawal) null else
+        val merchant = if (kind.type != Kind.EXPENSE || kind.isWithdrawal) null else
             MerchantExtractor.find(body.substring(0, first.start), body.substring(first.end), kind.isTransfer)
         return ParsedCandidate(
             amountClp = charged.amountClp,
@@ -37,11 +37,12 @@ class NotificationParser(private val allowedPackages: Set<String>) {
             confidence = confidenceOf(kind, merchant),
             installment = installmentInfo?.installment.takeIf { kind.type == Kind.EXPENSE },
             fingerprint = Fingerprint.of(packageName, body, charged.amountClp, postedAtMillis),
+            account = AccountExtractor.find(body),
         )
     }
 
     private fun confidenceOf(kind: Movement, merchant: String?): Confidence = when {
-        kind.type == Kind.INCOME -> Confidence.HIGH
+        kind.type != Kind.EXPENSE -> Confidence.HIGH
         kind.isWithdrawal -> Confidence.LOW
         merchant == null -> Confidence.MEDIUM
         else -> Confidence.HIGH

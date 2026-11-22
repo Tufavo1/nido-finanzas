@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Dinovance
 import { learnedCategory, suggestCategory } from './categorize'
 
-export type CandidateKind = 'EXPENSE' | 'INCOME'
+/** EXPENSE: compra. INCOME: plata que entró. DEBT_PAYMENT: pago a tu propia tarjeta o crédito (no es gasto). */
+export type CandidateKind = 'EXPENSE' | 'INCOME' | 'DEBT_PAYMENT'
 export type CandidateConfidence = 'HIGH' | 'MEDIUM' | 'LOW'
 
 /** Lo que entrega el plugin nativo (ParsedCandidate de Kotlin + fecha del aviso). Nunca incluye el texto bruto. */
@@ -39,7 +40,7 @@ export interface DraftOptions {
 /** La base cuenta los días en America/Santiago: la fecha del gasto sale de esa zona, no de la del teléfono (H-13). */
 const SANTIAGO_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit' })
 
-function localDate(millis: number): string {
+export function localDate(millis: number): string {
   return SANTIAGO_DAY.format(new Date(millis))
 }
 

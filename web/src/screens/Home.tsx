@@ -187,9 +187,9 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
       </div>
 
       {detected > 0 && onInbox && (
-        <section className="card calm" aria-label="Gastos detectados">
+        <section className="card calm" aria-label="Movimientos detectados">
           <span>
-            Detectamos <strong>{detected}</strong> {detected === 1 ? 'gasto' : 'gastos'} en tus avisos del banco.
+            Detectamos <strong>{detected}</strong> {detected === 1 ? 'movimiento' : 'movimientos'} en tus avisos del banco.
           </span>
           <button type="button" className="btn small" onClick={onInbox}>
             Revisar

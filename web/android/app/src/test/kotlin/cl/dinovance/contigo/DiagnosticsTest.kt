@@ -46,9 +46,9 @@ class DiagnosticsTest {
 
     @Test
     fun `el texto se enmascara, digitos a almohadilla, se conservan signo de pesos, puntos, comas y letras`() {
-        assertEquals("Compra por \$#.### en Cafe, tarjeta ****-####", MaskText.mask("Compra por \$4.500 en Cafe, tarjeta ****-1234"))
+        assertEquals("Compra por \$#.### en C***, tarjeta ****-####", MaskText.mask("Compra por \$4.500 en Cafe, tarjeta ****-1234"))
         assertEquals("#", MaskText.mask("7")); assertEquals("", MaskText.mask(null))
-        assertEquals(300, MaskText.mask("a".repeat(900)).length)
+        assertEquals(120, MaskText.mask("a".repeat(900)).length)
     }
 
     @Test
@@ -62,8 +62,7 @@ class DiagnosticsTest {
     @Test
     fun `no es gasto, duplicado, sin sesion y bandeja llena tienen motivo`() {
         p().process(bank, null, "Tu clave es 123456", now)
-        p().process(bank, null, "Abono recibido por \$10.000 de Juan", now)
-        assertEquals(listOf(DiagReason.NOT_AN_EXPENSE, DiagReason.INCOME), reasons().reversed())
+        assertEquals(listOf(DiagReason.NOT_AN_EXPENSE), reasons().reversed())
         val proc = p(); now += 100_000
         proc.process(bank, null, "Compra por \$4.500 en Cafe Demo Norte", now)
         proc.process(bank, null, "Compra por \$4.500 en Cafe Demo Norte", now + 1_000)

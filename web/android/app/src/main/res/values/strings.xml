@@ -10,6 +10,11 @@
     <string name="capture_channel_description">Avisa cuando Contigo detecta un gasto en las notificaciones de tu banco.</string>
     <string name="capture_notification_title">Gasto detectado</string>
     <string name="capture_notification_locked">Desbloquea el teléfono para verlo</string>
+    <string name="capture_income_title">Ingreso detectado</string>
+    <string name="capture_income_body">Entraron %1$s · ¿es un ingreso tuyo?</string>
+    <string name="capture_debt_title">Pago de deuda detectado</string>
+    <string name="capture_debt_body">Pagaste %1$s a tu tarjeta · ¿a qué deuda va?</string>
+    <string name="capture_action_review">Revisar</string>
     <string name="capture_action_save">Guardar</string>
     <string name="capture_action_category">Cambiar categoría</string>
     <string name="capture_action_ignore">Ignorar</string>

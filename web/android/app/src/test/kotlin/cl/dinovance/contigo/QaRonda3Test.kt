@@ -101,7 +101,7 @@ class QaRonda3Test {
         val list = repo.list()
         assertTrue(list.single { it.candidate.amountClp == 50_000L }.autoSaved)
         assertFalse(list.single { it.candidate.amountClp == 50_001L }.autoSaved)
-        assertTrue(list.none { it.candidate.kind == Kind.INCOME })
+        assertTrue(list.filter { it.candidate.kind == Kind.INCOME }.none { it.autoSaved || it.status == DraftStatus.CONFIRMED })
     }
 
     @Test
