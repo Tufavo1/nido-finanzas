@@ -21,6 +21,7 @@ class BankDetectionTest {
             "BancoEstado" to "banco-estado", "Banco Estado" to "banco-estado", "banco  estado app" to "banco-estado",
             "CuentaRUT" to "banco-estado", "Cuenta RUT" to "banco-estado", "BancoEstado Chile" to "banco-estado",
             "Banco Falabella" to "banco-falabella", "BANCO FALABELLA" to "banco-falabella", "Banco Falabella Chile" to "banco-falabella",
+            "CMR Falabella" to "banco-falabella", "CMR" to "banco-falabella", "Mi CMR" to "banco-falabella", "CMR Falabella Chile" to "banco-falabella",
             "Banco de Chile" to "banco-chile", "Banco Chile" to "banco-chile", "Mi Banco" to "banco-chile", "Mi Pasaporte" to "banco-chile", "Mi Pasaporte Banco de Chile" to "banco-chile",
             "  Banco de Chilé  " to "banco-chile",
         )
@@ -31,7 +32,7 @@ class BankDetectionTest {
     fun `falsos positivos conocidos no se asocian`() {
         listOf(
             "Santander Trade", "Santander Peru", "Santander Mexico", "Santander Brasil", "Santander Consumer", "Santander Empresas", "Santander Select",
-            "Banco Falabella Peru", "Banco Falabella Colombia", "Falabella", "CMR Falabella", "Banco de Chile Empresas",
+            "Banco Falabella Peru", "Banco Falabella Colombia", "Falabella", "CMR Puntos", "CMR Peru", "CMR Colombia", "Banco de Chile Empresas",
             "BancoEstado Empresas", "Banco Estado Peru", "Banco de Chile Peru", "Banco Chile Mi Pasaporte Pro", "Banco", "Estado", "Chile", "Mi", "",
             "Santanderina", "Banco Santander Argentina", "Mibanco Peru", "Banco de Chile Mexico",
         ).forEach { assertNull(it, BankMatcher.bankOf(it)) }

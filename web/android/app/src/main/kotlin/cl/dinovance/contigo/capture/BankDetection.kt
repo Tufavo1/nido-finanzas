@@ -23,7 +23,8 @@ object BankMatcher {
     private val RULES = listOf(
         Rule("santander", setOf("santander", "bancosantander"), setOf("chile", "mi", "app", "movil")),
         Rule("banco-estado", setOf("bancoestado", "cuentarut"), setOf("chile", "mi", "app", "movil")),
-        Rule("banco-falabella", setOf("bancofalabella"), setOf("chile", "app", "movil")),
+        // La tarjeta CMR tiene su propia app («CMR Falabella»); sus avisos son del mismo banco. «CMR Puntos» y otros países quedan fuera.
+        Rule("banco-falabella", setOf("bancofalabella", "cmr", "cmrfalabella", "micmr"), setOf("chile", "app", "movil")),
         // «chile» NO es palabra suelta aqui: forma parte del nombre («Banco de Chile»).
         Rule("banco-chile", setOf("bancodechile", "bancochile", "mibanco", "mipasaporte", "mipasaportebancodechile"), setOf("app", "movil")),
     )
