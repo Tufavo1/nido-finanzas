@@ -117,6 +117,15 @@ export interface ContigoNativePlugin {
   undoAutoSaved(options: { id: string }): Promise<{ undone: boolean; needsDelete: boolean }>
   dismissAutoSaved(options: { id: string }): Promise<void>
 
+  // ---- Entrar con Google (Credential Manager; Google bloquea OAuth web dentro de la WebView) ----
+  /** true si este teléfono puede mostrar el selector de cuentas de Google */
+  isGoogleSignInSupported(): Promise<{ supported: boolean }>
+  /**
+   * `nonce` en claro (16 a 128 caracteres A-Za-z0-9_-); el plugin envía su SHA-256 hex al selector. `serverClientId` es el ID de
+   * cliente WEB. Rechaza con code: CANCELLED | NO_ACCOUNTS | NETWORK | INVALID_NONCE | UNSUPPORTED | FAILED.
+   */
+  googleSignIn(options: { nonce: string; serverClientId: string }): Promise<{ idToken: string }>
+
   peekCrashReports(): Promise<{ reports: unknown[] }>
   clearCrashReports(): Promise<void>
 
