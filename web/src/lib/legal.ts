@@ -32,7 +32,7 @@ export const PRIVACY: LegalDoc = {
         'Tu correo electrónico y tu contraseña. La contraseña se guarda protegida, así que nosotros no podemos verla.',
         'Si entras con Google, recibimos tu nombre, tu correo y tu foto de perfil de esa cuenta. Los usamos solo para crear tu cuenta o dejarte entrar. No tenemos acceso a tu Gmail, tus contactos ni tu Drive.',
         'Tu nombre dentro del hogar y el color que eliges.',
-        'Lo que anotas en la app: gastos, categorías, metas, aportes, deudas, pagos, gastos fijos, sueldo, ingresos extra y tu perfil financiero.',
+        'Lo que anotas en la app: gastos (y si los pagaste con débito o con tarjeta de crédito), categorías, metas, aportes, deudas (y el saldo de tu tarjeta según tu banco, si lo escribes), pagos, gastos fijos, sueldo, ingresos extra y tu perfil financiero.',
         'Si activas los avisos en el celular, un identificador de tu dispositivo para poder enviártelos.',
         'La fecha en que aceptaste estos textos.',
       ],
