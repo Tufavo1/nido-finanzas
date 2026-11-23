@@ -33,3 +33,8 @@ web/android/app/google-services.json
 /docs/mobile/seguridad/
 /docs/mobile/auditoria.md
 /docs/mobile/qa-*.md
+
+# Claves y configuracion local de Firebase / herramientas: nunca al repositorio publico, esten en la ruta que esten
+google-services.json
+GoogleService-Info.plist
+.claude/
