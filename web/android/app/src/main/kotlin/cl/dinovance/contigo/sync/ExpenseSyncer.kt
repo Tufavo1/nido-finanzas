@@ -9,6 +9,7 @@ import cl.dinovance.contigo.capture.DraftRepository
 import cl.dinovance.contigo.capture.DraftStatus
 import cl.dinovance.contigo.capture.ReminderPolicy
 import cl.nido.parser.Kind
+import cl.nido.parser.PaymentMedium
 import org.json.JSONObject
 import java.io.IOException
 import java.time.Instant
@@ -188,10 +189,13 @@ class ExpenseSyncer(
         val merchant = d.candidate.merchant?.trim().orEmpty()
         val inst = d.candidate.installment
         val note = safeTake(if (inst == null) merchant else if (merchant.isEmpty()) "cuota ${inst.n}/${inst.total}" else "$merchant (cuota ${inst.n}/${inst.total})", MAX_NOTE)
-        return JSONObject()
+        val row = JSONObject()
             .put("id", id).put("household_id", p.householdId).put("category_id", category)
             .put("amount", d.candidate.amountClp).put("paid_by", if (p.shared) p.paidBy else p.userId).put("shared", p.shared)
             .put("note", note).put("spent_on", day)
+        // Compra con la CMR: no baja la cuenta, sube lo usado de la tarjeta. Sin medio claro queda en debito (el valor por defecto de la base).
+        if (d.candidate.medium == PaymentMedium.CREDIT) row.put("payment_method", "tarjeta")
+        return row
     }
 
     companion object {

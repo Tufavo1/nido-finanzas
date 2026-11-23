@@ -3,7 +3,7 @@
 import { monthKey, myShare } from './analysis'
 import type { HistExpense } from './analysis'
 import type { Debt, DebtPayment, HouseholdData } from './data'
-import { analyzeSalary, monthIncome, myDebtShare } from './finance'
+import { analyzeSalary, monthIncome, myDebtDue, myDebtPaidThisMonth, salaryFlows } from './finance'
 import { savedInMonth } from './goals'
 import type { Split } from './split'
 import { pendingFixedThisMonth } from './upcoming'
@@ -21,12 +21,16 @@ export function monthLeftAfter(free: number | null, effect: MonthEffect, amount:
   return free - debtImpact
 }
 
-/** Cuánto sube lo que se cuenta como cuotas del mes al registrar este pago (0 si cabe en la cuota ya descontada). */
+/**
+ * Cuánto baja lo que te queda al registrar este pago: lo pagado sube y la cuota por pagar baja, así que
+ * un pago que cabe en la cuota del mes (ya reservada como por pagar) no cambia nada; lo que pasa de la cuota sí.
+ */
 export function debtPayImpact(debts: Debt[], payments: DebtPayment[], debtId: string, amount: number, meId: string, split: Split, now: Date = new Date()): number {
   const debt = debts.find((d) => d.id === debtId)
   if (!debt) return 0
   const fake = { id: '__nuevo__', household_id: debt.household_id, debt_id: debtId, amount, paid_by: meId, paid_on: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`, created_at: now.toISOString() } as DebtPayment
-  return myDebtShare(debts, [...payments, fake], meId, split, now) - myDebtShare(debts, payments, meId, split, now)
+  const load = (ps: DebtPayment[]) => myDebtPaidThisMonth(debts, ps, meId, split, now) + myDebtDue(debts, ps, meId, split, now)
+  return load([...payments, fake]) - load(payments)
 }
 
 /**
@@ -36,14 +40,15 @@ export function debtPayImpact(debts: Debt[], payments: DebtPayment[], debtId: st
 export function monthFreeNow(data: Pick<HouseholdData, 'salary' | 'incomes' | 'expenses' | 'debts' | 'debtPayments' | 'contributions' | 'recurring' | 'ready' | 'financeReady'>, meId: string, split: Split, now: Date = new Date()): number | null {
   if (!data.ready || !data.financeReady || !data.salary) return null
   const month = new Date(now.getFullYear(), now.getMonth(), 1)
-  const spent = data.expenses.reduce((s, e) => s + myShare(e as HistExpense, meId, split), 0)
+  const trueCost = data.expenses.reduce((s, e) => s + myShare(e as HistExpense, meId, split), 0)
+  const flows = salaryFlows({ expenses: data.expenses, debts: data.debts, debtPayments: data.debtPayments, meId, split, month, now, trueCost })
   return analyzeSalary({
     income: monthIncome(data.salary, data.incomes),
-    spent,
-    commitments: myDebtShare(data.debts, data.debtPayments, meId, split, now),
+    spent: flows.spent,
+    commitments: flows.commitments,
     month,
     now,
-    pendingFixed: pendingFixedThisMonth(data.recurring, meId, split, now),
+    pendingFixed: pendingFixedThisMonth(data.recurring, meId, split, now) + flows.pendingDebt,
     fixedBooked: data.expenses.reduce((s, e) => (e.recurring_id ? s + myShare(e, meId, split) : s), 0),
     saved: savedInMonth(data.contributions, meId, monthKey(month)),
   }).realFree

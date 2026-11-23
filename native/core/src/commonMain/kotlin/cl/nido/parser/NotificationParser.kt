@@ -11,8 +11,16 @@ class NotificationParser(private val allowedPackages: Set<String>) {
         parseDetailed(packageName, title, text, postedAtMillis).candidate
 
     /** Igual que [parse] pero dice POR QUE no hubo candidato (para el diagnostico local; nunca incluye el texto). */
-    fun parseDetailed(packageName: String, title: String?, text: String?, postedAtMillis: Long): ParseResult {
+    /**
+     * [style]: [NoticeStyle.WALLET] para avisos de Billetera Google (lo decide la app segun la fuente). [utcOffsetMillis]: zona de la
+     * persona en postTime (America/Santiago), solo para notar un aviso viejo por la fecha del texto ([ParseResult.staleDate]).
+     */
+    fun parseDetailed(
+        packageName: String, title: String?, text: String?, postedAtMillis: Long,
+        style: NoticeStyle = NoticeStyle.BANK, utcOffsetMillis: Long = DEFAULT_UTC_OFFSET_MILLIS,
+    ): ParseResult {
         if (packageName !in allowedPackages) return ParseResult(null, ParseRejection.NOT_ALLOWED)
+        if (style == NoticeStyle.WALLET) return WalletNotice.parse(packageName, title, text, postedAtMillis, utcOffsetMillis)
         val body = readableBody(title, text)
         if (body.isEmpty()) return ParseResult(null, ParseRejection.NO_TEXT)
         if (DiscardRules.shouldDiscard(body, title)) return ParseResult(null, ParseRejection.DISCARDED)
@@ -59,6 +67,11 @@ class NotificationParser(private val allowedPackages: Set<String>) {
         )
     }
 
+    companion object {
+        /** Chile continental en horario de verano (UTC-3); la app pasa el de America/Santiago en postTime. */
+        const val DEFAULT_UTC_OFFSET_MILLIS = -3L * 60 * 60 * 1000
+    }
+
     private fun confidenceOf(kind: Movement, merchant: String?): Confidence = when {
         kind.type == Kind.TRANSFER_OUT -> if (merchant == null) Confidence.MEDIUM else Confidence.HIGH
         kind.type != Kind.EXPENSE -> Confidence.HIGH
@@ -74,5 +87,12 @@ enum class ParseRejection { NOT_ALLOWED, NO_TEXT, DISCARDED, NO_AMOUNT }
  * [ambiguousAmount]: el aviso trae varios montos distintos y sin cuotas; se toma el primero y conviene confirmar.
  * [extraIncome]: INCOME que es plata que te mandan («Recibiste», «Te transfirieron»): el unico ingreso que puede guardarse solo
  * como «Ingreso extra». Un abono, devolucion o reversa es INCOME pero false. No se guarda en el borrador (no es parte del JSON).
+ * [staleDate]: el texto trae una fecha («20 nov») a mas de 36 h del dia de postTime: aviso viejo reentregado; no se guarda solo.
  */
-data class ParseResult(val candidate: ParsedCandidate?, val rejection: ParseRejection?, val ambiguousAmount: Boolean = false, val extraIncome: Boolean = false)
+data class ParseResult(
+    val candidate: ParsedCandidate?,
+    val rejection: ParseRejection?,
+    val ambiguousAmount: Boolean = false,
+    val extraIncome: Boolean = false,
+    val staleDate: Boolean = false,
+)

@@ -193,7 +193,8 @@ describe('Deudas: el interés se va sumando al saldo', () => {
     b = b * 1.02 - 100_000
     b = b * 1.02 // octubre: interés, aún sin pago
     expect(accruedBalance(debt(), pays, NOW).remaining).toBe(Math.round(b))
-    expect(debtView(debt(), pays, NOW).remaining).toBeGreaterThan(1_000_000 - 300_000)
+    // Una tarjeta ya no acumula interés automático (R6 de REQUISITOS-debito-tarjeta.md): el interés en debtView es de los créditos
+    expect(debtView(debt({ kind: 'consumo' }), pays, NOW).remaining).toBeGreaterThan(1_000_000 - 300_000)
   })
 
   it('sin tasa o sin fecha de alta es solo lo anotado menos lo pagado', () => {

@@ -98,7 +98,7 @@ export default function Register({
 
   const myDebts = data.debts
     .filter((d) => d.owner_id === hh.me.user_id || d.owner_id === null)
-    .map((d) => debtView(d, data.debtPayments, now))
+    .map((d) => debtView(d, data.debtPayments, now, data.expenses, data.debts))
     .filter((v) => v.remaining > 0)
   const debt = kind === 'debt' ? myDebts.find((v) => v.debt.id === debtId) : undefined
   const goal = kind === 'goal' ? data.goals.find((g) => g.id === goalId) : undefined

@@ -17,6 +17,10 @@ with chequeo(orden, migracion, objeto, existe) as (values
         coalesce((select prosrc like '%window_s%' and prosrc like '%jsonb_typeof%' from pg_proc where oid = to_regprocedure('public.ingest_security_event(text,text,text,jsonb)')), false)),
   (8, '20261122100000 alerta_gasto_mayor',             'tabla big_spend_alert_prefs',    to_regclass('public.big_spend_alert_prefs') is not null),
   (8, '20261122100000 alerta_gasto_mayor',             'funcion set_big_spend_alert',    to_regprocedure('public.set_big_spend_alert(boolean,bigint)') is not null),
+  (9, '20261123120000 gasto_con_tarjeta',              'columna expenses.payment_method', exists (select 1 from information_schema.columns where table_schema='public' and table_name='expenses' and column_name='payment_method')),
+  (9, '20261123120000 gasto_con_tarjeta',              'columna expenses.card_debt_id',   exists (select 1 from information_schema.columns where table_schema='public' and table_name='expenses' and column_name='card_debt_id')),
+  (9, '20261123120000 gasto_con_tarjeta',              'columna debts.reported_balance',  exists (select 1 from information_schema.columns where table_schema='public' and table_name='debts' and column_name='reported_balance')),
+  (9, '20261123120000 gasto_con_tarjeta',              'trigger expenses_tarjeta_valida', exists (select 1 from pg_trigger where tgname = 'expenses_tarjeta_valida')),
   (0, 'PREVIA 20261102120000 seguridad_endurece',      'columna expenses.notified_at',   exists (select 1 from information_schema.columns where table_schema='public' and table_name='expenses' and column_name='notified_at')),
   (0, 'PREVIA 20261023120000 admin_endurecido',        'funcion admin_status',           to_regprocedure('public.admin_status()') is not null)
 )

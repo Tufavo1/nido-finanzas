@@ -1,8 +1,10 @@
 import type { Household } from '../App'
 import type { HouseholdData } from './data'
-import { analyzeSalary, monthIncome, myDebtShare, summarizeDebts } from './finance'
+import { analyzeSalary, monthIncome, salaryFlows, summarizeDebts } from './finance'
+import type { SalaryAnalysis } from './finance'
 import { money, toISO } from './format'
 import { computeMetrics } from './metrics'
+import type { Metrics } from './metrics'
 import { smartAlerts } from './smartAlerts'
 import type { ExpRow } from './expenseAnalysis'
 import { adviceFor } from './profile'
@@ -78,6 +80,25 @@ const median = (xs: number[]) => {
  * Motor de reglas: recalcula todos los avisos a partir de los datos actuales.
  * Es determinista y corre en el teléfono; no usa IA ni servicios externos.
  */
+/** Mi sueldo del mes (igual que Inicio): null si aún no hay sueldo */
+export function salaryAnalysisFor(hh: Household, data: HouseholdData, month: Date, now: Date = new Date(), m: Metrics = computeMetrics(data.expenses, data.prevExpenses, data.categories, hh.members, month, now)): SalaryAnalysis | null {
+  if (!data.salary) return null
+  const meId = hh.me.user_id
+  const split = splitOf(hh.members)
+  const me = m.people.find((p) => p.userId === meId)
+  const flows = salaryFlows({ expenses: data.expenses, debts: data.debts, debtPayments: data.debtPayments, meId, split, month, now, trueCost: me?.trueCost ?? 0 })
+  return analyzeSalary({
+    income: monthIncome(data.salary, data.incomes),
+    spent: flows.spent,
+    commitments: flows.commitments,
+    saved: savedInMonth(data.contributions, meId, monthKey(month)),
+    month,
+    now,
+    pendingFixed: pendingFixedThisMonth(data.recurring, meId, split, now) + flows.pendingDebt,
+    fixedBooked: data.expenses.reduce((s, e) => (e.recurring_id ? s + myShare(e, meId, split) : s), 0),
+  })
+}
+
 export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now: Date = new Date(), ctx: { rows?: ExpRow[] } = {}): Alert[] {
   const out: Alert[] = []
   const add = (a: Alert) => out.push(a)
@@ -241,7 +262,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
   }
 
   /* ---------- Deudas ---------- */
-  const debts = summarizeDebts(data.debts, data.debtPayments, now)
+  const debts = summarizeDebts(data.debts, data.debtPayments, now, data.expenses, data.debts)
   if (isCurrent) {
     for (const f of debts.findings) {
       if (f.level === 'ok') continue
@@ -268,17 +289,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
         tab: 'money',
       })
     } else {
-      const me = m.people.find((p) => p.userId === hh.me.user_id)
-      const a = analyzeSalary({
-        income: monthIncome(data.salary, data.incomes),
-        spent: me?.trueCost ?? 0,
-        commitments: myDebtShare(data.debts, data.debtPayments, hh.me.user_id, splitOf(hh.members)),
-        saved: savedInMonth(data.contributions, hh.me.user_id, monthKey(month)),
-        month,
-        now,
-        pendingFixed: pendingFixedThisMonth(data.recurring, hh.me.user_id, splitOf(hh.members), now),
-        fixedBooked: data.expenses.reduce((s, e) => (e.recurring_id ? s + myShare(e, hh.me.user_id, splitOf(hh.members)) : s), 0),
-      })
+      const a = salaryAnalysisFor(hh, data, month, now, m) as SalaryAnalysis
       for (const f of a.findings) {
         if (f.level === 'ok') continue
         add({

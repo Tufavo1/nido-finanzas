@@ -2,7 +2,7 @@ import type { Analysis, AnalysisInput } from './analysis'
 import { monthKey, myShare } from './analysis'
 import { emergencySaved } from './goals'
 import { fraction } from './split'
-import { analyzeSalary, debtView, myDebtShare, summarizeDebts } from './finance'
+import { analyzeSalary, debtView, myDebtShare, salaryFlows, summarizeDebts } from './finance'
 import { monthName } from './ui'
 import { pendingFixedThisMonth } from './upcoming'
 
@@ -10,7 +10,11 @@ import { pendingFixedThisMonth } from './upcoming'
 
 export interface Flow {
   income: number
+  /** Gastos que bajan el sueldo (sin las compras con tarjeta) */
   spent: number
+  /** Compras con tarjeta del mes: suben la tarjeta, no bajan el sueldo hasta pagarla */
+  cardSpent: number
+  /** Lo realmente pagado a deudas este mes */
   commitments: number
   /** Ahorro que ya apartaste este mes: sale del sueldo igual que un gasto */
   saved: number
@@ -124,7 +128,9 @@ export function buildNumbers(input: AnalysisInput, a: Analysis): Numbers {
   const prevMonth = new Date(month.getFullYear(), month.getMonth() - 1, 1)
   const prevKey = monthKey(prevMonth)
   const catName = new Map(input.categories.map((c) => [c.id, c.name] as const))
-  const commitments = myDebtShare(input.debts, input.debtPayments, meId, memberCount)
+  // Te queda del sueldo: sin las compras con tarjeta, con lo pagado a deudas y la cuota que falta como por pagar (igual que Inicio)
+  const flows = salaryFlows({ expenses: history, debts: input.debts, debtPayments: input.debtPayments, meId, split: memberCount, month, now, trueCost: a.cost })
+  const commitments = flows.commitments
   const income = a.income
 
   // ---------- Tu mes en números ----------
@@ -132,17 +138,18 @@ export function buildNumbers(input: AnalysisInput, a: Analysis): Numbers {
   let outlookFree: number | null = null
   if (income > 0) {
     const fixedBooked = history.reduce((s, e) => (e.recurring_id && e.spent_on.startsWith(key) ? s + myShare(e, meId, memberCount) : s), 0)
-    const pendingFixed = isCurrent ? pendingFixedThisMonth(input.recurring, meId, memberCount, now) : 0
+    const pendingFixed = (isCurrent ? pendingFixedThisMonth(input.recurring, meId, memberCount, now) : 0) + flows.pendingDebt
     const saved = a.saved
-    const sal = analyzeSalary({ income, spent: a.cost, commitments, month, now, pendingFixed, fixedBooked, saved })
+    const sal = analyzeSalary({ income, spent: flows.spent, commitments, month, now, pendingFixed, fixedBooked, saved })
     outlookFree = sal.projectedFree ?? sal.free
-    const spentPct = pctOf(a.cost, income)
+    const spentPct = pctOf(flows.spent, income)
     const debtsPct = pctOf(commitments, income)
     const pendingPct = pctOf(pendingFixed, income)
     const savedPct = pctOf(saved, income)
     flow = {
       income,
-      spent: a.cost,
+      spent: flows.spent,
+      cardSpent: Math.max(0, a.cost - flows.spent),
       commitments,
       saved,
       free: Math.round(sal.free),
@@ -225,10 +232,10 @@ export function buildNumbers(input: AnalysisInput, a: Analysis): Numbers {
       remaining += v.remaining * share
       interest += v.monthlyInterest * share
     }
-    const sm = summarizeDebts(mine, input.debtPayments, now)
+    const sm = summarizeDebts(mine, input.debtPayments, now, input.history, input.debts)
     debts = {
       remaining: Math.round(remaining),
-      payment: commitments,
+      payment: myDebtShare(input.debts, input.debtPayments, meId, memberCount),
       interest: Math.round(interest),
       monthsOfIncome: income > 0 ? Math.round((remaining / income) * 10) / 10 : null,
       freeInMonths: sm.freeInMonths,

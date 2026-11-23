@@ -27,6 +27,8 @@ export interface ExpenseDraft {
   shared: boolean
   paid_by: string
   category_id: string | null
+  paymentMethod?: 'debito' | 'tarjeta'
+  cardDebtId?: string | null
 }
 
 interface Cat { id: string; name: string }
@@ -55,7 +57,7 @@ function noteOf(c: ParsedCandidate): string {
   return merchant ? `${merchant} (${cuota})` : cuota
 }
 
-export function candidateToDraft(c: ParsedCandidate, o: DraftOptions): ExpenseDraft {
+export function candidateToDraft(c: ParsedCandidate & { medium?: string | null }, o: DraftOptions): ExpenseDraft {
   const merchant = c.merchant?.trim() ?? ''
   return {
     amount: Math.trunc(c.amountClp),
@@ -64,6 +66,8 @@ export function candidateToDraft(c: ParsedCandidate, o: DraftOptions): ExpenseDr
     shared: o.shared,
     paid_by: o.paidBy,
     category_id: merchant ? suggestCategory(merchant, o.categories, o.history) : null,
+    // Una compra avisada como crédito va a la tarjeta (sin tarjeta elegida: la única del hogar, si hay una)
+    ...(c.kind === 'EXPENSE' && c.medium === 'CREDIT' ? { paymentMethod: 'tarjeta' as const } : {}),
   }
 }
 

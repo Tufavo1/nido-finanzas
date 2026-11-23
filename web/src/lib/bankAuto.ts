@@ -13,6 +13,8 @@ export const BANKS: readonly Bank[] = [
   { id: 'banco-estado', name: 'Banco Estado' },
   { id: 'banco-falabella', name: 'Banco Falabella' },
   { id: 'banco-chile', name: 'Banco de Chile' },
+  // No es un banco: la billetera del teléfono (pagos sin contacto). El nativo la trata como una fuente más (id estable).
+  { id: 'billetera-google', name: 'Billetera Google' },
 ]
 
 export interface BankPreset extends Bank {
@@ -34,7 +36,7 @@ export interface BankAutoApi {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-/** Siempre los cuatro bancos. Sin app asociada no puede quedar encendido el guardado automático. */
+/** Siempre todas las fuentes (bancos y Billetera Google). Sin app asociada no puede quedar encendido el guardado automático. */
 export function parseBankPresets(raw: unknown): BankPreset[] {
   const rows = isRecord(raw) && Array.isArray(raw['banks']) ? raw['banks'].filter(isRecord) : []
   return BANKS.map((b) => {

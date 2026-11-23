@@ -2,22 +2,27 @@ import { describe, expect, it } from 'vitest'
 import { BANKS, DEFAULT_PARTNER_THRESHOLD, bankStatus, parseBankPresets, parseSyncState, parseThreshold, syncSummary } from './bankAuto'
 
 describe('BANKS', () => {
-  it('son los cuatro bancos, en este orden', () => {
-    expect(BANKS.map((b) => b.name)).toEqual(['Santander', 'Banco Estado', 'Banco Falabella', 'Banco de Chile'])
+  it('son los cuatro bancos y Billetera Google, en este orden', () => {
+    expect(BANKS.map((b) => b.name)).toEqual(['Santander', 'Banco Estado', 'Banco Falabella', 'Banco de Chile', 'Billetera Google'])
+    expect(BANKS.map((b) => b.id)).toContain('billetera-google')
   })
 })
 
 describe('parseBankPresets', () => {
-  it('siempre devuelve los cuatro bancos, apagados y sin app asociada si el teléfono no dice nada', () => {
+  it('siempre devuelve todas las fuentes, apagadas y sin app asociada si el teléfono no dice nada', () => {
     const r = parseBankPresets(null)
-    expect(r).toHaveLength(4)
+    expect(r).toHaveLength(5)
     expect(r.every((b) => !b.autoSave && b.packageName === null)).toBe(true)
   })
   it('lee el estado de cada banco y descarta lo inválido', () => {
     const r = parseBankPresets({ banks: [{ id: 'santander', packageName: 'cl.santander.app', autoSave: true }, { id: 'banco-chile', packageName: '../mal', autoSave: 'si' }, { id: 'otro', autoSave: true }] })
     expect(r.find((b) => b.id === 'santander')).toMatchObject({ packageName: 'cl.santander.app', autoSave: true })
     expect(r.find((b) => b.id === 'banco-chile')).toMatchObject({ packageName: null, autoSave: false })
-    expect(r).toHaveLength(4)
+    expect(r).toHaveLength(5)
+  })
+  it('lee Billetera Google como una fuente más', () => {
+    const r = parseBankPresets({ banks: [{ id: 'billetera-google', packageName: 'com.google.android.apps.walletnfcrel', autoSave: true }] })
+    expect(r.find((b) => b.id === 'billetera-google')).toMatchObject({ name: 'Billetera Google', packageName: 'com.google.android.apps.walletnfcrel', autoSave: true })
   })
   it('sin app asociada no puede quedar encendido', () => {
     expect(parseBankPresets({ banks: [{ id: 'santander', autoSave: true }] })[0]!.autoSave).toBe(false)

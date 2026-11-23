@@ -25,4 +25,7 @@ data class ParsedCandidate(
     val fingerprint: String,
     /** Medio de pago o cuenta que nombra el aviso («Débito Banco Falabella», «CMR Mastercard Premium ·5766»). Solo los ultimos 4 digitos. */
     val account: String? = null,
-)
+) {
+    /** De donde sale la plata; se deduce de [account], no se guarda aparte. */
+    val medium: PaymentMedium get() = PaymentMediumClassifier.of(account)
+}

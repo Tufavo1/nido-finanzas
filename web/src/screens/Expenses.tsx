@@ -230,7 +230,7 @@ export default function Expenses({
       onToast('Listo, ahora cuenta como pago de deuda\nSe quitó de tus gastos.', 'success', {
         label: 'Deshacer',
         onAction: () => {
-          void undoExpenseToDebt({ reinsertExpense: () => reinsertExpense(e), deletePayment: () => removePayment(r.paymentId) })
+          void undoExpenseToDebt({ reinsertExpense: () => reinsertExpense(e, data.debts), deletePayment: () => removePayment(r.paymentId) })
             .then(() => data.refresh())
             .then(() => onToast('Deshecho\nVolvió a tus gastos.', 'info'))
             .catch(() => onToast('No se pudo deshacer\nRevisa tu conexión e inténtalo de nuevo.', 'error'))

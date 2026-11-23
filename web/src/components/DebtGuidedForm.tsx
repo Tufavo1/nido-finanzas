@@ -60,7 +60,9 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
     return offersFor(typeInfo.product, amount > 0 ? amount : undefined).find((o) => o.bank.id === bank.id) ?? null
   }, [bank, typeInfo, amount])
 
-  const rateStr = rate ?? (suggestion && !isPerson ? fmtRate(suggestion.range.max) : '')
+  // En una tarjeta el banco cobra su propia tasa (está en el estado de cuenta): la del tarifario es solo una referencia, no se precarga
+  const isCard = !isPerson && typeInfo?.kind === 'tarjeta'
+  const rateStr = rate ?? (suggestion && !isPerson && !isCard ? fmtRate(suggestion.range.max) : '')
   const rateNum = isPerson && !interest ? 0 : num(rateStr)
   const calcFee = !isPerson && months > 0 && amount > 0 ? installment(amount, months, rateNum) : 0
   const feeStr = fee ?? (calcFee > 0 ? String(calcFee) : '')
@@ -102,6 +104,8 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
       monthly_payment: feeNum,
       monthly_rate: rateNum,
       due_day: dueDay,
+      // Tarjeta: lo que escribes es el «cupo utilizado» del banco; queda como saldo informado y la app no le suma interés sola
+      ...(isCard ? { reported_balance: amount, reported_at: new Date().toLocaleDateString('en-CA') } : {}),
     })
     setBusy(false)
     if (err) {
@@ -154,7 +158,7 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
     inst: '¿Cuál es?',
     person: '¿A quién le debes?',
     type: '¿Qué tipo de deuda es?',
-    total: isPerson ? '¿Cuánto le debes hoy?' : '¿Cuánto falta pagar hoy?',
+    total: isPerson ? '¿Cuánto le debes hoy?' : isCard ? '¿Cuánto tienes usado de la tarjeta?' : '¿Cuánto falta pagar hoy?',
     interest: '¿Te cobra interés?',
     term: typeInfo?.years ? '¿En cuántos años termina?' : '¿Cuántas cuotas te faltan?',
     rate: '¿Qué interés al mes tiene?',
@@ -236,7 +240,10 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
         )}
 
         {cur === 'total' && (
-          <input id="g-total" aria-labelledby="g-q" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800000" value={dots(total)} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
+          <div className="stack tight">
+            <input id="g-total" aria-labelledby="g-q" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800000" value={dots(total)} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
+            {isCard && <span className="line-help">Es el «Cupo utilizado» de tu estado de cuenta o de la app del banco. Lo actualizas cuando llegue el siguiente.</span>}
+          </div>
         )}
 
         {cur === 'interest' && (
@@ -284,7 +291,13 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
               </div>
             )}
             <input id="g-rate" aria-labelledby="g-q" autoComplete="off" className="input" inputMode="decimal" placeholder="Ej. 2,5 (% al mes)" value={rateStr} onChange={(e) => { setRate(e.target.value.replace(/[^\d.,]/g, '').slice(0, 5)); setFee(null) }} />
-            <span className="line-help">{range ? `${bank?.name} publica hasta ${fmtRate(range.max)} % al mes. Pusimos el máximo.` : 'Está en tu contrato o cartola. Si no lo sabes, sigue.'}</span>
+            <span className="line-help">
+              {isCard
+                ? `Mira «Tasa interés vigente» en tu estado de cuenta.${range ? ` ${bank?.name} publica hasta ${fmtRate(range.max)} % al mes, pero la tuya puede ser distinta.` : ''}`
+                : range
+                  ? `${bank?.name} publica hasta ${fmtRate(range.max)} % al mes. Pusimos el máximo.`
+                  : 'Está en tu contrato o cartola. Si no lo sabes, sigue.'}
+            </span>
           </div>
         )}
 

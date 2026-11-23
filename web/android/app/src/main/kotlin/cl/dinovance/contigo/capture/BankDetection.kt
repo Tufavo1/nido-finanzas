@@ -27,6 +27,9 @@ object BankMatcher {
         Rule("banco-falabella", setOf("bancofalabella", "cmr", "cmrfalabella", "micmr"), setOf("chile", "app", "movil")),
         // «chile» NO es palabra suelta aqui: forma parte del nombre («Banco de Chile»).
         Rule("banco-chile", setOf("bancodechile", "bancochile", "mibanco", "mipasaporte", "mipasaportebancodechile"), setOf("app", "movil")),
+        // Billetera Google / Google Wallet. NO «wallet» ni «billetera» a secas, ni Google Pay, GPay, Samsung/Apple Wallet u otras billeteras:
+        // esas se asocian a mano («Si no aparece tu banco»).
+        Rule(BankPresets.WALLET_ID, setOf("billeteragoogle", "billeteradegoogle", "googlewallet"), setOf("app")),
     )
     private val MARKS = Regex("\\p{M}")
     private val NON_ALNUM = Regex("[^a-z0-9]+")
