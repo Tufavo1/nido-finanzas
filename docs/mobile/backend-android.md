@@ -300,3 +300,31 @@ La misma compra puede avisar por la app del banco y por Wallet, con comercios di
 
 ### NO VERIFICADO (necesita teléfono)
 Paquete real que publica el aviso (podría ser Wallet o Google Play services: si fuera `com.google.android.gms`, NO se detecta por nombre y asociarlo a mano metería en la lista todos los avisos de Play services), qué va en título y texto, si el aviso usa `EXTRA_BIG_TEXT`/`InboxStyle`, si llega con el filtro `alerting|silent` del listener (es un aviso normal, no persistente ni conversación, así que debería), el idioma/formato con el teléfono en otro idioma («Nov 23», «$20,000.00»), el retraso real banco vs Wallet, y si Wallet reenvía o actualiza el mismo aviso.
+
+## Gasto con débito o tarjeta de crédito y saldo informado (2026-11-23)
+
+Migración `20261123120000_gasto_con_tarjeta.sql` (aditiva e idempotente). Modelo de dos cuentas: el saldo de la débito es sueldo + ingresos extra − gastos pagados con **débito** − pagos a deudas. Un gasto con **tarjeta** no baja la débito: sube el cupo utilizado de esa tarjeta; la débito baja recién cuando se paga la tarjeta (un `debt_payments` como siempre).
+
+### `expenses`
+| Columna | Tipo | Valores | Notas |
+|---|---|---|---|
+| `payment_method` | `text not null default 'debito'` | `'debito'` \| `'tarjeta'` (minúsculas, sin tilde) | Si no se manda queda `'debito'`. Todo lo guardado antes quedó `'debito'`. `null` explícito se rechaza. |
+| `card_debt_id` | `uuid null` → `debts(id)` | id de una deuda `kind = 'tarjeta'` | Solo con `payment_method = 'tarjeta'`. Puede ir `null` aunque sea tarjeta (tarjeta aún no registrada). Si la deuda se borra, queda `null` y el gasto sigue siendo `'tarjeta'`. |
+
+Reglas que aplica la base (insert y update):
+- `card_debt_id` con `payment_method = 'debito'` (o sin mandarlo) → `23514`. Para volver a débito, mandar **ambos**: `{ "payment_method": "debito", "card_debt_id": null }`.
+- La tarjeta tiene que ser del mismo hogar, de tipo `tarjeta`, y una que quien guarda pueda editar: de los dos (`owner_id null`) o propia. Si es personal, el gasto tiene que tener `paid_by` = su titular. Si no se cumple: `42501` («Tarjeta no válida para este gasto») o `23514` (no es tarjeta / tarjeta personal de otra persona como pagadora). La app debe ofrecer solo las deudas `kind = 'tarjeta'` visibles con `owner_id` null o igual a la persona.
+- Editar otras columnas (monto, nota, categoría) de un gasto ya cargado a una tarjeta no vuelve a revisar la tarjeta.
+
+### `debts`
+| Columna | Tipo | Valores |
+|---|---|---|
+| `reported_balance` | `bigint null` | 0 ≤ valor < 10.000.000.000 (CLP, cupo utilizado del estado de cuenta) |
+| `reported_at` | `date null` | fecha del estado de cuenta; ni futura ni anterior a 2000 |
+
+Van **juntos o ninguno** (`23514` si llega uno solo). Para borrar el saldo informado: ambos `null`. Cuando existe, es la verdad para esa deuda (el cliente decide cómo combinarlo con lo calculado). Se leen y editan con las mismas reglas de siempre de `debts` (privacidad `share_debts`, solo deudas de los dos o propias).
+
+### Cómo enviarlas
+- **Kotlin (`ExpenseSyncer.rowOf`)**: sin cambios obligatorios; la fila actual sigue válida y queda `'debito'`. Para un aviso de compra con tarjeta de crédito: agregar `"payment_method": "tarjeta"` y, si la app conoce la tarjeta, `"card_debt_id": "<uuid>"`. Nunca mandar `card_debt_id` sin `"payment_method": "tarjeta"`.
+- **Front**: `insert` de `expenses` acepta ambas columnas; `update` por columnas también. Al **deshacer** una conversión o restaurar un respaldo, reinsertar el gasto con su `payment_method` y `card_debt_id` (si la tarjeta ya no existe, mandar `card_debt_id: null`). Al restaurar, las deudas van antes que los gastos.
+- Pruebas: `bash docs/mobile/qa/e2e-ronda6.sh` (incluye la ronda 5 completa como regresión).
