@@ -132,7 +132,7 @@ export function accruedBalance(debt: Debt, mine: DebtPayment[], now: Date): { re
  * Vista de una deuda. Una tarjeta (kind 'tarjeta') no acumula interés compuesto: su saldo es el de cardBalance
  * (con los gastos con tarjeta y las deudas del hogar si se pasan). Las demás usan accruedBalance.
  */
-export function debtView(debt: Debt, payments: DebtPayment[], now: Date = new Date(), expenses: Expense[] = [], allDebts: Debt[] = [debt]): DebtView {
+export function debtView(debt: Debt, payments: DebtPayment[], now: Date = new Date(), expenses: PaidExpense[] = [], allDebts: Debt[] = [debt]): DebtView {
   const mine = payments.filter((p) => p.debt_id === debt.id)
   const paid = sumBy(mine, (p) => p.amount)
   const { remaining, accrued } = isCard(debt)
@@ -469,7 +469,8 @@ export function analyzeSalary(opts: {
 
 /* ---------- Modelo de dos cuentas: débito y tarjeta de crédito ---------- */
 
-type PaidExpense = Pick<Expense, 'amount' | 'shared' | 'paid_by' | 'spent_on'> & { payment_method?: string | null }
+/** Lo mínimo de un gasto que usan estas cuentas: sirve el gasto completo (Expense) o el del historial */
+type PaidExpense = Pick<Expense, 'amount' | 'shared' | 'paid_by' | 'spent_on'> & { payment_method?: string | null; card_debt_id?: string | null }
 
 /** Un gasto con tarjeta de crédito no baja la débito: sube lo usado de la tarjeta */
 export function isCardExpense(e: { payment_method?: string | null }): boolean {
@@ -494,7 +495,7 @@ export function myDebtPaidThisMonth(debts: Debt[], payments: DebtPayment[], meId
 }
 
 /** Cuota que falta pagar este mes (me corresponde): cuota − pagado, sin pasar del saldo; solo deudas con saldo */
-export function myDebtDue(debts: Debt[], payments: DebtPayment[], meId: string, split: Split, now: Date = new Date(), expenses: Expense[] = []): number {
+export function myDebtDue(debts: Debt[], payments: DebtPayment[], meId: string, split: Split, now: Date = new Date(), expenses: PaidExpense[] = []): number {
   return Math.round(
     sumBy(debts, (d) => {
       const v = debtView(d, payments, now, expenses, debts)
@@ -505,7 +506,7 @@ export function myDebtDue(debts: Debt[], payments: DebtPayment[], meId: string, 
 }
 
 /** Compras con tarjeta cargadas a esta tarjeta; sin tarjeta asignada, van a la única tarjeta del hogar (con varias, a ninguna) */
-export function cardCharges(debt: Debt, expenses: Expense[], allDebts: Debt[]): Expense[] {
+export function cardCharges<E extends PaidExpense = Expense>(debt: Debt, expenses: E[], allDebts: Debt[]): E[] {
   if (!isCard(debt)) return []
   const cards = allDebts.filter((d) => isCard(d) && d.id !== debt.id).length + 1
   return expenses.filter((e) => isCardExpense(e) && (e.card_debt_id ? e.card_debt_id === debt.id : cards === 1))
@@ -525,7 +526,7 @@ export interface CardBalance {
  * Saldo de una tarjeta, sin interés automático (lo cobra el banco). Con saldo informado: ese saldo + compras
  * posteriores − pagos posteriores. Sin él: lo anotado + compras desde el alta − pagos. Nunca bajo 0.
  */
-export function cardBalance(debt: Debt, payments: DebtPayment[], expenses: Expense[], allDebts: Debt[]): CardBalance {
+export function cardBalance(debt: Debt, payments: DebtPayment[], expenses: PaidExpense[], allDebts: Debt[]): CardBalance {
   const charges = cardCharges(debt, expenses, allDebts)
   const mine = payments.filter((p) => p.debt_id === debt.id)
   const at = debt.reported_balance != null && debt.reported_at ? debt.reported_at.slice(0, 10) : null
@@ -552,10 +553,9 @@ export function cardMonthlyFee(kind: keyof typeof CMR_ADMIN_UF, ufValue: number)
  */
 export function salaryFlows(o: { expenses: PaidExpense[]; debts: Debt[]; debtPayments: DebtPayment[]; meId: string; split: Split; month: Date; now?: Date; trueCost: number }): { spent: number; commitments: number; pendingDebt: number } {
   const now = o.now ?? new Date()
-  const cards = o.expenses.filter(isCardExpense) as Expense[]
   return {
     spent: Math.max(0, Math.round(o.trueCost - myCardSpent(o.expenses, o.meId, o.split, o.month))),
     commitments: myDebtPaidThisMonth(o.debts, o.debtPayments, o.meId, o.split, o.month),
-    pendingDebt: isCurrentMonth(o.month, now) ? myDebtDue(o.debts, o.debtPayments, o.meId, o.split, now, cards) : 0,
+    pendingDebt: isCurrentMonth(o.month, now) ? myDebtDue(o.debts, o.debtPayments, o.meId, o.split, now, o.expenses) : 0,
   }
 }
