@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Dinovance
 // Genera public/privacidad.html y public/terminos.html desde src/lib/legal.ts (la misma fuente que ve la app).
-// Uso: node scripts/gen-legal.mjs   (Node 22.18 o más nuevo, sin dependencias). Se corre solo con `npm run build`.
+// Uso: npm run gen:legal (Node 22.6 o más nuevo, sin dependencias). NO corre en el build: las páginas van versionadas y legalPages.test.ts falla si quedan desactualizadas.
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
