@@ -1,4 +1,4 @@
-import type { Debt, DebtPayment } from './data'
+import type { Debt, DebtPayment, Expense } from './data'
 import { portion } from './split'
 import type { Split } from './split'
 
@@ -123,7 +123,8 @@ export function accruedBalance(debt: Debt, mine: DebtPayment[], now: Date): { re
   return { remaining: Math.round(balance), accrued: Math.round(accrued) }
 }
 
-export function debtView(debt: Debt, payments: DebtPayment[], now: Date = new Date()): DebtView {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function debtView(debt: Debt, payments: DebtPayment[], now: Date = new Date(), _expenses: Expense[] = [], _allDebts: Debt[] = []): DebtView {
   const mine = payments.filter((p) => p.debt_id === debt.id)
   const paid = sumBy(mine, (p) => p.amount)
   const { remaining, accrued } = accruedBalance(debt, mine, now)
@@ -454,4 +455,20 @@ export function analyzeSalary(opts: {
 
   if (spentPct > 70 && free >= 0 && level === 'ok') level = 'warn'
   return { income, spent, commitments, saved, free, pendingFixed, realFree, projectedFree, spentPct, debtPct, safeDaily, level, headline, findings }
+}
+
+/* ---- STUBS (TDD rojo) ---- */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+export function isCardExpense(_e: { payment_method?: string | null }): boolean { return false }
+export function myCardSpent(_expenses: Expense[], _meId: string, _split: Split, _month?: Date): number { return 0 }
+export function myDebtPaidThisMonth(_debts: Debt[], _payments: DebtPayment[], _meId: string, _split: Split, _now?: Date): number { return 0 }
+export function myDebtDue(_debts: Debt[], _payments: DebtPayment[], _meId: string, _split: Split, _now?: Date, _expenses?: Expense[]): number { return 0 }
+export function cardCharges(_debt: Debt, _expenses: Expense[], _allDebts: Debt[]): Expense[] { return [] }
+export function cardBalance(_debt: Debt, _payments: DebtPayment[], _expenses: Expense[], _allDebts: Debt[]): { used: number; informed: boolean; informedAt: string | null; sinceInformed: number } {
+  return { used: 0, informed: false, informedAt: null, sinceInformed: 0 }
+}
+export const CMR_ADMIN_UF = { clasica: 0.135, premium: 0.22, elite: 0.35 } as const
+export function cardMonthlyFee(_kind: keyof typeof CMR_ADMIN_UF, _ufValue: number): number { return 0 }
+export function salaryFlows(_o: { expenses: Expense[]; debts: Debt[]; debtPayments: DebtPayment[]; meId: string; split: Split; month: Date; now?: Date; trueCost: number }): { spent: number; commitments: number; pendingDebt: number } {
+  return { spent: 0, commitments: 0, pendingDebt: 0 }
 }

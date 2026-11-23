@@ -18,6 +18,8 @@ export interface HistExpense {
   spent_on: string
   /** Viene de un gasto fijo (se anota solo cada mes) */
   recurring_id?: string | null
+  /** 'tarjeta': no baja la débito (ver finance.ts) */
+  payment_method?: string | null
 }
 
 export interface AnalysisInput {
@@ -82,6 +84,8 @@ export interface Analysis {
   hasData: boolean
   /** Tu costo real del mes: lo personal tuyo más tu parte de lo compartido */
   cost: number
+  /** Lo que te queda hoy del sueldo (igual que Inicio); null sin sueldo */
+  free: number | null
   /** Cierre estimado del mes en curso */
   projected: number | null
   income: number
@@ -408,5 +412,5 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
   const monthly = outlookFree !== null && outlookFree + saved > 0 ? Math.round(outlookFree + saved) : 0
   const savings = monthly > 0 ? { monthly, in6: monthly * 6, in12: monthly * 12 } : null
 
-  return { hasData: cost > 0 || months.some((m) => m.amount > 0), cost, projected, income, slices, months, avgPrev, score, rule, insights, summary, saved, cushionMonths: monthsCovered, savings }
+  return { hasData: cost > 0 || months.some((m) => m.amount > 0), cost, free: null, projected, income, slices, months, avgPrev, score, rule, insights, summary, saved, cushionMonths: monthsCovered, savings }
 }

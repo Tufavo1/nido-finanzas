@@ -43,7 +43,12 @@ export interface NativeDraft extends ParsedCandidate {
   syncRejected?: boolean
   /** Cuenta o tarjeta del aviso («Débito Banco Falabella»); texto corto y saneado, solo para mostrar y emparejar */
   account?: string
+  /** Medio de pago que informa el teléfono */
+  medium?: 'DEBIT' | 'CREDIT' | 'UNKNOWN'
 }
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function draftPaymentMethod(_d: { medium?: string | null }): 'debito' | 'tarjeta' { return 'debito' }
 
 /** Cierre inesperado sin datos personales (clase de la excepción y marcos de pila). */
 export interface CrashReport {

@@ -16,6 +16,10 @@ const TABLES = [
   'profiles',
 ] as const
 
+export const BACKUP_TABLES: readonly BackupTable[] = TABLES
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function restoreExpenseRow(row: Record<string, unknown>, _debtIds: ReadonlySet<string>): Record<string, unknown> { return row }
+
 export type BackupTable = (typeof TABLES)[number]
 export type Backup = {
   app: string

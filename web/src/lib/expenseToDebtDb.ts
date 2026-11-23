@@ -25,7 +25,8 @@ export async function convertExpenseInDb(a: { householdId: string; meId: string;
 }
 
 /** Deshacer: devuelve el gasto tal cual era (mismo id) */
-export async function reinsertExpense(e: Expense): Promise<boolean> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function reinsertExpense(e: Expense, _debts?: { id: string }[]): Promise<boolean> {
   return (await insertExpenseRow(e as never)).ok
 }
 

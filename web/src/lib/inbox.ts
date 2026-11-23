@@ -45,6 +45,8 @@ export interface ExpenseRow {
   shared: boolean
   note: string
   spent_on: string
+  payment_method?: 'tarjeta'
+  card_debt_id?: string | null
 }
 
 /** Fila de `expenses` con el id idempotente; un gasto personal lo paga quien lo anota. */

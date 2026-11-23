@@ -1,6 +1,7 @@
 import type { Household } from '../App'
 import type { HouseholdData } from './data'
 import { analyzeSalary, monthIncome, myDebtShare, summarizeDebts } from './finance'
+import type { SalaryAnalysis } from './finance'
 import { money, toISO } from './format'
 import { computeMetrics } from './metrics'
 import { smartAlerts } from './smartAlerts'
@@ -78,6 +79,9 @@ const median = (xs: number[]) => {
  * Motor de reglas: recalcula todos los avisos a partir de los datos actuales.
  * Es determinista y corre en el teléfono; no usa IA ni servicios externos.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function salaryAnalysisFor(_hh: Household, _data: HouseholdData, _month: Date, _now: Date = new Date()): SalaryAnalysis | null { return null }
+
 export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now: Date = new Date(), ctx: { rows?: ExpRow[] } = {}): Alert[] {
   const out: Alert[] = []
   const add = (a: Alert) => out.push(a)

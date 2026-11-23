@@ -5,10 +5,13 @@ import { toISO } from './format'
 import { fetchAllPages } from './paging'
 
 export type Category = Tables<'categories'>
-export type Expense = Tables<'expenses'>
+/** Medio de pago del gasto: con débito baja la cuenta; con tarjeta sube lo usado de la tarjeta (ver finance.ts) */
+export type PaymentMethod = 'debito' | 'tarjeta'
+export type Expense = Tables<'expenses'> & { payment_method?: PaymentMethod; card_debt_id?: string | null }
 export type Goal = Tables<'goals'>
 export type Contribution = Tables<'contributions'>
-export type Debt = Tables<'debts'>
+/** reported_balance / reported_at: saldo que informa el banco (tarjeta) y su fecha; van juntos o ninguno */
+export type Debt = Tables<'debts'> & { reported_balance?: number | null; reported_at?: string | null }
 export type DebtPayment = Tables<'debt_payments'>
 export type Salary = Tables<'salaries'>
 export type Profile = Tables<'profiles'>
