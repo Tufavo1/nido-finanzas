@@ -70,8 +70,9 @@ class RescanTest {
         assertEquals(1, rescanner().rescan(listOf(n(key = "ok", postedAgo = 23L * 3_600_000))))
         val many = (1..80).map { n(key = "m$it", postedAgo = it * 1_000L, text = "Pagaste \$${1000 + it * 7} en Tienda Uno") }
         val before = textReads
-        assertEquals(50, rescanner().rescan(many))
-        assertEquals(50, textReads - before) // solo se leyeron 50 (los mas recientes); la bandeja tiene su propio tope de 50
+        // La bandeja tiene su propio tope de 50 y ya hay 1 guardado: caben 49 y el aviso 50 no se cuenta como movimiento nuevo
+        assertEquals(49, rescanner().rescan(many))
+        assertEquals(50, textReads - before) // solo se leyeron 50 (los mas recientes)
     }
 
     @Test
@@ -106,7 +107,32 @@ class RescanTest {
     fun `el informe cuenta examinados, nuevos, ya vistos y avisos de otras apps`() {
         val r = report(n(), n(key = "k2", text = "Pagaste \$200 a tu CMR Mastercard Premium"), n(pkg = "com.otra.app", key = "o1"), n(pkg = "com.otra.app", key = "o2"), n(key = "viejo", postedAgo = 25L * 3_600_000))
         assertEquals(ScanReport(scanned = 2, processed = 2, alreadySeen = 0, otherApps = 2), r)
-        assertEquals(ScanReport(scanned = 2, processed = 0, alreadySeen = 2, otherApps = 1), report(n(), n(key = "k2", text = "x"), n(pkg = "com.otra.app")))
+        assertEquals(ScanReport(scanned = 2, processed = 0, alreadySeen = 2, otherApps = 1), report(n(), n(key = "k2"), n(pkg = "com.otra.app")))
+    }
+
+    @Test
+    fun `un aviso que no se pudo leer no se marca como visto y se reintenta cuando mejora la lectura`() {
+        var title: String? = null
+        val splitNotice = ActiveNotice(bank, "k9", now - 60_000) { title to "a tu CMR Mastercard Premium. Revisa mas detalles en tu app." }
+        // Sin el monto (el titulo aun no se lee): no es un movimiento, no cuenta y no queda marcado
+        assertEquals(ScanReport(scanned = 1, processed = 0, alreadySeen = 0, otherApps = 0), rescanner().scan(listOf(splitNotice)))
+        assertTrue(repo.list().isEmpty())
+        // Misma notificacion, ahora con el titulo: se toma
+        title = "Pagaste \$300"
+        assertEquals(1, rescanner().scan(listOf(splitNotice)).processed)
+        assertEquals(300L, repo.list().single().candidate.amountClp)
+        // Y ya no se vuelve a tomar
+        assertEquals(0, rescanner().scan(listOf(splitNotice)).processed)
+        assertEquals(1, repo.list().size)
+    }
+
+    @Test
+    fun `el aviso de Falabella con el monto en el titulo se guarda como pago de deuda`() {
+        val notice = ActiveNotice(bank, "k8", now - 60_000) { "Pagaste \$300" to "a tu CMR Mastercard Premium. Revisa mas detalles en tu app." }
+        assertEquals(1, rescanner().scan(listOf(notice)).processed)
+        val d = repo.list().single()
+        assertEquals(cl.nido.parser.Kind.DEBT_PAYMENT, d.candidate.kind)
+        assertEquals(DraftStatus.PENDING, d.status)
     }
 
     @Test

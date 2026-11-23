@@ -56,7 +56,8 @@ class NotificationCaptureService : NotificationListenerService() {
         val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))
             ?.toString()?.take(MAX_TEXT)
         val outcome = graph.processor.process(posted.packageName, title, text, posted.postTime)
-        graph.seen.mark(posted.packageName, posted.key, posted.postTime) // el reescaneo no lo vuelve a tomar
+        // El reescaneo no vuelve a tomar lo ya procesado; lo que no se pudo leer como movimiento queda sin marcar para reintentarlo
+        if (outcome != Outcome.NOT_A_MOVEMENT) graph.seen.mark(posted.packageName, posted.key, posted.postTime)
         if (outcome == Outcome.STORED) DraftEvents.changed()
     }
 
