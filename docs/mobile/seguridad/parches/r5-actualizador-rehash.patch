@@ -1,0 +1,79 @@
+--- a/web/android/app/src/main/kotlin/cl/dinovance/contigo/update/UpdateAndroid.kt
++++ b/web/android/app/src/main/kotlin/cl/dinovance/contigo/update/UpdateAndroid.kt
+@@ -86,14 +86,27 @@
+ 
+     fun canInstall(context: Context): Boolean = context.packageManager.canRequestPackageInstalls()
+ 
+-    /** Sesion de PackageInstaller con el archivo ya verificado. El sistema exige la misma firma y un versionCode mayor. */
+-    fun install(context: Context, apk: File) {
++    /**
++     * Sesion de PackageInstaller con el archivo ya verificado. El sistema exige la misma firma y un versionCode mayor.
++     * Ronda 5 (TOCTOU): el SHA-256 se vuelve a calcular sobre los MISMOS bytes que se escriben en la sesion; si no es el
++     * verificado al descargar, la sesion se abandona y no se instala nada.
++     */
++    fun install(context: Context, apk: File, expectedSha256: String) {
+         val installer = context.packageManager.packageInstaller
+         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+         params.setAppPackageName(context.packageName)
+         val id = installer.createSession(params)
+         installer.openSession(id).use { session ->
+-            apk.inputStream().use { input -> session.openWrite("nido-update.apk", 0, apk.length()).use { out -> input.copyTo(out); session.fsync(out) } }
++            val md = java.security.MessageDigest.getInstance("SHA-256")
++            apk.inputStream().use { input ->
++                session.openWrite("nido-update.apk", 0, apk.length()).use { out ->
++                    val buf = ByteArray(64 * 1024)
++                    while (true) { val n = input.read(buf); if (n < 0) break; md.update(buf, 0, n); out.write(buf, 0, n) }
++                    session.fsync(out)
++                }
++            }
++            val written = md.digest().joinToString("") { "%02x".format(it) }
++            if (written != expectedSha256) { session.abandon(); throw UpdateException(UpdateError.HASH_MISMATCH) }
+             val intent = Intent(context, InstallResultReceiver::class.java).setAction(ACTION)
+             val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+             session.commit(PendingIntent.getBroadcast(context, id, intent, flags).intentSender)
+--- a/web/android/app/src/main/kotlin/cl/dinovance/contigo/update/UpdateCore.kt
++++ b/web/android/app/src/main/kotlin/cl/dinovance/contigo/update/UpdateCore.kt
+@@ -197,6 +197,7 @@
+     private val dir: File,
+ ) {
+     @Volatile private var pending: Pair<UpdateInfo, File>? = null
++    @Volatile private var pendingSha256: String? = null
+ 
+     fun check(): CheckResult {
+         if (!HostPolicy.isAllowedApi(releaseUrl)) throw UpdateException(UpdateError.HOST_NOT_ALLOWED)
+@@ -216,8 +217,9 @@
+             val code = inspector.versionCode(file) ?: throw UpdateException(UpdateError.INVALID_FORMAT)
+             if (code <= installedCode()) throw UpdateException(UpdateError.DOWNGRADE)
+             if (!inspector.sameSignature(file)) throw UpdateException(UpdateError.WRONG_SIGNATURE)
++            pendingSha256 = expected
+         } catch (e: UpdateException) {
+-            file.delete(); pending = null; throw e
++            file.delete(); pending = null; pendingSha256 = null; throw e
+         }
+         pending = info to file
+         return file
+@@ -226,9 +228,13 @@
+     /** Archivo verificado pendiente de instalar, o error NOTHING_DOWNLOADED. */
+     fun pendingFile(): File = pending?.second?.takeIf { it.exists() } ?: throw UpdateException(UpdateError.NOTHING_DOWNLOADED)
+ 
++    /** SHA-256 verificado del archivo pendiente (el instalador lo recalcula al copiarlo a la sesion). */
++    fun pendingSha256(): String = pendingSha256 ?: throw UpdateException(UpdateError.NOTHING_DOWNLOADED)
++
+     /** Limpia lo descargado (tras instalar o al fallar). */
+     fun cleanup() {
+         pending = null
++        pendingSha256 = null
+         dir.listFiles()?.forEach { it.delete() }
+     }
+ 
+--- a/web/android/app/src/main/kotlin/cl/dinovance/contigo/plugin/ContigoNativePlugin.kt
++++ b/web/android/app/src/main/kotlin/cl/dinovance/contigo/plugin/ContigoNativePlugin.kt
+@@ -662,7 +662,7 @@
+         updateExecutor.execute {
+             try {
+                 UpdateEvents.onInstall = { status, error -> notifyListeners("updateInstall", JSObject().put("status", status).put("error", error ?: JSONObject.NULL)) }
+-                UpdateInstaller.install(context, updateService.pendingFile())
++                UpdateInstaller.install(context, updateService.pendingFile(), updateService.pendingSha256())
+                 call.resolve()
+             } catch (e: Exception) { updateService.cleanup(); call.updateError(e) }
+         }

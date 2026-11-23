@@ -76,3 +76,6 @@ Mensajes de error (en español simple): cancelado, sin cuentas de Google, sin co
 2. Compilar el release firmado (`scripts/docker-android-build.sh release`) y comprobar con aapt2 versionName/versionCode.
 3. Crear en GitHub un release PUBLICADO (no borrador ni prerelease) con tag `vX.Y.Z` y los dos assets `nido-release.apk` y `nido-release.apk.sha256` (de `dist-apk/`). Las apps instaladas lo detectan, verifican hash y firma, y se actualizan.
 4. Un release sin los dos assets, o firmado con otra llave, no se instala (la app lo rechaza).
+
+## Verificación de seguridad del APK (ronda 5)
+Antes de publicar: `NIDO_CERT_SHA256=<huella de siempre> bash scripts/verify-apk-security.sh dist-apk/nido-release.apk` debe terminar en `RESUMEN falla=0` (firma v2+v3 con la misma llave, no depurable, permisos exactos de `scripts/apk-security-policy.txt`, sin cleartext, etc.). Checklist completa y qué hacer con Play Protect: `docs/mobile/play-protect.md`.

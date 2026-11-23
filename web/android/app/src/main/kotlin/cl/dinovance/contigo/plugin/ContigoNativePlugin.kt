@@ -54,6 +54,9 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.PluginMethod
 import cl.dinovance.contigo.capture.DraftEvents
+import cl.dinovance.contigo.capture.CaptureHealth
+import cl.dinovance.contigo.capture.HealthInputs
+import cl.dinovance.contigo.capture.RebindPolicy
 import org.json.JSONArray
 
 /** Puente Capacitor. La interfaz TypeScript equivalente está en web/src/lib/nativeBridge.ts. */
@@ -61,10 +64,14 @@ import org.json.JSONArray
 class ContigoNativePlugin : Plugin() {
     private val graph by lazy { CaptureGraph.get(context.applicationContext) }
     private var pendingOpenDraftId: String? = null
+    /** Hilo de la captura (reescaneo, salud, reenganche): aparte del de actualizaciones para que una descarga no lo bloquee. */
+    private val captureExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     override fun load() {
         DraftEvents.listener = { notifyListeners(EVENT_DRAFTS_CHANGED, JSObject()) }
         pendingOpenDraftId = bridge.activity?.intent?.draftIdIfOpenAction()
+        // Al abrir la app (p. ej. justo despues de actualizarla) se pide a Android que vuelva a conectar el servicio si no lo esta
+        captureExecutor.execute { try { maybeRebind() } catch (e: Exception) { graph.prefs.recordFailure(e.javaClass.simpleName, System.currentTimeMillis()) } }
     }
 
     override fun handleOnNewIntent(intent: Intent) {
@@ -191,9 +198,13 @@ class ContigoNativePlugin : Plugin() {
 
     // ---- Almacén seguro (sesión de Supabase) ----
 
+    // Las claves que usa la capa nativa (perfil, registro de guardados, diagnostico, preferencias cifradas) no se leen ni escriben
+    // desde el WebView: un XSS no podria activar el guardado automatico de otra app ni leer los bancos de la persona (ronda 5).
+
     @PluginMethod
     fun secureGet(call: PluginCall) {
         val key = call.getString("key") ?: return call.reject("Falta la clave", "INVALID_ARGUMENT")
+        if (CaptureGraph.isReservedKey(key)) return call.reject("Clave reservada", "RESERVED_KEY")
         call.resolve(JSObject().put("value", graph.session.get(key)))
     }
 
@@ -201,13 +212,16 @@ class ContigoNativePlugin : Plugin() {
     fun secureSet(call: PluginCall) {
         val key = call.getString("key") ?: return call.reject("Falta la clave", "INVALID_ARGUMENT")
         val value = call.getString("value") ?: return call.reject("Falta el valor", "INVALID_ARGUMENT")
-        graph.session.set(key, value)
+        if (CaptureGraph.isReservedKey(key)) return call.reject("Clave reservada", "RESERVED_KEY")
+        // Keystore invalidado o disco lleno: se rechaza con un codigo (antes la excepcion cerraba la app)
+        if (!graph.session.trySet(key, value)) return call.reject("No se pudo guardar de forma segura", "STORE_FAILED")
         call.resolve()
     }
 
     @PluginMethod
     fun secureRemove(call: PluginCall) {
         val key = call.getString("key") ?: return call.reject("Falta la clave", "INVALID_ARGUMENT")
+        if (CaptureGraph.isReservedKey(key)) return call.reject("Clave reservada", "RESERVED_KEY")
         graph.session.remove(key)
         call.resolve()
     }
@@ -259,6 +273,9 @@ class ContigoNativePlugin : Plugin() {
         graph.clearProfile()
         graph.autoLog.clear()
         graph.diagnostics.clear()
+        // La configuracion de captura de la persona anterior (apps elegidas, bancos asociados, guardado automatico, tope, apps recientes)
+        graph.prefs.secure.clearAccountConfig()
+        graph.recent.clear()
         if (key != null) OwnerFilter.adoptable(graph.drafts.list(), key, graph.prefs.lastUser()).forEach { d -> graph.drafts.update(d.id) { it.copy(ownerKey = key) } }
         OwnerFilter.foreign(graph.drafts.list(), key).forEach {
             graph.notifier.cancel(it.id)
@@ -277,6 +294,8 @@ class ContigoNativePlugin : Plugin() {
         graph.recent.clear()
         graph.session.removeByPrefix("queue-")
         graph.session.clear()
+        // Todo lo sensible de las preferencias (cifrado, y cualquier resto en claro de una version anterior), tambien en memoria
+        graph.prefs.secure.clearAll()
         graph.prefs.setActiveOwner(null)
         graph.prefs.setLastUser(null)
         call.resolve()
@@ -336,7 +355,7 @@ class ContigoNativePlugin : Plugin() {
         ) ?: return call.reject("Perfil no válido", "INVALID_ARGUMENT")
         // Solo el perfil del dueño activo: una respuesta tardía de otra persona no puede dejar su perfil guardado (R3-04)
         if (profile.ownerKey != graph.prefs.activeOwner()) return call.reject("El perfil no es del dueño activo", "OWNER_MISMATCH")
-        graph.saveProfile(profile)
+        if (!graph.saveProfile(profile)) return call.reject("No se pudo guardar de forma segura", "STORE_FAILED")
         SyncScheduler.enqueue(context)
         call.resolve(JSObject().put("ownerKey", profile.ownerKey))
     }
@@ -472,11 +491,13 @@ class ContigoNativePlugin : Plugin() {
     @PluginMethod
     fun rescanNotifications(call: PluginCall) {
         val service = NotificationCaptureService.instance
-        updateExecutor.execute {
+        captureExecutor.execute {
             val report = service?.rescanActive() ?: ScanReport(0, 0, 0, 0)
             val allowed = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
             val r = ScanResult.of(allowed && service != null, graph.prefs.effectiveWhitelist().isNotEmpty(), report)
-            call.resolve(JSObject().put("connected", service != null).apply { r.toMap().forEach { (k, v) -> put(k, v) } })
+            // Sin servicio conectado (tipico tras actualizar la app): se pide reenganche; al conectarse, el servicio reescanea solo
+            val rebind = service == null && maybeRebind()
+            call.resolve(JSObject().put("connected", service != null).put("rebindRequested", rebind).apply { r.toMap().forEach { (k, v) -> put(k, v) } })
         }
     }
 
@@ -513,9 +534,69 @@ class ContigoNativePlugin : Plugin() {
     fun getCaptureDiagnostics(call: PluginCall) {
         val items = JSArray()
         graph.diagnostics.list().forEach {
-            items.put(JSObject().put("atMillis", it.atMillis).put("bankId", it.bankId ?: JSONObject.NULL).put("reason", it.reason.name).put("maskedText", it.maskedText))
+            // shape/fields/hint (ronda 5, aditivos): que campos traia el aviso y su largo, sin el contenido
+            items.put(
+                JSObject().put("atMillis", it.atMillis).put("bankId", it.bankId ?: JSONObject.NULL).put("reason", it.reason.name).put("maskedText", it.maskedText)
+                    .put("shape", it.shape?.toJson() ?: JSONObject.NULL).put("fields", it.shape?.let { s -> JSONArray(s.fields()) } ?: JSONObject.NULL)
+                    .put("hint", it.shape?.hint()?.name ?: JSONObject.NULL),
+            )
         }
         call.resolve(JSObject().put("items", items))
+    }
+
+    /**
+     * Salud del servicio de lectura de avisos: `state` = OK (leyendo) | NO_ACCESS | DISCONNECTED (con `disconnectedHours` si se sabe y
+     * `sinceUpdate` si fue tras actualizar la app) | BATTERY_RESTRICTED | CONNECTING (la app recien abrio). Si hace falta, pide reenganche
+     * (`rebindRequested`). Solo numeros, booleanos y un enum.
+     */
+    @PluginMethod
+    fun getCaptureHealth(call: PluginCall) {
+        captureExecutor.execute {
+            try {
+                val rebind = maybeRebind()
+                val r = CaptureHealth.compute(healthInputs()).copy(rebindRequested = rebind)
+                call.resolve(JSObject().apply { r.toMap().forEach { (k, v) -> put(k, v ?: JSONObject.NULL) } })
+            } catch (e: Exception) {
+                call.reject("No se pudo leer el estado", "FAILED")
+            }
+        }
+    }
+
+    private fun listenerAllowed(): Boolean = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+
+    private fun healthInputs(): HealthInputs = HealthInputs(
+        now = System.currentTimeMillis(),
+        listenerAllowed = listenerAllowed(),
+        connectedNow = NotificationCaptureService.instance != null,
+        snapshot = graph.prefs.health(),
+        versionCode = graph.versionCode,
+        backgroundRestricted = backgroundRestricted(),
+        batteryOptimized = !isIgnoringBatteryOptimizations(),
+        processAgeMillis = android.os.SystemClock.elapsedRealtime() - graph.createdAtElapsed,
+        whitelistCount = graph.prefs.effectiveWhitelist().size,
+    )
+
+    /** Pide a Android que vuelva a conectar el servicio (con permiso, sin conexion, maximo cada 30 s). true si se pidio. */
+    private fun maybeRebind(): Boolean {
+        val now = System.currentTimeMillis()
+        if (!RebindPolicy.shouldRequest(now, graph.prefs.lastRebindAt(), listenerAllowed(), NotificationCaptureService.instance != null)) return false
+        graph.prefs.setLastRebindAt(now)
+        return try {
+            android.service.notification.NotificationListenerService.requestRebind(android.content.ComponentName(context, NotificationCaptureService::class.java))
+            true
+        } catch (e: RuntimeException) {
+            graph.prefs.recordFailure(e.javaClass.simpleName, now)
+            false
+        }
+    }
+
+    private fun backgroundRestricted(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
+        val am = context.getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        if (am?.isBackgroundRestricted == true) return true
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        val usm = context.getSystemService(android.content.Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager
+        return usm?.appStandbyBucket == android.app.usage.UsageStatsManager.STANDBY_BUCKET_RESTRICTED
     }
 
     // ---- Actualizaciones desde el release publicado en GitHub ----
@@ -581,7 +662,7 @@ class ContigoNativePlugin : Plugin() {
         updateExecutor.execute {
             try {
                 UpdateEvents.onInstall = { status, error -> notifyListeners("updateInstall", JSObject().put("status", status).put("error", error ?: JSONObject.NULL)) }
-                UpdateInstaller.install(context, updateService.pendingFile())
+                UpdateInstaller.install(context, updateService.pendingFile(), updateService.pendingSha256())
                 call.resolve()
             } catch (e: Exception) { updateService.cleanup(); call.updateError(e) }
         }

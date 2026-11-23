@@ -166,3 +166,148 @@ Pantallas del front aún en edición (`DetectedInbox`/`useDetected` pueden cambi
 - **S-20 (aplicado en parte).** El diagnostico guarda hasta 120 caracteres (antes 300) y, ademas de los digitos, enmascara las palabras que siguen a «en», «de», «desde» y «a» (comercio o persona: queda la inicial y `*`). Limite honesto: el texto puede seguir conteniendo nombres o comercios que no vengan despues de esas palabras; es local, cifrado, no se envia solo ni va a logs ni a client_errors, y lo copia la persona a proposito. La pantalla de diagnostico debe decirlo («puede contener nombres»); eso es del front.
 - **R4 ingresos y pagos.** `ExpenseSyncer.rowOf` devuelve null para INCOME y DEBT_PAYMENT (segunda barrera dentro de `rowOf`), y `ReminderPolicy.pendingToSend` solo cuenta gastos CONFIRMED.
 - **S-17 (NO aplicado, decision).** No se exige que la app de banco venga de Google Play: el APK de Contigo se instala desde GitHub y la deteccion por nombre visible dejaria de funcionar en los telefonos de las personas que usan apps de banco instaladas por otras vias (o en el propio telefono del dueno). El riesgo (una app maliciosa con nombre de banco que publique avisos falsos y se guarde sola hasta el tope) queda ACEPTADO y mitigado por: ingresos y pagos nunca se guardan solos, tope por defecto de 50.000, categoria aprendida obligatoria, guardado automatico apagado por defecto y con aviso. Alternativa futura mas fuerte: fijar el certificado de firma de cada banco (requiere obtenerlo de las apps reales).
+
+## Cifrado en reposo, ronda 5 (2026-11-22)
+
+Auditoría de TODO lo que la capa Android (`web/android`) deja en el teléfono, leyendo el código (`grep` de `getSharedPreferences`, `File(`, `cacheDir`, `filesDir`, `noBackupFilesDir`, `Log.`, `println`). Cifrado = AES-256-GCM con clave de Android Keystore no exportable (`KeystoreAesGcm`, IV aleatorio, formato versionado), vía `SecureKeyValueStore` en `noBackupFilesDir` (no entra en copias). No se agregó criptografía nueva: se reutilizaron `BlobCipher`/`SecureKeyValueStore`/`TextStore`.
+
+| Dato | Dónde | ¿Cifrado antes? | Sensibilidad | Acción ronda 5 |
+|---|---|---|---|---|
+| Sesión de Supabase (tokens), colas `queue-*` del front | `session/` (SecureKeyValueStore) | Sí | Crítica | Sin cambio. `secureSet` ya no cierra la app si el Keystore falla (rechaza `STORE_FAILED`). |
+| Borradores capturados (monto, comercio, cuenta ·4 dígitos) | `drafts.bin` | Sí | Alta | Sin cambio de formato. Un borrador ilegible se salta sin perder los demás; un fallo `RuntimeException` del Keystore ya no tumba la lista. |
+| Perfil automático (`auto-profile`: dueño, hogar, categorías) | `session/` | Sí | Alta | `setAutoProfile` rechaza `STORE_FAILED` en vez de lanzar. Clave reservada (ver abajo). |
+| Registro de guardados solos (`auto-log`: montos, nota) | `session/` | Sí | Alta | Escrituras que no lanzan (`SafeTextStore`). |
+| Diagnóstico (`diag-log`: motivo, texto enmascarado) | `session/` | Sí | Media (S-20) | Nuevo campo `shape` (solo largos), cifrado igual. |
+| Avisos vistos (`seen-notices`, hashes) | `seen/` | Sí | Baja | Sin cambio; NO se borra al cerrar sesión (a propósito: un gasto enviado no debe renacer). |
+| Registro de avisos convertidos (`notice-ledger`, hashes + id de borrador) | `seen/` | Nuevo | Baja | Nuevo, cifrado, solo SHA-256; tope 200 y 48 h. |
+| **Apps elegidas (lista blanca)** | SharedPreferences `contigo_capture`: `whitelist` | **No** | Media-alta: revela qué bancos usa | **Cifrado** (`capture-prefs`) + migración. |
+| **Apps que avisaron recientemente** (paquete y hora) | `recent_apps` | **No** | Alta: hábitos (qué apps usa y cuándo) | **Cifrado** + migración. |
+| **Banco asociado a mano** (`bank_pkg_*`) | `bank_pkg_<banco>` | **No** | Media-alta | **Cifrado** + migración. |
+| **Bancos detectados** (`bank_det_*`) | `bank_det_<banco>` | **No** | Media-alta | **Cifrado** + migración. |
+| **Guardado automático por banco** (`bank_auto_*`) | `bank_auto_<banco>` | **No** | Media | **Cifrado** + migración. |
+| **Tope de guardado automático** | `auto_cap` | **No** | Media: monto | **Cifrado** + migración. |
+| **Dueño activo y última persona** (`usuario:hogar`, `usuario`) | `active_owner`, `last_user` | **No** | Media: identificadores | **Cifrado** + migración. |
+| Dirección del servidor (`api_base`) | SharedPreferences | No | Baja (igual para todos) | Se queda en claro (S-18: fijada una vez). |
+| Ocultar en bloqueo, versión de migración | SharedPreferences | No | Nula | Se queda en claro. |
+| Salud del servicio (horas de conexión/desconexión, versión, fallos por nombre de clase, último aviso) y estado del envío (hora, tipo de error) | SharedPreferences | No | Baja: horas, sin montos ni textos | Se queda en claro **a propósito**: la salud debe poder calcularse aunque el Keystore falle. Límite: la hora del último aviso insinúa actividad. |
+| Registro de cierres (`crash-log.json`: clase + marcos de pila, versión) | `noBackupFilesDir` | No | Baja (sin mensaje ni datos) | Se queda en claro: se escribe dentro del manejador de cierres, donde usar Keystore es arriesgado. |
+| APK de actualización descargado | `cache/updates/` | No | Nula (APK público) | Sin cambio; se borra al instalar o fallar. |
+| Notificaciones propias «Gasto detectado» | Bandeja del sistema | n/a | Alta | Sin cambio: versión pública sin monto en bloqueo (S-15 sigue). `wipe` las cancela. |
+| Token push FCM | Lo guarda Firebase en sus propias preferencias (solo con `google-services.json`, hoy ausente) | n/a | Media | Sin cambio (S-11 sigue: borrar el token al cerrar sesión cuando se active FCM). |
+| Datos del WebView (localStorage, IndexedDB, caché) | Perfil del WebView | No | Depende del front | Fuera de esta capa (la sesión no va ahí: `secureSession.ts`). No auditado aquí. |
+| Logs (`logcat`) | — | — | — | No hay `Log.*`/`println` en Kotlin; `loggingBehavior: none` en Capacitor (si se activara, `Logger.verbose` imprimiría los datos de cada llamada, incluido `secureSet`). Ninguna excepción propia lleva texto ni montos: los fallos se guardan por nombre de clase. |
+
+### Cómo quedó
+- `capture/SensitivePrefs.kt`: un documento JSON cifrado (clave `capture-prefs` del almacén de la sesión) con lista blanca, apps recientes, bancos asociados/detectados, guardado automático, tope, dueño y última persona; copia en memoria por proceso. `CapturePrefs` mantiene la misma API y delega.
+- **Migración** (`SensitivePrefs.migrate`, se ejecuta al crear `CapturePrefs`): versión `secure_prefs_version = 1` en SharedPreferences. (1) Lee las claves sensibles en claro; (2) las funde con lo cifrado (lo cifrado gana: es más nuevo); (3) escribe cifrado y **lo vuelve a leer para comprobarlo**; (4) solo entonces borra la copia en claro con `commit()` y marca la versión. Idempotente (vuelve a correr sin efecto). Si el cifrado falla, NO borra lo claro (sin perder datos), usa los valores en memoria y reintenta en el siguiente arranque (`DEFERRED`). Límite honesto: borrar de SharedPreferences reescribe el XML, pero la memoria flash puede conservar bloques viejos hasta que se reutilicen.
+- **Cierre de sesión / borrar cuenta** (`wipe`): además de sesión, colas, borradores, perfil, registro y diagnóstico, borra todo `capture-prefs` (también en memoria y cualquier resto en claro). **Cambio de cuenta** (`wipeForAccountSwitch`): borra la configuración de la persona anterior (lista blanca, bancos asociados, guardado automático, tope, apps recientes); conserva los bancos detectados (son apps instaladas del teléfono y se vuelven a detectar). Cambio de comportamiento: tras cambiar de cuenta el guardado automático queda apagado hasta que la persona nueva lo active.
+- **Clave perdida o Keystore roto**: (a) leer un bloque ilegible lo borra y devuelve los valores por defecto (lista vacía, guardado automático APAGADO, tope por defecto, sin dueño): degrada hacia lo seguro; (b) escribir nunca lanza (`SafeTextStore`, `SecureKeyValueStore.trySet`); (c) `KeystoreAesGcm.encrypt` reemplaza una clave invalidada (`InvalidKeyException`/`UnrecoverableKeyException`) por una nueva, para que la app pueda volver a guardar (lo cifrado con la vieja ya era ilegible). Probado con un cipher que siempre falla.
+- **Claves reservadas**: `secureGet/secureSet/secureRemove` rechazan con `RESERVED_KEY` las claves de la capa nativa (`auto-profile`, `auto-log`, `diag-log`, `capture-prefs`): un XSS en el WebView no puede leer los bancos de la persona ni activar el guardado automático de otra app escribiendo ese documento. El front no usa esas claves (comprobado con `grep` en `web/src`).
+
+### Pruebas (JVM)
+`CifradoRonda5Test` (10): migración completa sin nada legible en disco (bytes de los archivos), idempotencia y reinicio, corte entre escribir y borrar (gana lo cifrado, sin perder ni duplicar), Keystore roto (aplaza sin borrar lo claro, sin lanzar), clave perdida (valores por defecto, bloque borrado), cipher que falla en borradores/registro/diagnóstico/vistos, borrador con tipo desconocido, borrado al cerrar sesión y al cambiar de cuenta, apps recientes cifradas, R2-03 con la última persona cifrada.
+
+### NO VERIFICADO (necesita teléfono)
+Keystore real (las pruebas usan AES-GCM de la JVM y un archivo simple en vez de `AtomicFile`), la migración sobre las preferencias de una instalación 1.2.12 real, el reemplazo de clave invalidada, `isBackgroundRestricted`/grupo RESTRICTED en fabricantes, y que el XML de SharedPreferences ya no contenga las claves tras actualizar (comprobar con `run-as` en un APK de depuración).
+
+---
+
+# Ronda 5 (2026-11-22): auditoría de ciberseguridad de la APK, permisos y Play Protect
+
+Alcance: manifiesto **fusionado** (debug y release, `app/build/intermediates/merged_manifest/*`), `dist-apk/nido-release.apk` 1.2.12 (el último release que compiló el dueño; solo lectura con `aapt2`/`apksigner`/`dexdump`), un APK **debug** nuevo compilado en esta ronda con los cambios, `capacitor.config.ts`, Capacitor 8.6.2 (`Bridge.java`), código Kotlin/Java de `web/android/app/src/main`, `web/src` (solo lectura) y la cadena completa de `supabase/migrations` en un Postgres nuevo (QA, ver `qa-ronda5.md`). Sin red: **no hubo escaneo de vulnerabilidades en línea** (ni `npm audit`, ni OSV, ni Gradle); lo de dependencias es inventario local y avisos que conozco. No compilé el release firmado (lo hace el dueño).
+
+## Modelo de amenazas (APK)
+
+| # | Atacante | Vía contra la APK | Defensa principal |
+|---|---|---|---|
+| A1 | App maliciosa en el mismo teléfono | Intents a componentes exportados, `nido://`, PendingIntent, FileProvider, superponer ventanas (tapjacking), secuestrar la tarea | Solo 7 exportados, todos con permiso de sistema salvo `MainActivity`; `DeepLinkGuard`; PendingIntent inmutables y explícitos; FileProvider no exportado con 1 subcarpeta; `taskAffinity=""`; FLAG_SECURE |
+| A2 | Red hostil (Wi-Fi, proxy) | Interceptar o suplantar el servidor o el actualizador | Sin cleartext, solo CAs del sistema; actualizador solo https a hosts exactos de GitHub, SHA-256 y misma firma |
+| A3 | Repositorio o cuenta de GitHub comprometidos | Publicar un APK «actualización» | Android exige la MISMA firma; el actualizador lo comprueba antes; la llave vive fuera del repo |
+| A4 | XSS en el WebView | Usar el puente nativo (sesión, configuración) | React sin `innerHTML`; claves reservadas en el puente (ronda 5 Kotlin); `ApiBasePolicy` (S-18); **falta CSP nativa** (R5-04) |
+| A5 | Persona con el teléfono en la mano | Ver montos, sacar datos por ADB o copias | FLAG_SECURE, no depurable, sin copias, cifrado en reposo |
+| A6 | Pareja / otro usuario autenticado | Leer o tocar datos ajenos vía la API | RLS + GRANT por columna (probado contra el esquema real, `e2e-ronda5`) |
+| A7 | Cadena de suministro | Librería o herramienta de build maliciosa | npm con `integrity` (584/584 desde registry.npmjs.org); Gradle **sin** verificación de checksums (R5-09) |
+
+## Permisos, uno por uno (manifiesto fusionado y APK)
+
+| Permiso | Quién lo trae | Para qué | Decisión |
+|---|---|---|---|
+| `INTERNET` | app | Hablar con el servidor propio (HTTPS) y revisar actualizaciones | Se queda |
+| `POST_NOTIFICATIONS` | app | «Gasto detectado», recordatorios (Android 13+) | Se queda |
+| `REQUEST_INSTALL_PACKAGES` | app | Actualizador interno verificado (decisión del dueño) | Se queda; es la señal más pesada para Play Protect junto al listener (ver `play-protect.md`) |
+| `BIND_NOTIFICATION_LISTENER_SERVICE` | (no es `uses-permission`) protege el servicio | Solo el sistema puede enlazar el listener; la persona lo concede en Ajustes | Se queda; ahora declara su propósito (R5-03) |
+| `VIBRATE` | `@capacitor/haptics` | Vibración al tocar (se puede apagar) | Se queda (se usa en `lib/haptics.ts`) |
+| `ACCESS_NETWORK_STATE` | WorkManager (y `@capacitor/network`, sin uso: R5-16) | Enviar en segundo plano solo con red | Se queda |
+| `WAKE_LOCK` | WorkManager | Terminar un envío en segundo plano | Se queda |
+| `RECEIVE_BOOT_COMPLETED` | WorkManager | Reprogramar el envío pendiente tras reiniciar | Se queda: quitarlo puede dejar trabajo sin reprogramar y no lo puedo probar sin teléfono. Señal débil (muy común) |
+| `c2dm.permission.RECEIVE` | Firebase Messaging (`@capacitor/push-notifications`) | Avisos de la pareja (`lib/nativePush.ts`) | Se queda |
+| `cl.dinovance.contigo.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | androidx.core | Receptores dinámicos no exportados en Android < 13 | Se queda (nivel `signature`) |
+| `FOREGROUND_SERVICE` | WorkManager | `setForeground()`, que la app **no** llama | **Quitado** con `tools:node="remove"` (R5-02) |
+
+Ningún permiso de SMS, llamadas, contactos, ubicación, cámara, micrófono, accesibilidad, superposición, administrador de dispositivo, `QUERY_ALL_PACKAGES`, almacenamiento ni `AD_ID` (lista de prohibidos en `scripts/apk-security-policy.txt`). `<queries>` solo pide ver apps con ícono de lanzador (para nombrar bancos; S-17).
+
+## Superficie exportada (manifiesto fusionado)
+
+| Componente | Protección | Justificación |
+|---|---|---|
+| `MainActivity` | ninguna (lanzador) | MAIN/LAUNCHER + `nido://gasto` (BROWSABLE). El enlace se valida en Kotlin (`DeepLinkGuard`, mismo parser KMP) y en TS; solo abre «Confirmar gasto». Los extras de acción/borrador que otra app pueda mandar solo abren la revisión de un borrador propio, nunca guardan (aceptado) |
+| `capture.NotificationCaptureService` | `BIND_NOTIFICATION_LISTENER_SERVICE` | Solo el sistema enlaza |
+| `androidx.work...SystemJobService` | `BIND_JOB_SERVICE` | Solo el sistema |
+| `androidx.work...DiagnosticsReceiver`, `androidx.profileinstaller.ProfileInstallReceiver` | `DUMP` | Solo shell/sistema |
+| `gms...RevocationBoundService` | permiso de Google Play services | Google Sign-In |
+| `firebase.iid.FirebaseInstanceIdReceiver` | `c2dm.permission.SEND` | Solo Google Play services |
+
+Todos los proveedores (`FileProvider`, `InitializationProvider`, `FirebaseInitProvider`) van `exported=false`. Sin App Links `https` (no hay `autoVerify` que verificar); `nido://` es un esquema propio, por lo que otra app puede registrarlo también: el enlace no lleva secretos y solo prellena un formulario (aceptado).
+
+## Hallazgos de la ronda 5
+
+| ID | Hallazgo | Severidad | Estado |
+|---|---|---|---|
+| R5-01 | `nido-release.apk` 1.2.12 firmado solo con **v2** (sin v3). Sin v3 no se puede rotar la llave en el futuro sin romper actualizaciones. | Medio | **Corregido** en `app/build.gradle` (`enableV2Signing/enableV3Signing true`, v1 off por minSdk 26). La llave no cambia. Hay que **recompilar** el release; `verify-apk-security.sh` falla hasta entonces |
+| R5-02 | `FOREGROUND_SERVICE` heredado de WorkManager sin uso (señal y permiso de más). | Bajo | **Corregido** (`tools:node="remove"`); confirmado en manifiesto fusionado y en el APK debug nuevo |
+| R5-03 | El listener recibía por defecto todos los tipos de notificación, incluidas conversaciones de apps de mensajería y notificaciones persistentes, aunque solo procesa bancos de la lista blanca. | Bajo (privacidad / señal) | **Corregido**: `default_filter_types="alerting\|silent"`, `disabled_filter_types="ongoing"` (Android 12+). **NO VERIFICADO en teléfono**: si un banco publicara su aviso como «conversación» dejaría de llegar por defecto; la persona puede activarlo en Ajustes > Acceso a notificaciones > Contigo |
+| R5-04 | (S-06 sigue) El `index.html` del APK no trae CSP; en nativo `_headers` no se aplica. | Medio | **Parche propuesto** `parches/r5-csp-nativa.patch` (plugin de Vite que inyecta `<meta>` CSP solo si hay `VITE_API_BASE`, igual a la de la web + origen de la API). Probado: el build de una copia genera el `<meta>`; NO probado en el WebView (Turnstile/Google) |
+| R5-05 | WebView: `allowFileAccess` queda en su valor por defecto (true en Android 8-10, minSdk 26), `allowContentAccess` true, Capacitor activa geolocalización (sin permiso de ubicación, inocuo) y no hay `filterTouchesWhenObscured` (tapjacking en Android < 12; desde 12 el sistema bloquea toques a través de superposiciones no confiables). | Bajo | **Parche propuesto** `parches/r5-webview-tapjacking.patch` (`MainActivity`, no es de mi zona). NO VERIFICADO en teléfono |
+| R5-06 | Actualizador: TOCTOU entre verificar el SHA-256/firma y copiar el archivo a la sesión de `PackageInstaller`. Ventana corta y archivo en `cacheDir` privada: solo lo explota alguien con el uid de la app o root; Android vuelve a exigir la misma firma al instalar. | Bajo | **Parche propuesto** `parches/r5-actualizador-rehash.patch` (recalcula el hash sobre los bytes escritos en la sesión y abandona si difiere). Sin compilar (no se aplicó) |
+| R5-07 | En release quedaban `Log.v/d/i` de librerías (Firebase, WorkManager). El código propio no usa `Log`. | Bajo | **Corregido** en `proguard-rules.pro` (`-assumenosideeffects` v/d/i e `isLoggable=false`). Verificado en el dex de `minifyReleaseWithR8` (sin empaquetar ni firmar): llamadas a `Log.d` 128→0, `Log.i` 74→0, `Log.v` 69→0, `isLoggable` 69→0; quedan `Log.w` 185 y `Log.e` 161 de librerías (Capacitor los calla con `loggingBehavior=none`). NO VERIFICADO con `logcat` en teléfono |
+| R5-08 | `deleteExpense` (`web/src/lib/saveExpense.ts:27`) no detecta que RLS borró **0 filas** (no es error en PostgREST). En «Fue pago de una deuda» la conversión se daría por buena con el gasto aún presente (doble conteo). Hoy la UI solo convierte gastos propios personales (`canConvertToDebt`), así que solo ocurre con carreras (gasto ya borrado o cambiado desde otro teléfono). Demostrado en `e2e-ronda5` D6. | Bajo (integridad) | **Parche propuesto** `parches/r5-borrado-estricto-conversion.patch` (`deleteExpenseStrict` con `.select('id')`) |
+| R5-09 | Gradle sin verificación de dependencias (`gradle/verification-metadata.xml`) ni `distributionSha256Sum` en `gradle-wrapper.properties`; sin lockfile de Gradle. | Bajo (suministro) | **Recomendación** (no aplicado: los checksums oficiales requieren red y activarlo a mitad de trabajo rompe builds offline de otros agentes): `gradle --write-verification-metadata sha256 help` con red y revisar; añadir el sha256 oficial del wrapper |
+| R5-10 | El dex del release incluye `DynamiteModule` de Google Play services (carga módulos **firmados por Google** desde Play services). El APK debug además referencia `PathClassLoader` (desde `gms.dynamite`). Ningún `DexClassLoader`/`InMemoryDexClassLoader`; ningún código propio carga código. | Info | **Aceptado**: es de Google Play services (requerido por Credential Manager/FCM). `verify-apk-security.sh` lo marca AVISO y falla con cualquier otro cargador |
+| R5-11 | Sin certificate pinning de `contigo.dinovance.cl`. | Info | **Aceptado, no activado** (ver abajo) |
+| R5-12 | Portapapeles: «Copiar» del diagnóstico (texto ya enmascarado, S-20) y de `HomeCard` usan `navigator.clipboard`, sin la marca `ClipDescription.EXTRA_IS_SENSITIVE` (Android 13+ muestra una vista previa). | Bajo | **Aceptado** con razón: es una acción explícita de la persona y el texto va enmascarado; para marcarlo sensible haría falta un método nativo nuevo (recomendación para el agente Kotlin) |
+| R5-13 | R8: `-keep class androidx.credentials.** { *; }` y `googleid.** { *; }` son amplios. | Info | **Aceptado**: librerías públicas (no exponen nada propio); estrecharlas exige probar «Entrar con Google» en teléfono. No hay `-dontobfuscate`, diccionarios raros ni `-keep class **` (lo prueba `ManifestSecurityTest`) |
+| R5-14 | En nativo, `localStorage` del WebView guarda el token FCM por persona (`lib/nativePush.ts`), el estado del bloqueo y preferencias; la **sesión** de Supabase NO (va al Keystore por `createSecureStorage`, `lib/supabase.ts:34`). | Info | **Aceptado**: el token FCM es un identificador de entrega, no una credencial; el riesgo real (avisos a la cuenta anterior) es S-11. Recomendación: borrar esa clave también en `wipe` |
+| R5-16 | `@capacitor/network` está instalado y empaquetado (plugin nativo expuesto al WebView) pero `web/src` no lo importa. Código y superficie de más; su permiso (`ACCESS_NETWORK_STATE`) igual lo necesita WorkManager. | Bajo | **Recomendación** (no es mi zona: `web/package.json`): `npm --prefix web uninstall @capacitor/network` y `npx cap sync android`; correr las pruebas |
+| R5-15 | El `nido-release.apk` actual aún tiene `FOREGROUND_SERVICE` y el listener sin filtros (es anterior a esta ronda). | Info | Se corrige al recompilar; `verify-apk-security.sh dist-apk/nido-release.apk` hoy da 4 FALLA (v3, FOREGROUND_SERVICE, 2 del listener) |
+
+Base de datos (contra el esquema real): **no encontré huecos de RLS**. Lo que parecía un hueco (mover un pago propio a la deuda personal de la pareja con `UPDATE debt_id`) lo bloquea el `GRANT UPDATE (amount, paid_on)` por columna (`42501`). Quedan 4 INFO de diseño (ver `qa-ronda5.md`). No hace falta parche SQL.
+
+## Controles verificados en esta ronda (con evidencia)
+
+- `aapt2 dump badging` del release 1.2.12: paquete `cl.dinovance.contigo`, etiqueta `Contigo`, `targetSdk 36`, `compileSdk 36`, `minSdk 26`, **no depurable**. `apksigner`: firma válida, 1 firmante `CN=Contigo, O=Dinovance, C=CL`, RSA 4096 (no es la llave de depuración). `zipalign -c -P 16`: alineado a 16 KB.
+- Manifiesto: `allowBackup=false`, `fullBackupContent=false`, `dataExtractionRules` (excluye todo en nube y transferencia), `usesCleartextTraffic=false`, `networkSecurityConfig` = solo `system`, sin `debug-overrides`, sin `pin-set`. `MainActivity`: `singleTask` + `taskAffinity=""` (sin StrandHogg). FLAG_SECURE en `MainActivity` (la única ventana con datos: el WebView); `PermissionGuideActivity` no muestra montos.
+- PendingIntent: notificaciones y alarma `FLAG_IMMUTABLE` y explícitos; el único `FLAG_MUTABLE` es el de `PackageInstaller.commit` (lo exige el sistema para rellenar el estado), explícito hacia `InstallResultReceiver` no exportado. Redirección de intents: `InstallResultReceiver` solo lanza `EXTRA_INTENT` recibido del instalador del sistema a través de ese PendingIntent propio (no alcanzable por otras apps).
+- FileProvider: `exported=false`, solo `cache-path shared/`. No se usa hoy.
+- WebView/Capacitor: sin `server.url`, sin `allowNavigation`, `allowMixedContent=false`, `webContentsDebuggingEnabled=false`, `loggingBehavior=none` (también en el `capacitor.config.json` empaquetado). Puente: `addWebMessageListener` solo para el origen propio y solo marco principal (Capacitor 8). Plugins empaquetados: app, haptics, keyboard, network, push-notifications, splash-screen, status-bar. Todos se usan en `web/src` **salvo `@capacitor/network`** (ningún `import` en `web/src`): ver R5-16.
+- Sin librerías de publicidad ni analítica (dex sin `FirebaseAnalytics`, `AppMeasurement`, `gms/ads`, Crashlytics, Facebook, AppsFlyer, Adjust). `com/google/firebase/analytics/connector` del debug es solo la interfaz que trae Firebase Messaging; R8 la quita en release.
+- Actualizador (`update/UpdateCore.kt`, `UpdateAndroid.kt`): `HostPolicy` con hosts EXACTOS (`api.github.com` para la API; `github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com` para descargas), https, puerto 443, sin usuario; cada redirección se revalida (máx. 5), sin seguir redirecciones solo (`instanceFollowRedirects=false`); JSON ≤ 256 KiB, `.sha256` ≤ 4 KiB, APK ≤ 150 MiB y tamaño declarado; borrador/prerelease ignorados; SHA-256 del archivo completo; mismo paquete; `versionCode` mayor que el instalado; mismos firmantes (`apkContentsSigners`) antes de instalar, y Android lo vuelve a exigir. Archivo en `cacheDir/updates` (privada) y se borra al terminar o fallar. Riesgo residual: R5-06 y que el `.sha256` viene del mismo release (solo protege contra corrupción; la firma es la barrera real).
+- Código propio (Kotlin/Java): sin `DexClassLoader`, reflexión de carga, `Runtime.exec`, `addJavascriptInterface`, `TrustManager`/`HostnameVerifier` propios, `MODE_WORLD_*`, `Log.*`/`println` (lo prueba `ManifestSecurityTest`).
+- Dependencias (inventario LOCAL, sin escaneo en línea): Capacitor 8.6.2, React 19.3.1 (sin `react-server-dom-*`: no aplica la falla de React Server Components de 2025), supabase-js 2.118.0, AGP 8.13.0, Kotlin 2.0.21, WorkManager 2.9.1, Credentials 1.3.0, googleid 1.1.1, firebase-messaging 25.0.1. Vite 8.3.5, workbox-build, glob y minimatch son solo de desarrollo (no van al APK). `package-lock.json`: 584 paquetes, todos con `integrity` y desde registry.npmjs.org. No conozco avisos abiertos para estas versiones de producción, pero **no lo pude comprobar sin red**.
+
+## Certificate pinning (recomendación, NO activado)
+
+Hoy: TLS estricto con CAs del sistema. Fijar certificados del dominio propio protege contra una CA comprometida o un certificado emitido por error, pero el dominio está detrás de Cloudflare, que **rota sus certificados de borde cada pocos meses y puede cambiar de CA** (Let's Encrypt, Google Trust Services, etc.). Si se fija la hoja o la intermedia equivocada, **la app deja de conectarse para todos** hasta publicar una actualización, y el actualizador también depende de la red (aunque va a GitHub, no al dominio). Si se decide hacerlo: `<domain-config>` solo para `contigo.dinovance.cl` con `<pin-set expiration="…">` de **al menos dos** claves públicas de CA raíz/intermedia (la actual y una de respaldo de otra CA), fecha de caducidad corta (p. ej. 6 meses, pasada la cual Android ignora los pines), sin incluir GitHub, y probarlo en un teléfono antes de publicar. Alternativa más segura con Cloudflare: certificado propio («Advanced Certificate Manager» o certificado subido) con una CA fija conocida. Mi recomendación: **no activarlo ahora**.
+
+## FLAG_SECURE (decisión)
+
+Se mantiene en `MainActivity` para todas las pantallas (la app es un solo WebView: no hay forma fina de marcar solo algunas sin un método nativo que el front llame por ruta). Costo: no se pueden hacer capturas para soporte ni compartir pantalla; beneficio: montos y comercios no quedan en «recientes», capturas ni grabaciones, y otras apps con `MediaProjection` no los ven. `PermissionGuideActivity` no lo necesita (no muestra datos).
+
+## Pruebas nuevas de esta ronda
+
+- `web/android/app/src/test/kotlin/cl/dinovance/contigo/ManifestSecurityTest.kt` (9 tests, regresión permanente en `:app:testDebugUnitTest`): lee el manifiesto **fusionado** debug y release y la política única `scripts/apk-security-policy.txt`; falla con permiso no permitido o prohibido, exportado fuera de la lista blanca o sin su permiso, `debuggable` en release, copias, cleartext, enlace https sin `autoVerify` o esquema no previsto, listener sin propósito, `taskAffinity`; también revisa `network_security_config`, `data_extraction_rules`, `file_paths`, `capacitor.config.*`, APIs prohibidas en el código propio, FLAG_SECURE y `DeepLinkGuard`, y el release endurecido en `build.gradle`/`proguard-rules.pro`. `build.gradle` hace que los tests dependan de `processDebugMainManifest`/`processReleaseMainManifest`.
+- `scripts/verify-apk-security.sh <apk>` (sin red): firma v2+v3, un firmante, no `Android Debug`, huella esperada con `NIDO_CERT_SHA256`, paquete, etiqueta, no depurable/testOnly, targetSdk ≥ 35, permisos exactos, exportados, enlaces, listener, sin copias, sin cleartext, solo CAs del sistema, dex sin cargadores dinámicos ni SDK de publicidad/analítica, sin `.map`, Capacitor endurecido, CSP (aviso), alineación 16 KB. Resultados reales: `dist-apk/nido-release.apk` (1.2.12, anterior a esta ronda) **4 FALLA** esperadas (v3, FOREGROUND_SERVICE, 2 del listener); APK debug nuevo: solo fallan lo propio de debug (llave de depuración, depurable, sin v3) y el resto pasa.
+- `docs/mobile/qa/e2e-ronda5.{sh,sql}`: ver `qa-ronda5.md` (59 PASA, 0 FALLA, 4 INFO).
+
+## Lo que NO pude verificar (sin teléfono o sin red)
+
+Que los avisos de bancos reales sigan llegando con los filtros del listener (R5-03); `logcat` del release; tapjacking/FLAG_SECURE en pantalla; el comportamiento de Play Protect (depende de Google); los parches R5-04/05/06/08 en ejecución (solo `git apply --check`, y R5-04 además un build de Vite en una copia); avisos de vulnerabilidades en línea de npm/Gradle; los checksums oficiales del wrapper de Gradle; que WorkManager reprograme bien sin `FOREGROUND_SERVICE` (no lo usa: verificado por lectura y `grep`).

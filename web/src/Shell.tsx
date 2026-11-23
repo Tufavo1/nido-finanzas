@@ -55,6 +55,7 @@ import type { Scope } from './lib/scope'
 const Money = lazy(() => import('./screens/Money'))
 const Register = lazy(() => import('./screens/Register'))
 const Security = lazy(() => import('./screens/Security'))
+const NativeSettings = lazy(() => import('./screens/NativeSettings'))
 const Help = lazy(() => import('./screens/Help'))
 const Profile = lazy(() => import('./screens/Profile'))
 const Tour = lazy(() => import('./components/Tour'))
@@ -345,6 +346,9 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
     body = <Profile hh={hh} data={data} month={month} reload={reload} onToast={setToast} onGoSalary={() => goTo('money', 'salary')} onBack={() => setTab('security')} initialOpen={profileOpen} />
   } else if (tab === 'help') {
     body = <Help onBack={() => setTab('security')} />
+  } else if (isNativeApp()) {
+    // Ajustes pensados para la APK: 6 grupos. La PWA sigue con Security, igual que siempre
+    body = <NativeSettings hh={hh} data={data} month={month} reload={reload} onToast={setToast} onHelp={() => setTab('help')} onGoSalary={() => goTo('money', 'salary')} capture={capture} onCapture={saveCapture} onCleared={() => void detected.reload()} onSendNow={detected.sendNow} />
   } else {
     body = <Security hh={hh} reload={reload} onToast={setToast} onHelp={() => setTab('help')} capture={capture} onCapture={saveCapture} onCleared={() => void detected.reload()} onSendNow={detected.sendNow} onProfile={() => {
       setProfileOpen('fin')

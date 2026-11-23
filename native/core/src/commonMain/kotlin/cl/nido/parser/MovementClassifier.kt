@@ -17,7 +17,8 @@ internal object MovementClassifier {
     private val INCOME = Regex(INCOME_WORDS.joinToString("|", prefix = "\\b(?:", postfix = ")"))
     private val RECEIVED = Regex("^recibiste\\b|\\b(?:te han transferido|te transfirieron|transferencia recibida)\\b")
     private val REFUND = Regex("\\b(?:abono|deposit|devolucion|devolvimos|reverso|reversa|reversad|anulaste|anulacion|anulad|reembolso)")
-    private val WITHDRAWAL = Regex("\\b(?:retiro|retiraste)\\b")
+    // «Giro»/«Giraste» es como se dice en Chile un retiro de efectivo.
+    private val WITHDRAWAL = Regex("\\b(?:retiro|retiraste|giro|giraste)\\b")
     private val TRANSFER = Regex("\\btransfer")
     // «Pagaste $34.400 [14:35] a tu CMR Mastercard Premium»: pago a la propia tarjeta o linea. «Pagaste $5.000 en Cafe» sigue siendo gasto.
     private val DEBT_PAYMENT = Regex("\\bpagaste\\b(?:[^a-z]|clp|a las|hrs?|el)*\\ba\\s+(?:tu|su)\\s+(?:cmr|tarjeta|credito|linea)\\b")

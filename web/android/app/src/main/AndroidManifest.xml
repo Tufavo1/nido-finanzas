@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright (c) 2026 Dinovance -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Sin copias de seguridad (la cola y la sesión no deben salir del teléfono) y sin tráfico en claro. -->
     <!-- Actualizar la app desde su release de GitHub (con hash y firma comprobados). El usuario debe permitirlo en Ajustes. -->
@@ -58,6 +59,15 @@
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
+            <!-- Proposito declarado (Android 12+): por defecto solo avisos normales y silenciosos (los de los bancos).
+                 Las conversaciones de apps de mensajeria quedan fuera por defecto y las notificaciones persistentes
+                 (musica, navegacion, servicios) no se pueden activar. Menos datos al alcance del listener. -->
+            <meta-data
+                android:name="android.service.notification.default_filter_types"
+                android:value="alerting|silent" />
+            <meta-data
+                android:name="android.service.notification.disabled_filter_types"
+                android:value="ongoing" />
         </service>
 
         <!-- Acciones «Guardar» e «Ignorar» de la notificación propia. -->
@@ -96,4 +106,9 @@
     <!-- Permisos mínimos: red y avisos propios (Android 13+). El acceso a notificaciones lo concede la persona en Ajustes. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Ronda 5: permisos que traen librerias y Contigo no usa. WorkManager declara FOREGROUND_SERVICE para
+         setForeground(), que la app no llama. La lista exacta permitida esta en scripts/apk-security-policy.txt y la
+         prueban ManifestSecurityTest (manifiesto fusionado) y scripts/verify-apk-security.sh (APK). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
 </manifest>

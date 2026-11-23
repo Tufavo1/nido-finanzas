@@ -32,3 +32,12 @@
 # Actualizaciones: el receptor lo instancia el sistema por nombre; el resto va por el plugin.
 -keep class cl.dinovance.contigo.update.InstallResultReceiver
 -keep class cl.dinovance.contigo.update.UpdateError { *; }
+
+# Ronda 5: en release no quedan llamadas a logcat de nivel verbose/debug/info (las de librerias incluidas).
+# El codigo propio no usa Log (lo prueba ManifestSecurityTest); esto cubre lo que traen las dependencias.
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+    public static boolean isLoggable(java.lang.String, int) return false;
+}

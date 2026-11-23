@@ -2031,3 +2031,17 @@ button.setup-item:focus-visible { outline: 3px solid var(--accent-ink); outline-
 .update-banner .update-actions { display: flex; flex-direction: column; gap: 8px; }
 .update-banner .update-actions > .btn:not(.ghost) { width: 100%; min-height: 52px; }
 .update-banner .update-actions > .btn.ghost { min-height: 48px; }
+
+/* Ajustes de la APK (NativeSettings): filas grandes, montos para tocar y zona de peligro aparte */
+.auto-row { min-height: 52px; }
+.auto-row + .auto-row { border-top: 1px solid var(--line); padding-top: 10px; }
+.set-plain { padding: 8px 16px; }
+.set-list .set-plain { border-top: 1px solid var(--line); }
+.set-line { margin: -4px 4px 0; }
+.set-sub { margin: 18px 4px 0; font-size: 14px; font-weight: 700; color: var(--warn); }
+.danger-zone { border-color: var(--warn); }
+.seg.seg-wrap { flex-wrap: wrap; }
+.seg.seg-wrap button { flex: 1 1 auto; min-height: 48px; }
+.auto-status .btn, .first-use .btn { min-height: 52px; width: 100%; }
+.auto-issue + .auto-issue { border-top: 1px solid var(--line); padding-top: 10px; }
+.set-list .btn.ghost, .auto-status .btn { min-height: 48px; }

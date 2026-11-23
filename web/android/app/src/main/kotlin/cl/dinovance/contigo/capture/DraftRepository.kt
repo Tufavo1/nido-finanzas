@@ -77,10 +77,14 @@ class EncryptedDraftRepository(
         val bytes = storage.read() ?: return emptyList()
         return try {
             val array = JSONArray(String(cipher.decrypt(bytes), Charsets.UTF_8))
-            (0 until array.length()).map { Draft.fromJson(array.getJSONObject(it)) }
+            // Un borrador ilegible (p. ej. un tipo que esta version no conoce) se salta sin perder los demas
+            (0 until array.length()).mapNotNull { i -> try { Draft.fromJson(array.getJSONObject(i)) } catch (e: JSONException) { null } catch (e: IllegalArgumentException) { null } }
         } catch (e: GeneralSecurityException) {
             discardUnreadable()
         } catch (e: JSONException) {
+            discardUnreadable()
+        } catch (e: RuntimeException) {
+            // ProviderException del Keystore u otro fallo al descifrar: como una clave perdida, no debe tumbar la captura
             discardUnreadable()
         }
     }

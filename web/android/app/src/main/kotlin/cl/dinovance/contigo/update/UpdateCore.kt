@@ -197,6 +197,7 @@ class UpdateService(
     private val dir: File,
 ) {
     @Volatile private var pending: Pair<UpdateInfo, File>? = null
+    @Volatile private var pendingSha256: String? = null
 
     fun check(): CheckResult {
         if (!HostPolicy.isAllowedApi(releaseUrl)) throw UpdateException(UpdateError.HOST_NOT_ALLOWED)
@@ -216,8 +217,9 @@ class UpdateService(
             val code = inspector.versionCode(file) ?: throw UpdateException(UpdateError.INVALID_FORMAT)
             if (code <= installedCode()) throw UpdateException(UpdateError.DOWNGRADE)
             if (!inspector.sameSignature(file)) throw UpdateException(UpdateError.WRONG_SIGNATURE)
+            pendingSha256 = expected
         } catch (e: UpdateException) {
-            file.delete(); pending = null; throw e
+            file.delete(); pending = null; pendingSha256 = null; throw e
         }
         pending = info to file
         return file
@@ -226,9 +228,13 @@ class UpdateService(
     /** Archivo verificado pendiente de instalar, o error NOTHING_DOWNLOADED. */
     fun pendingFile(): File = pending?.second?.takeIf { it.exists() } ?: throw UpdateException(UpdateError.NOTHING_DOWNLOADED)
 
+    /** SHA-256 verificado del archivo pendiente (el instalador lo recalcula al copiarlo a la sesion). */
+    fun pendingSha256(): String = pendingSha256 ?: throw UpdateException(UpdateError.NOTHING_DOWNLOADED)
+
     /** Limpia lo descargado (tras instalar o al fallar). */
     fun cleanup() {
         pending = null
+        pendingSha256 = null
         dir.listFiles()?.forEach { it.delete() }
     }
 

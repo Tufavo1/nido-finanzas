@@ -15,7 +15,7 @@ class NotificationCaptureService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         instance = this
-        graph.prefs.heartbeat(System.currentTimeMillis(), connected = true)
+        graph.prefs.heartbeat(System.currentTimeMillis(), connected = true, versionCode = graph.versionCode)
         // Bancos instalados despues de abrir la app tambien se detectan
         try { graph.refreshBanks(applicationContext) } catch (e: Exception) { graph.prefs.recordFailure(e.javaClass.simpleName, System.currentTimeMillis()) }
         rescanActive()
@@ -29,7 +29,11 @@ class NotificationCaptureService : NotificationListenerService() {
         if (instance === this) instance = null
         graph.prefs.heartbeat(System.currentTimeMillis(), connected = false)
         // El sistema puede desconectarnos (ahorro de batería, fabricante): pedimos volver a conectar.
-        requestRebind(ComponentName(this, NotificationCaptureService::class.java))
+        try {
+            requestRebind(ComponentName(this, NotificationCaptureService::class.java))
+        } catch (e: RuntimeException) {
+            graph.prefs.recordFailure(e.javaClass.simpleName, System.currentTimeMillis())
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -51,24 +55,21 @@ class NotificationCaptureService : NotificationListenerService() {
     }
 
     private fun capture(posted: StatusBarNotification) {
-        val extras = posted.notification?.extras ?: return
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.take(MAX_TEXT)
-        val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))
-            ?.toString()?.take(MAX_TEXT)
-        val outcome = graph.processor.process(posted.packageName, title, text, posted.postTime)
-        // El reescaneo no vuelve a tomar lo ya procesado; lo que no se pudo leer como movimiento queda sin marcar para reintentarlo
-        if (outcome != Outcome.NOT_A_MOVEMENT) graph.seen.mark(posted.packageName, posted.key, posted.postTime)
+        // Resumen de grupo (repite a los hijos) o aviso fijo/de servicio: se decide por banderas, sin leer el texto
+        if (skips(posted)) return
+        val e = NoticeExtractor.extract(rawOf(posted))
+        val outcome = graph.processor.process(IncomingNotice(posted.packageName, e.title, e.body, posted.postTime, posted.key, posted.notification?.`when` ?: 0, e.shape))
+        // El reescaneo no vuelve a tomar lo ya procesado; lo que no se pudo leer como movimiento, lo que fallo al guardar y lo que no
+        // cupo quedan sin marcar para reintentarlo (el procesador reconoce el mismo aviso y no lo duplica)
+        if (outcome !in NotificationRescanner.RETRY) graph.seen.mark(posted.packageName, posted.key, posted.postTime)
         if (outcome == Outcome.STORED) DraftEvents.changed()
     }
 
     /** Avisos que ya estaban en la barra (el servicio solo recibe los NUEVOS). Nunca lanza. Devuelve cuantos proceso. */
     fun rescanActive(): ScanReport = try {
         val active = (activeNotifications ?: emptyArray()).filter { it.packageName != packageName }.map { sbn ->
-            ActiveNotice(sbn.packageName, sbn.key, sbn.postTime) {
-                val extras = sbn.notification?.extras
-                val title = extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.take(MAX_TEXT)
-                val text = (extras?.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras?.getCharSequence(Notification.EXTRA_TEXT))?.toString()?.take(MAX_TEXT)
-                title to text
+            ActiveNotice(sbn.packageName, sbn.key, sbn.postTime, sbn.notification?.`when` ?: 0, skips(sbn), { NoticeExtractor.extract(rawOf(sbn)) }) {
+                NoticeExtractor.extract(rawOf(sbn)).let { it.title to it.body }
             }
         }
         val report = graph.rescanner.scan(active)
@@ -79,8 +80,32 @@ class NotificationCaptureService : NotificationListenerService() {
         ScanReport(0, 0, 0, 0)
     }
 
+    private fun skips(sbn: StatusBarNotification): Boolean {
+        val flags = sbn.notification?.flags ?: 0
+        return NoticeExtractor.skipReason(
+            RawNotice(null, null, null, groupSummary = flags and Notification.FLAG_GROUP_SUMMARY != 0,
+                ongoing = sbn.isOngoing || flags and Notification.FLAG_ONGOING_EVENT != 0, foregroundService = flags and Notification.FLAG_FOREGROUND_SERVICE != 0),
+        ) != null
+    }
+
+    /** Pasa los extras a texto, cada campo con tope antes de convertirlo (un CharSequence enorme no se copia entero). */
+    private fun rawOf(sbn: StatusBarNotification): RawNotice {
+        val x = sbn.notification?.extras ?: return RawNotice(null, null, null)
+        fun cs(key: String) = x.getCharSequence(key)?.let { it.subSequence(0, minOf(it.length, MAX_RAW)).toString() }
+        val lines = x.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.take(MAX_ITEMS)?.map { it.subSequence(0, minOf(it.length, MAX_RAW)).toString() }.orEmpty()
+        @Suppress("DEPRECATION")
+        val messages = x.getParcelableArray(Notification.EXTRA_MESSAGES)?.takeLast(MAX_ITEMS)
+            ?.mapNotNull { (it as? android.os.Bundle)?.getCharSequence("text")?.let { t -> t.subSequence(0, minOf(t.length, MAX_RAW)).toString() } }.orEmpty()
+        return RawNotice(
+            title = cs(Notification.EXTRA_TITLE), text = cs(Notification.EXTRA_TEXT), bigText = cs(Notification.EXTRA_BIG_TEXT),
+            lines = lines, messages = messages, subText = cs(Notification.EXTRA_SUB_TEXT), summaryText = cs(Notification.EXTRA_SUMMARY_TEXT),
+        )
+    }
+
     companion object {
-        private const val MAX_TEXT = 2_000
+        /** Tope de cada campo al copiarlo de los extras; NoticeExtractor aplica despues el tope final de 2.000. */
+        private const val MAX_RAW = 4_000
+        private const val MAX_ITEMS = 20
 
         /** Servicio conectado ahora mismo (null si no lo esta); lo usa el plugin para `rescanNotifications`. */
         @Volatile

@@ -4,7 +4,7 @@ import type { Expense } from './data'
 import { convertExpenseToDebtPayment, paymentFromExpense } from './expenseToDebt'
 import { newDebtRow } from './movements'
 import { deleteDebtPaymentRow, insertDebtPaymentRow, insertDebtRow } from './saveMovement'
-import { deleteExpense } from './saveExpense'
+import { deleteExpenseStrict } from './saveExpense'
 import { insertExpenseRow } from './saveExpense'
 
 export type DebtDest = { debtId: string } | { name: string; balance: number }
@@ -18,7 +18,7 @@ export async function convertExpenseInDb(a: { householdId: string; meId: string;
   await convertExpenseToDebtPayment({
     createDebt: newDebt ? () => insertDebtRow(newDebt) : undefined,
     insertPayment: () => insertDebtPaymentRow(payment),
-    deleteExpense: () => deleteExpense(e.id),
+    deleteExpense: () => deleteExpenseStrict(e.id),
     deletePayment: () => deleteDebtPaymentRow(payment.id),
   })
   return { paymentId: payment.id }

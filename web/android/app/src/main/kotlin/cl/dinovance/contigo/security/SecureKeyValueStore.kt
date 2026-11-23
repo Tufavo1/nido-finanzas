@@ -9,7 +9,12 @@ import java.security.MessageDigest
  * Almacén clave-valor cifrado para la sesión de Supabase (DEC-03). Cada valor va en su propio archivo,
  * nombrado con el resumen de la clave, cifrado con [cipher] (Keystore). Nada de esto sale en copias de seguridad.
  */
-class SecureKeyValueStore(private val directory: File, private val cipher: BlobCipher) {
+class SecureKeyValueStore(
+    private val directory: File,
+    private val cipher: BlobCipher,
+    /** Donde se escribe cada bloque cifrado; en produccion AtomicFile (las pruebas JVM usan un archivo simple). */
+    private val storageOf: (File) -> BlobStorage = ::AtomicFileStorage,
+) {
     fun get(key: String): String? {
         val storage = storageFor(key)
         val bytes = storage.read() ?: return null
@@ -28,6 +33,14 @@ class SecureKeyValueStore(private val directory: File, private val cipher: BlobC
 
     fun set(key: String, value: String) {
         storageFor(key).write(cipher.encrypt(value.toByteArray(Charsets.UTF_8)))
+    }
+
+    /** Como [set] pero nunca lanza (Keystore roto, disco lleno): false si no quedo guardado. Nada del valor sale en la excepcion. */
+    fun trySet(key: String, value: String): Boolean = try {
+        set(key, value)
+        true
+    } catch (e: Exception) {
+        false
     }
 
     fun remove(key: String) = storageFor(key).delete()
@@ -51,7 +64,7 @@ class SecureKeyValueStore(private val directory: File, private val cipher: BlobC
         directory.mkdirs()
         val name = MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
         val tag = if (key.contains('-')) tagOf(key) else ""
-        return AtomicFileStorage(File(directory, if (tag.isEmpty()) "$name.bin" else "$tag.$name.bin"))
+        return storageOf(File(directory, if (tag.isEmpty()) "$name.bin" else "$tag.$name.bin"))
     }
 
     private fun tagOf(key: String): String = key.substringBefore('-', "").lowercase().filter { it in 'a'..'z' || it in '0'..'9' }.take(16)

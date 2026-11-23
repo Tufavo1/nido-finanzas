@@ -4,6 +4,8 @@ package cl.dinovance.contigo.security
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import java.security.GeneralSecurityException
+import java.security.InvalidKeyException
+import java.security.UnrecoverableKeyException
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -17,8 +19,21 @@ import javax.crypto.spec.GCMParameterSpec
 class KeystoreAesGcm(private val alias: String) : BlobCipher {
     override fun encrypt(plain: ByteArray): ByteArray {
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, key())
+        try {
+            cipher.init(Cipher.ENCRYPT_MODE, key())
+        } catch (e: InvalidKeyException) {
+            // Clave invalidada para siempre (KeyPermanentlyInvalidatedException) o dañada: se reemplaza por una nueva para poder seguir
+            // guardando. Lo cifrado con la anterior ya era ilegible y se descarta al leerlo (pide iniciar sesion de nuevo, sin fallar).
+            cipher.init(Cipher.ENCRYPT_MODE, replaceKey())
+        } catch (e: UnrecoverableKeyException) {
+            cipher.init(Cipher.ENCRYPT_MODE, replaceKey())
+        }
         return byteArrayOf(FORMAT_VERSION) + cipher.iv + cipher.doFinal(plain)
+    }
+
+    private fun replaceKey(): SecretKey {
+        KeyStore.getInstance(PROVIDER).apply { load(null) }.deleteEntry(alias)
+        return generate()
     }
 
     override fun decrypt(blob: ByteArray): ByteArray {
