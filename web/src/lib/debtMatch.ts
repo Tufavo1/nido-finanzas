@@ -5,7 +5,25 @@ export interface DebtLite {
   id: string
   name: string
   archived?: boolean
+  /** null o ausente = compartida; si no, de quién es */
+  owner_id?: string | null
+  /** «Tuya» o «Compartida»: para que se vea de quién es la deuda al elegir */
+  label?: string
 }
+
+/**
+ * Las deudas a las que puedo anotar un pago desde un aviso: las mías y las compartidas. Las personales de la pareja
+ * quedan fuera porque la base de datos no deja pagarlas por otra persona (y no deben elegirse solas por el nombre).
+ */
+export function payableDebts<D extends DebtLite>(debts: D[], meId: string): (D & { label: string })[] {
+  return debts
+    .filter((d) => !d.archived && (d.owner_id == null || d.owner_id === meId))
+    .map((d) => ({ ...d, label: d.owner_id == null ? 'Compartida' : 'Tuya' }))
+}
+
+/** Cuántas deudas personales de la pareja quedan fuera de la lista de pago */
+export const partnerOnlyCount = (debts: DebtLite[], meId: string): number =>
+  debts.filter((d) => !d.archived && d.owner_id != null && d.owner_id !== meId).length
 
 export type DebtMatch<D extends DebtLite = DebtLite> =
   /** Una sola deuda claramente parecida: se ofrece registrar el pago de un toque */

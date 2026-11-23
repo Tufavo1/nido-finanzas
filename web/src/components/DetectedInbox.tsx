@@ -36,6 +36,8 @@ interface Props {
   onUndoAuto?: (id: string) => void
   /** Deudas activas, para emparejar los pagos de tarjeta */
   debts?: DebtLite[]
+  /** Aviso sobre deudas de la pareja que no se pueden pagar desde aquí */
+  debtsNote?: string
   /** Guarda el ingreso detectado; si falla lanza el error (el borrador queda) */
   onSaveIncome?: (d: NativeDraft) => Promise<void>
   /** Registra el pago en la deuda elegida; si falla lanza el error (el borrador queda) */
@@ -56,7 +58,7 @@ const GROUPS = [
 const dayFmt = new Intl.DateTimeFormat('es-CL', { day: 'numeric', month: 'short' })
 
 /** «Movimientos detectados»: lo que el teléfono encontró en tus avisos del banco, para que tú lo apruebes. */
-export default function DetectedInbox({ drafts, failed, categories, history, onReview, onSaveWith, onIgnore, onRetry, onSettings, kept, onKeepBoth, appNames = new Map(), autoSaved = [], onUndoAuto, debts = [], onSaveIncome, onPayDebt, onPayNewDebt, monthLeft }: Props) {
+export default function DetectedInbox({ drafts, failed, categories, history, onReview, onSaveWith, onIgnore, onRetry, onSettings, kept, onKeepBoth, appNames = new Map(), autoSaved = [], onUndoAuto, debts = [], debtsNote, onSaveIncome, onPayDebt, onPayNewDebt, monthLeft }: Props) {
   const [picking, setPicking] = useState<NativeDraft | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -150,6 +152,7 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
               d={d}
               dayLabel={dayFmt.format(d.postedAtMillis)}
               debts={debts}
+              debtsNote={debtsNote}
               categories={categories}
               history={history}
               off={busy !== null}
