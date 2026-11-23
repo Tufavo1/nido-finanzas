@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Dinovance
 // Lado base de datos de «Fue pago de una deuda»: mismas tablas y reglas (RLS) de siempre, sin esquema nuevo.
+import { restoreExpenseRow } from './backup'
 import type { Expense } from './data'
 import { convertExpenseToDebtPayment, paymentFromExpense } from './expenseToDebt'
 import { newDebtRow } from './movements'
@@ -24,10 +25,10 @@ export async function convertExpenseInDb(a: { householdId: string; meId: string;
   return { paymentId: payment.id }
 }
 
-/** Deshacer: devuelve el gasto tal cual era (mismo id) */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function reinsertExpense(e: Expense, _debts?: { id: string }[]): Promise<boolean> {
-  return (await insertExpenseRow(e as never)).ok
+/** Deshacer: devuelve el gasto tal cual era (mismo id, medio de pago y tarjeta; si se pasan las deudas y la tarjeta ya no está, sin tarjeta) */
+export async function reinsertExpense(e: Expense, debts?: { id: string }[]): Promise<boolean> {
+  const row = debts ? restoreExpenseRow(e, new Set(debts.map((d) => d.id))) : e
+  return (await insertExpenseRow(row as never)).ok
 }
 
 export const removePayment = deleteDebtPaymentRow

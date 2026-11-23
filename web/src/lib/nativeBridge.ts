@@ -47,8 +47,10 @@ export interface NativeDraft extends ParsedCandidate {
   medium?: 'DEBIT' | 'CREDIT' | 'UNKNOWN'
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function draftPaymentMethod(_d: { medium?: string | null }): 'debito' | 'tarjeta' { return 'debito' }
+/** Medio de pago del gasto según el aviso: tarjeta solo si el teléfono dice crédito; cualquier otro caso es débito */
+export function draftPaymentMethod(d: { medium?: string | null }): 'debito' | 'tarjeta' {
+  return d.medium === 'CREDIT' ? 'tarjeta' : 'debito'
+}
 
 /** Cierre inesperado sin datos personales (clase de la excepción y marcos de pila). */
 export interface CrashReport {

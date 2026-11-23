@@ -66,6 +66,8 @@ export function candidateToDraft(c: ParsedCandidate & { medium?: string | null }
     shared: o.shared,
     paid_by: o.paidBy,
     category_id: merchant ? suggestCategory(merchant, o.categories, o.history) : null,
+    // Una compra avisada como crédito va a la tarjeta (sin tarjeta elegida: la única del hogar, si hay una)
+    ...(c.kind === 'EXPENSE' && c.medium === 'CREDIT' ? { paymentMethod: 'tarjeta' as const } : {}),
   }
 }
 

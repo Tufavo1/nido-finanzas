@@ -11,7 +11,7 @@ export async function fetchHistory(householdId: string, month: Date, months = 6)
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
       .from('expenses')
-      .select('amount, shared, paid_by, category_id, spent_on, recurring_id')
+      .select('amount, shared, paid_by, category_id, spent_on, recurring_id, payment_method, card_debt_id')
       .eq('household_id', householdId)
       .gte('spent_on', start)
       .lt('spent_on', end)

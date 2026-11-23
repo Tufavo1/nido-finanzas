@@ -136,7 +136,8 @@ export function useData(
       setError(exps.error.message)
       return
     }
-    const rows = exps.data ?? []
+    // payment_method es texto en la base; el CHECK solo deja 'debito' o 'tarjeta'
+    const rows = (exps.data ?? []) as Expense[]
     setExpenses(rows.filter((e) => e.spent_on >= start))
     setPrevExpenses(rows.filter((e) => e.spent_on < start))
     setIncomes(incs.error ? [] : (incs.data ?? []))

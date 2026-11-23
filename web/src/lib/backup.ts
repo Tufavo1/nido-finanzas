@@ -5,20 +5,29 @@ import { APP_NAME, VERSION } from './about'
 const TABLES = [
   'members',
   'categories',
+  'debts',
+  'debt_payments',
   'expenses',
   'recurring_expenses',
   'goals',
   'contributions',
-  'debts',
-  'debt_payments',
   'salaries',
   'incomes',
   'profiles',
 ] as const
 
+/** Orden de las tablas en el respaldo y al restaurarlo: las deudas antes que los gastos que apuntan a una tarjeta */
 export const BACKUP_TABLES: readonly BackupTable[] = TABLES
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function restoreExpenseRow(row: Record<string, unknown>, _debtIds: ReadonlySet<string>): Record<string, unknown> { return row }
+
+/**
+ * Gasto de un respaldo listo para volver a insertar: un respaldo viejo (sin medio de pago) queda como débito,
+ * y la tarjeta solo se conserva si es una deuda que existe (si no, null).
+ */
+export function restoreExpenseRow(row: Record<string, unknown>, debtIds: ReadonlySet<string>): Record<string, unknown> {
+  const card = row.payment_method === 'tarjeta'
+  const debtId = typeof row.card_debt_id === 'string' && debtIds.has(row.card_debt_id) ? row.card_debt_id : null
+  return { ...row, payment_method: card ? 'tarjeta' : 'debito', card_debt_id: card ? debtId : null }
+}
 
 export type BackupTable = (typeof TABLES)[number]
 export type Backup = {

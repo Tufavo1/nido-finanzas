@@ -129,7 +129,7 @@ isOneToOne: false
                   ]
                 },"debts": {
                   Row: {
-                    "archived": boolean,"created_at": string,"due_day": number | null,"household_id": string,"id": string,"kind": string,"monthly_payment": number,"monthly_rate": number,"name": string,"original_amount": number,"owner_id": string | null
+                    "archived": boolean,"created_at": string,"due_day": number | null,"household_id": string,"id": string,"kind": string,"monthly_payment": number,"monthly_rate": number,"name": string,"original_amount": number,"owner_id": string | null,"reported_balance"?: number | null,"reported_at"?: string | null
                   }
                   ComputedFields: never
                   Insert: {
@@ -155,7 +155,7 @@ isOneToOne: false
                   ]
                 },"expenses": {
                   Row: {
-                    "amount": number,"category_id": string,"created_at": string,"created_by": string,"household_id": string,"id": string,"note": string | null,"paid_by": string,"recurring_id": string | null,"shared": boolean,"spent_on": string
+                    "amount": number,"category_id": string,"created_at": string,"created_by": string,"household_id": string,"id": string,"note": string | null,"paid_by": string,"recurring_id": string | null,"shared": boolean,"spent_on": string,"payment_method"?: string,"card_debt_id"?: string | null
                   }
                   ComputedFields: never
                   Insert: {

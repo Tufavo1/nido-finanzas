@@ -1,5 +1,5 @@
 import type { Debt, DebtPayment, Recurring } from './data'
-import { analyzeSalary, monthIncome, myDebtShare, summarizeDebts } from './finance'
+import { analyzeSalary, monthIncome, salaryFlows, summarizeDebts } from './finance'
 import type { Finding, Level } from './finance'
 import { money } from './format'
 import { emergencySaved, isEmergencyGoal, savedInMonth } from './goals'
@@ -20,6 +20,7 @@ export interface HistExpense {
   recurring_id?: string | null
   /** 'tarjeta': no baja la débito (ver finance.ts) */
   payment_method?: string | null
+  card_debt_id?: string | null
 }
 
 export interface AnalysisInput {
@@ -210,9 +211,11 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
 
   // ---------- Ingresos, cuotas y ahorro ----------
   const income = monthIncome(input.salary, input.incomes)
-  const commitments = myDebtShare(input.debts, input.debtPayments, meId, memberCount)
+  // Las compras con tarjeta no bajan el sueldo (sí cuentan en el gasto del mes); las cuotas son lo pagado y lo que falta va por pagar
+  const flows = salaryFlows({ expenses: history, debts: input.debts, debtPayments: input.debtPayments, meId, split: memberCount, month, now, trueCost: cost })
+  const commitments = flows.commitments
   const saved = Math.round(savedInMonth(input.contributions, meId, key))
-  const sal = income > 0 ? analyzeSalary({ income, spent: cost, commitments, month, now, pendingFixed, fixedBooked, saved }) : null
+  const sal = income > 0 ? analyzeSalary({ income, spent: flows.spent, commitments, month, now, pendingFixed: pendingFixed + flows.pendingDebt, fixedBooked, saved }) : null
   const outlookFree = sal ? (sal.projectedFree ?? sal.free) : null
   // Ahorro del mes: lo que apartaste más lo que sobraría
   const savingsPct = sal && outlookFree !== null ? Math.round(((outlookFree + saved) * 100) / income) : null
@@ -412,5 +415,5 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
   const monthly = outlookFree !== null && outlookFree + saved > 0 ? Math.round(outlookFree + saved) : 0
   const savings = monthly > 0 ? { monthly, in6: monthly * 6, in12: monthly * 12 } : null
 
-  return { hasData: cost > 0 || months.some((m) => m.amount > 0), cost, free: null, projected, income, slices, months, avgPrev, score, rule, insights, summary, saved, cushionMonths: monthsCovered, savings }
+  return { hasData: cost > 0 || months.some((m) => m.amount > 0), cost, free: sal ? sal.free : null, projected, income, slices, months, avgPrev, score, rule, insights, summary, saved, cushionMonths: monthsCovered, savings }
 }

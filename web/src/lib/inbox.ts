@@ -61,6 +61,8 @@ export function expenseRow(householdId: string, id: string, d: ExpenseDraft, meI
     shared: d.shared,
     note: d.note.trim(),
     spent_on: d.spent_on,
+    // Con débito no se manda nada: la base pone 'debito' y sin tarjeta
+    ...(d.paymentMethod === 'tarjeta' ? { payment_method: 'tarjeta' as const, card_debt_id: d.cardDebtId ?? null } : {}),
   }
 }
 
