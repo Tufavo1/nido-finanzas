@@ -65,6 +65,8 @@ export async function checkUpdates(manual = false): Promise<void> {
   busy = false
 }
 
+let installSub: { remove(): Promise<void> } | null = null
+
 /** «Actualizar ahora»: descarga con avance y abre el instalador */
 export async function startUpdate(): Promise<void> {
   if (!isNativeApp() || busy) return
@@ -74,6 +76,11 @@ export async function startUpdate(): Promise<void> {
   try {
     await ContigoNative.downloadUpdate()
     set({ phase: 'installing', percent: 100 })
+    // El resultado real lo da el instalador de Android más tarde: si falla, se avisa en vez de quedarse callado
+    await installSub?.remove()
+    installSub = await ContigoNative.addListener('updateInstall', (e) => {
+      if (e.status === 'failed') set({ phase: 'error', error: updateErrorInfo({ code: e.error ?? 'INSTALL_FAILED' }) })
+    }).catch(() => null)
     await ContigoNative.installUpdate()
     set({ phase: 'idle' })
   } catch (e) {

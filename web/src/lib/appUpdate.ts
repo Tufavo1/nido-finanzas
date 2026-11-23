@@ -76,11 +76,22 @@ export interface UpdateErrorInfo {
 /** Cualquier fallo del plugin, en una frase simple. Nunca se muestran códigos ni mensajes crudos. */
 export function updateErrorInfo(e: unknown): UpdateErrorInfo {
   const code = isObj(e) && typeof e.code === 'string' ? e.code : ''
-  if (code === 'NEEDS_INSTALL_PERMISSION')
+  // Los códigos son los que manda Android (UpdateError) y, por compatibilidad, los antiguos del contrato
+  if (code === 'INSTALL_NOT_ALLOWED' || code === 'NEEDS_INSTALL_PERMISSION')
     return { kind: 'permission', text: 'Falta un permiso para instalar la actualización. Actívalo en Ajustes para Contigo y vuelve aquí.', short: 'Falta un permiso para instalar.' }
-  if (code === 'NETWORK') return { kind: 'retry', text: 'No hay buena conexión. Revisa tu internet e inténtalo de nuevo.', short: 'Revisa tu conexión.' }
+  if (code === 'NO_NETWORK' || code === 'NETWORK') return { kind: 'retry', text: 'No hay buena conexión. Revisa tu internet e inténtalo de nuevo.', short: 'Revisa tu conexión.' }
+  if (code === 'RATE_LIMITED') return { kind: 'retry', text: 'GitHub recibió demasiadas consultas desde tu red. Inténtalo de nuevo en unos minutos.', short: 'Inténtalo más tarde.' }
   if (code === 'NO_SPACE') return { kind: 'retry', text: 'No hay espacio suficiente en el teléfono. Libera un poco e inténtalo de nuevo.', short: 'Libera espacio.' }
-  if (code === 'CORRUPT') return { kind: 'retry', text: 'La descarga llegó dañada. Inténtalo de nuevo.', short: 'Inténtalo de nuevo.' }
+  if (code === 'HASH_MISMATCH' || code === 'CORRUPT' || code === 'TOO_LARGE')
+    return { kind: 'retry', text: 'La descarga llegó dañada o incompleta. Inténtalo de nuevo.', short: 'Inténtalo de nuevo.' }
+  if (code === 'INVALID_FORMAT' || code === 'HOST_NOT_ALLOWED' || code === 'NOTHING_DOWNLOADED')
+    return { kind: 'retry', text: 'No se pudo leer la información de la actualización. Inténtalo de nuevo en un momento.', short: 'Inténtalo de nuevo.' }
+  if (code === 'NO_ASSET') return { kind: 'retry', text: 'La actualización todavía no está lista para descargar. Inténtalo más tarde.', short: 'Aún no está lista.' }
+  if (code === 'WRONG_SIGNATURE')
+    return { kind: 'retry', text: 'Esta versión tiene otra firma y Android no la instala sobre la tuya. Desinstala Contigo e instala la nueva (tus datos están en tu cuenta).', short: 'La firma no coincide.' }
+  if (code === 'WRONG_PACKAGE') return { kind: 'retry', text: 'El archivo descargado no corresponde a Contigo, así que no se instaló.', short: 'Archivo incorrecto.' }
+  if (code === 'DOWNGRADE') return { kind: 'retry', text: 'Ya tienes esta versión o una más nueva.', short: 'Ya estás al día.' }
+  if (code === 'INSTALL_FAILED') return { kind: 'retry', text: 'Android rechazó la instalación. Inténtalo de nuevo; si sigue igual, descarga el archivo desde GitHub.', short: 'Android no la instaló.' }
   return { kind: 'retry', text: 'No se pudo actualizar. Inténtalo de nuevo en un momento.', short: 'Inténtalo de nuevo.' }
 }
 

@@ -266,6 +266,7 @@ export interface ContigoNativePlugin {
 
   addListener(event: 'draftsChanged', listener: () => void): Promise<PluginListenerHandle>
   addListener(event: 'updateProgress', listener: (e: { downloaded: number; total?: number }) => void): Promise<PluginListenerHandle>
+  addListener(event: 'updateInstall', listener: (e: { status: string; error?: string | null }) => void): Promise<PluginListenerHandle>
   addListener(event: 'draftOpen', listener: (e: { id: string }) => void): Promise<PluginListenerHandle>
 }
 
