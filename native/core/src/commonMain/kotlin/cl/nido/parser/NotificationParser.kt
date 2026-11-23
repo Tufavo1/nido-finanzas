@@ -13,7 +13,7 @@ class NotificationParser(private val allowedPackages: Set<String>) {
     /** Igual que [parse] pero dice POR QUE no hubo candidato (para el diagnostico local; nunca incluye el texto). */
     fun parseDetailed(packageName: String, title: String?, text: String?, postedAtMillis: Long): ParseResult {
         if (packageName !in allowedPackages) return ParseResult(null, ParseRejection.NOT_ALLOWED)
-        val body = text?.trim().orEmpty()
+        val body = readableBody(title, text)
         if (body.isEmpty()) return ParseResult(null, ParseRejection.NO_TEXT)
         if (DiscardRules.shouldDiscard(body, title)) return ParseResult(null, ParseRejection.DISCARDED)
         val tokens = MoneyExtractor.findAll(body)
@@ -21,6 +21,21 @@ class NotificationParser(private val allowedPackages: Set<String>) {
         val candidate = extract(packageName, body, postedAtMillis, tokens)
         val ambiguous = tokens.map { it.amountClp }.distinct().size > 1 && InstallmentExtractor.find(body) == null
         return ParseResult(candidate, if (candidate == null) ParseRejection.NO_AMOUNT else null, ambiguous)
+    }
+
+    /**
+     * Algunas apps (Banco Falabella) ponen el monto en el TÍTULO y el detalle en el cuerpo («Pagaste $300» + «a tu CMR…»).
+     * Se junta el título con el cuerpo solo si el título trae monto y el cuerpo no trae ninguno distinto: un título de
+     * promoción con otro monto no pisa el del cuerpo.
+     */
+    private fun readableBody(title: String?, text: String?): String {
+        val body = text?.trim().orEmpty()
+        val head = title?.trim().orEmpty()
+        if (head.isEmpty()) return body
+        val headAmounts = MoneyExtractor.findAll(head).map { it.amountClp }.toSet()
+        if (headAmounts.isEmpty()) return body
+        val bodyAmounts = MoneyExtractor.findAll(body).map { it.amountClp }.toSet()
+        return if (headAmounts.containsAll(bodyAmounts)) "$head $body".trim() else body
     }
 
     private fun extract(packageName: String, body: String, postedAtMillis: Long, tokens: List<MoneyToken>): ParsedCandidate? {

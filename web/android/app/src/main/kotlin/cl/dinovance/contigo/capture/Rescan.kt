@@ -68,13 +68,18 @@ class NotificationRescanner(
         val done = ArrayList<Triple<String, String, Long>>()
         var processed = 0
         for (n in todo) {
+            var outcome: Outcome? = null
             try {
                 val (title, text) = n.read()
-                if (process(n.packageName, title, text, n.postTime) != Outcome.FAILED) processed++
+                outcome = process(n.packageName, title, text, n.postTime)
+                // Solo cuenta lo que de verdad quedo guardado como movimiento nuevo (no repetidos ni avisos que no eran un movimiento)
+                if (outcome == Outcome.STORED || outcome == Outcome.NO_SESSION) processed++
             } catch (e: Throwable) {
                 onFailure(e.javaClass.simpleName)
             }
-            done.add(Triple(n.packageName, n.key, n.postTime)) // tambien los malos: no se reintentan en cada conexion
+            // Los fallos se marcan para no reintentar en cada conexion. Un aviso que NO se pudo leer como movimiento queda sin marcar:
+            // si mejora la lectura (una version nueva), la proxima busqueda lo toma. Las apps de banco avisan poco, el costo es bajo.
+            if (outcome != Outcome.NOT_A_MOVEMENT) done.add(Triple(n.packageName, n.key, n.postTime))
         }
         if (done.isNotEmpty()) seen.markAll(done)
         return ScanReport(examined.size, processed, examined.size - todo.size, fresh.size - allowed.size)
