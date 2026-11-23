@@ -38,6 +38,11 @@ android {
                 keyAlias ksProps['keyAlias']
                 keyPassword ksProps['keyPassword']
             }
+            // Ronda 5: v2 + v3 (v3 permite rotar la llave en el futuro sin perder las actualizaciones). Sin v1: minSdk 26.
+            // No cambia la llave: un APK nuevo sigue actualizando al instalado si se firma con la MISMA llave.
+            enableV1Signing false
+            enableV2Signing true
+            enableV3Signing true
         }
     }
     buildTypes {
@@ -47,6 +52,16 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig ksProps['storeFile'] ? signingConfigs.release : null
+        }
+    }
+    // Ronda 5: ManifestSecurityTest lee el manifiesto FUSIONADO de debug y de release (lo que traen las librerias).
+    testOptions {
+        unitTests.all { test ->
+            test.dependsOn('processDebugMainManifest', 'processReleaseMainManifest')
+            test.systemProperty 'contigo.appDir', projectDir.absolutePath
+            test.systemProperty 'contigo.repoRoot', rootProject.projectDir.parentFile.parentFile.absolutePath
+            test.systemProperty 'contigo.mergedManifest.debug', file('build/intermediates/merged_manifest/debug/processDebugMainManifest/AndroidManifest.xml').absolutePath
+            test.systemProperty 'contigo.mergedManifest.release', file('build/intermediates/merged_manifest/release/processReleaseMainManifest/AndroidManifest.xml').absolutePath
         }
     }
     // Sin llave no se produce un release: nada de APK sin firmar ni firmado con la llave de depuracion.

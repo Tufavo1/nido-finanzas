@@ -10,7 +10,8 @@ enum class DiagReason {
     CAP_EXCEEDED, CATEGORY_UNKNOWN, BANK_OFF, NOTIFICATIONS_OFF,
 }
 
-data class DiagEntry(val atMillis: Long, val bankId: String?, val reason: DiagReason, val maskedText: String)
+/** [shape]: que campos traia el aviso y su largo (sin contenido); null en diagnosticos antiguos o si no se leyo el aviso. */
+data class DiagEntry(val atMillis: Long, val bankId: String?, val reason: DiagReason, val maskedText: String, val shape: NoticeShape? = null)
 
 /**
  * Enmascara un aviso para el diagnostico (S-20). Digitos a «#»; se conservan letras, «$», puntos y comas, salvo lo que sigue a
@@ -65,8 +66,8 @@ class DiagnosticsLog(private val store: TextStore, private val clock: () -> Long
     fun list(): List<DiagEntry> = load()
 
     @Synchronized
-    fun add(reason: DiagReason, bankId: String?, rawText: String?) {
-        val e = DiagEntry(clock(), bankId, reason, MaskText.mask(rawText))
+    fun add(reason: DiagReason, bankId: String?, rawText: String?, shape: NoticeShape? = null) {
+        val e = DiagEntry(clock(), bankId, reason, MaskText.mask(rawText), shape)
         save((listOf(e) + load()).take(MAX))
     }
 
@@ -77,7 +78,7 @@ class DiagnosticsLog(private val store: TextStore, private val clock: () -> Long
         val a = JSONArray(store.read() ?: "[]")
         (0 until a.length()).map {
             val o = a.getJSONObject(it)
-            DiagEntry(o.getLong("at"), if (o.isNull("bank")) null else o.getString("bank"), DiagReason.valueOf(o.getString("reason")), o.getString("text"))
+            DiagEntry(o.getLong("at"), if (o.isNull("bank")) null else o.getString("bank"), DiagReason.valueOf(o.getString("reason")), o.getString("text"), o.optJSONObject("shape")?.let(NoticeShape::fromJson))
         }
     } catch (e: Exception) {
         emptyList()
@@ -85,7 +86,7 @@ class DiagnosticsLog(private val store: TextStore, private val clock: () -> Long
 
     private fun save(items: List<DiagEntry>) {
         val a = JSONArray()
-        items.forEach { a.put(JSONObject().put("at", it.atMillis).put("bank", it.bankId ?: JSONObject.NULL).put("reason", it.reason.name).put("text", it.maskedText)) }
+        items.forEach { a.put(JSONObject().put("at", it.atMillis).put("bank", it.bankId ?: JSONObject.NULL).put("reason", it.reason.name).put("text", it.maskedText).put("shape", it.shape?.toJson() ?: JSONObject.NULL)) }
         store.write(a.toString())
     }
 

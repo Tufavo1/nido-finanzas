@@ -86,14 +86,27 @@ object UpdateInstaller {
 
     fun canInstall(context: Context): Boolean = context.packageManager.canRequestPackageInstalls()
 
-    /** Sesion de PackageInstaller con el archivo ya verificado. El sistema exige la misma firma y un versionCode mayor. */
-    fun install(context: Context, apk: File) {
+    /**
+     * Sesion de PackageInstaller con el archivo ya verificado. El sistema exige la misma firma y un versionCode mayor.
+     * Ronda 5 (TOCTOU): el SHA-256 se vuelve a calcular sobre los MISMOS bytes que se escriben en la sesion; si no es el
+     * verificado al descargar, la sesion se abandona y no se instala nada.
+     */
+    fun install(context: Context, apk: File, expectedSha256: String) {
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
         params.setAppPackageName(context.packageName)
         val id = installer.createSession(params)
         installer.openSession(id).use { session ->
-            apk.inputStream().use { input -> session.openWrite("nido-update.apk", 0, apk.length()).use { out -> input.copyTo(out); session.fsync(out) } }
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            apk.inputStream().use { input ->
+                session.openWrite("nido-update.apk", 0, apk.length()).use { out ->
+                    val buf = ByteArray(64 * 1024)
+                    while (true) { val n = input.read(buf); if (n < 0) break; md.update(buf, 0, n); out.write(buf, 0, n) }
+                    session.fsync(out)
+                }
+            }
+            val written = md.digest().joinToString("") { "%02x".format(it) }
+            if (written != expectedSha256) { session.abandon(); throw UpdateException(UpdateError.HASH_MISMATCH) }
             val intent = Intent(context, InstallResultReceiver::class.java).setAction(ACTION)
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
             session.commit(PendingIntent.getBroadcast(context, id, intent, flags).intentSender)

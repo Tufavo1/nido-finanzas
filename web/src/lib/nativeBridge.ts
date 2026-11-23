@@ -117,7 +117,7 @@ export interface DetectedBanksResult {
 
 /** Motivos que entiende la UI; el resto del nativo se traduce o pasa tal cual (la UI muestra «No pude leerlo»). */
 export interface DiagnosticsResult {
-  items: { reason: string; maskedText?: string; at: number }[]
+  items: { reason: string; maskedText?: string; at: number; hint?: string }[]
 }
 
 export interface BankSetupResult {
@@ -160,6 +160,7 @@ export function adaptDiagnostics(raw: unknown): DiagnosticsResult {
     if (!isRec(r) || typeof r['reason'] !== 'string' || typeof r['atMillis'] !== 'number') continue
     const item: DiagnosticsResult['items'][number] = { reason: REASON_MAP[r['reason']] ?? r['reason'], at: r['atMillis'] }
     if (typeof r['maskedText'] === 'string' && r['maskedText']) item.maskedText = r['maskedText']
+    if (typeof r['hint'] === 'string') item.hint = r['hint']
     items.push(item)
   }
   return { items }

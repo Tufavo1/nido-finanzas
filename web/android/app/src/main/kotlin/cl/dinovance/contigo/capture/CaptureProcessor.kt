@@ -54,6 +54,8 @@ class CaptureProcessor(
     private val diag: DiagnosticsLog? = null,
     /** Permiso de notificaciones de Android: sin el, el gasto queda en la bandeja pero no se muestra el aviso propio. */
     private val notificationsAllowed: () -> Boolean = { true },
+    /** Registro persistente (solo hashes) de avisos ya convertidos en borrador: deduplica reenvios aunque el proceso muera (ronda 5). */
+    private val ledger: NoticeLedger? = null,
 ) {
     private class Stored(val fingerprint: String, val key: String, val amount: Long, var blankMerchant: Boolean, val draftId: String, val at: Long)
 
@@ -63,18 +65,26 @@ class CaptureProcessor(
     /** RF-01: el servicio pregunta ANTES de leer el contenido del aviso. */
     fun accepts(packageName: String): Boolean = packageName != ownPackage && packageName in whitelist()
 
+    fun process(packageName: String, title: String?, text: String?, postedAtMillis: Long): Outcome =
+        process(IncomingNotice(packageName, title, text, postedAtMillis))
+
     @Synchronized
-    fun process(packageName: String, title: String?, text: String?, postedAtMillis: Long): Outcome {
+    fun process(notice: IncomingNotice): Outcome {
         val now = clock()
         return try {
-            handle(packageName, title, text, postedAtMillis, now)
+            handle(notice, now)
         } catch (e: Throwable) {
             health.recordFailure(e.javaClass.simpleName, now)
             Outcome.FAILED
         }
     }
 
-    private fun handle(packageName: String, title: String?, text: String?, postedAtMillis: Long, now: Long): Outcome {
+    private fun handle(n: IncomingNotice, now: Long): Outcome {
+        val packageName = n.packageName
+        val title = n.title
+        val text = n.text
+        val postedAtMillis = n.postedAtMillis
+        val shape = n.shape ?: NoticeShape.of(title, text)
         if (!accepts(packageName)) return Outcome.IGNORED_PACKAGE
         val owner = ownerProvider()
         // Sin sesión no hay dueño: el aviso se guarda sin dueño (no se muestra a nadie) y se recupera al volver a iniciar
@@ -87,7 +97,7 @@ class CaptureProcessor(
         val raw = listOfNotNull(title?.takeIf { it.isNotBlank() }, text).joinToString(" | ")
         if (candidate == null) {
             val reason = if (parsed.rejection == ParseRejection.DISCARDED) DiagReason.NOT_AN_EXPENSE else DiagReason.NO_AMOUNT
-            diag(reason, bankId, raw)
+            diag(reason, bankId, raw, shape)
             return Outcome.NOT_A_MOVEMENT
         }
         // Pagos a tu tarjeta («Pagaste ... a tu CMR») y transferencias («Transferiste ... a NOMBRE») llegan a la bandeja pero NUNCA
@@ -97,12 +107,21 @@ class CaptureProcessor(
         // Solo la plata que te mandan («Recibiste»): un abono, devolucion o reversa es INCOME pero lo revisa la persona.
         val isIncome = candidate.kind == Kind.INCOME && parsed.extraIncome
         health.recordEvent(now)
+        // (ronda 5) Mismo aviso reenviado o actualizado por el sistema: por clave + contenido + `when`, persistente y sin ventana de tiempo.
+        val ids = NoticeIds.of(n, candidate.kind, candidate.amountClp)
+        if (ids.identity != null && ledger?.has(ids.identity) == true) return Outcome.DUPLICATE
+        if (sameNoticeUpdated(ids, n, candidate, orphan, now)) return Outcome.DUPLICATE
+        // Reintento tras morir el proceso entre guardar y marcar: el MISMO aviso (misma huella y misma hora de publicacion) ya es un borrador
+        if (repository.list().any { it.sourcePackage == packageName && it.postedAtMillis == postedAtMillis && it.candidate.fingerprint == candidate.fingerprint }) {
+            remember(ids, n, "")
+            return Outcome.DUPLICATE
+        }
         recent.removeAll { now - it.at >= DEDUPE_WINDOW_MILLIS }
         val key = dedupeKey(candidate.kind, candidate.amountClp, candidate.merchant)
         // Mismo aviso repetido: misma huella o mismo monto y comercio a menos de 45 s de lo ULTIMO GUARDADO (el sistema reenvia
         // el aviso, p. ej. al cambiar de minuto). Se mide en segundos, no por el minuto de la huella (R2-01); no renueva la ventana.
         if (recent.any { (it.fingerprint == candidate.fingerprint || it.key == key) && now - it.at < SAME_NOTICE_WINDOW_MILLIS }) {
-            diag(DiagReason.DUPLICATE, bankId, raw)
+            diag(DiagReason.DUPLICATE, bankId, raw, shape)
             return Outcome.DUPLICATE
         }
         // Un cargo sin comercio que se actualiza con mas detalle completa SU borrador, una sola vez (H-14, R2-02).
@@ -129,20 +148,21 @@ class CaptureProcessor(
         )
         if (!addOrMakeRoom(draft, owner)) {
             health.recordFailure("QueueFull", now)
-            diag(DiagReason.QUEUE_FULL, bankId, raw)
+            diag(DiagReason.QUEUE_FULL, bankId, raw, shape)
             notifier.queueFull()
             return Outcome.QUEUE_FULL
         }
+        remember(ids, n, draft.id)
         recent.add(Stored(candidate.fingerprint, key, candidate.amountClp, isExpense && candidate.merchant.isNullOrBlank(), draft.id, now))
         while (recent.size > MAX_RECENT) recent.removeAt(0)
         if (orphan) {
             health.recordFailure("NoSession", now)
-            diag(DiagReason.NO_SESSION, bankId, raw)
+            diag(DiagReason.NO_SESSION, bankId, raw, shape)
             return Outcome.NO_SESSION
         }
-        if (parsed.ambiguousAmount) diag(DiagReason.AMBIGUOUS_AMOUNT, bankId, raw)
+        if (parsed.ambiguousAmount) diag(DiagReason.AMBIGUOUS_AMOUNT, bankId, raw, shape)
         if (draft.status == DraftStatus.PENDING && (isExpense || isIncome)) whyNotAuto(packageName, candidate, owner, maybe, bankId, raw)
-        if (!notificationsAllowed()) diag(DiagReason.NOTIFICATIONS_OFF, bankId, raw)
+        if (!notificationsAllowed()) diag(DiagReason.NOTIFICATIONS_OFF, bankId, raw, shape)
         if (draft.autoSaved) {
             val merchant = candidate.merchant?.trim().orEmpty()
             val note = if (isIncome) INCOME_SOURCE else merchant.ifEmpty { "Gasto" }
@@ -155,8 +175,61 @@ class CaptureProcessor(
         return Outcome.STORED
     }
 
-    private fun diag(reason: DiagReason, bankId: String?, raw: String) {
-        try { diag?.add(reason, bankId, raw) } catch (e: Exception) { health.recordFailure("DiagFailed", clock()) }
+    private fun diag(reason: DiagReason, bankId: String?, raw: String, shape: NoticeShape? = null) {
+        try { diag?.add(reason, bankId, raw, shape) } catch (e: Exception) { health.recordFailure("DiagFailed", clock()) }
+    }
+
+    /** Resumenes del aviso: identidad (ranura + `when` + contenido), ranura (paquete + clave de Android) y monto. Solo hashes. */
+    private class NoticeIds(val identity: String?, val slot: String?, val money: String) {
+        companion object {
+            fun of(n: IncomingNotice, kind: Kind, amount: Long): NoticeIds {
+                val slot = n.key?.let { NoticeLedger.sha(n.packageName, it) }
+                val stamp = if (n.whenMillis > 0) n.whenMillis else n.postedAtMillis
+                val content = NoticeLedger.sha(n.packageName, NoticeLedger.contentOf(n.title, n.text))
+                return NoticeIds(slot?.let { NoticeLedger.sha(it, stamp, content) }, slot, NoticeLedger.sha(kind.name, amount))
+            }
+        }
+    }
+
+    private fun remember(ids: NoticeIds, n: IncomingNotice, draftId: String) {
+        val id = ids.identity ?: return
+        try {
+            ledger?.add(NoticeLedger.Entry(id, ids.slot.orEmpty(), ids.money, n.whenMillis, draftId, clock()))
+        } catch (e: Exception) {
+            health.recordFailure("LedgerFailed", clock())
+        }
+    }
+
+    /**
+     * La app actualizo el MISMO aviso (misma clave de Android y mismo monto, a menos de 10 min): si trae el mismo `when` es la misma
+     * notificacion; si el borrador anterior no tenia comercio y este si, es el detalle que faltaba. Se completa el borrador (si aun
+     * espera a la persona) en vez de crear otro. Un comercio distinto, otro monto u otro `when` con texto igual son avisos nuevos.
+     */
+    private fun sameNoticeUpdated(ids: NoticeIds, n: IncomingNotice, c: cl.nido.parser.ParsedCandidate, orphan: Boolean, now: Long): Boolean {
+        val slot = ids.slot ?: return false
+        val prev = ledger?.lastInSlot(slot, ids.money, now - SLOT_UPDATE_WINDOW_MILLIS) ?: return false
+        val old = repository.list().firstOrNull { it.id == prev.draftId }
+        val sameWhen = n.whenMillis > 0 && prev.whenMillis == n.whenMillis
+        val oldBlank = old != null && old.candidate.merchant.isNullOrBlank() && !c.merchant.isNullOrBlank()
+        if (!sameWhen && !oldBlank) return false
+        if (old != null) {
+            val om = old.candidate.merchant
+            if (!om.isNullOrBlank() && !c.merchant.isNullOrBlank() && !om.equals(c.merchant, ignoreCase = true)) return false
+            if (old.status == DraftStatus.PENDING) {
+                val merged = old.candidate.copy(
+                    merchant = om?.takeIf { it.isNotBlank() } ?: c.merchant,
+                    confidence = if (om.isNullOrBlank() && !c.merchant.isNullOrBlank()) c.confidence else old.candidate.confidence,
+                    installment = old.candidate.installment ?: c.installment,
+                    account = old.candidate.account ?: c.account,
+                )
+                if (merged != old.candidate && repository.update(old.id) { it.copy(candidate = merged) }) {
+                    recent.firstOrNull { it.draftId == old.id }?.blankMerchant = merged.merchant.isNullOrBlank()
+                    if (!orphan) repository.list().firstOrNull { it.id == old.id }?.let(notifier::show)
+                }
+            }
+        }
+        remember(ids, n, prev.draftId)
+        return true
     }
 
     /** Solo para bancos asociados: por que este gasto no se guardo solo (el primero que aplique). */
@@ -218,6 +291,7 @@ class CaptureProcessor(
         private const val FOREIGN_MAX_AGE_MILLIS = 30L * 24 * 60 * 60 * 1000
         private const val SAME_NOTICE_WINDOW_MILLIS = 45_000L
         private const val REFINE_WINDOW_MILLIS = 30_000L
+        private const val SLOT_UPDATE_WINDOW_MILLIS = 10L * 60 * 1000
         private const val MAX_RECENT = 200
         /** Rotulo del ingreso guardado solo; igual que INCOME_SOURCE de web/src/lib/movements.ts. */
         const val INCOME_SOURCE = "Ingreso extra"

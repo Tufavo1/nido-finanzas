@@ -28,3 +28,13 @@ export async function deleteExpense(id: string): Promise<void> {
   const { error } = await supabase.from('expenses').delete().eq('id', id)
   if (error) throw error
 }
+
+/**
+ * Borrado que exige haber borrado de verdad: con RLS, borrar una fila ajena (o ya borrada) NO da error, solo 0 filas.
+ * Lo usa «Fue pago de una deuda»: si el gasto no se borro, la conversion debe fallar y retirar el pago (sin doble conteo).
+ */
+export async function deleteExpenseStrict(id: string): Promise<void> {
+  const { data, error } = await supabase.from('expenses').delete().eq('id', id).select('id')
+  if (error) throw error
+  if (!data || data.length !== 1) throw new Error('El gasto no se borró')
+}

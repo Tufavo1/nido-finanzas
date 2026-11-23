@@ -15,7 +15,17 @@ import java.util.UUID
 
 /** Ensamblado único de las piezas de captura; el servicio, el receptor y el plugin comparten las mismas. */
 class CaptureGraph private constructor(context: Context) {
-    val prefs = CapturePrefs(context)
+    /** Momento en que se creo el grafo (≈ inicio del proceso): margen para que el sistema conecte el servicio al abrir la app. */
+    val createdAtElapsed: Long = android.os.SystemClock.elapsedRealtime()
+    val session = SecureKeyValueStore(File(context.noBackupFilesDir, "session"), KeystoreAesGcm(SESSION_KEY_ALIAS))
+    // Lo sensible de las preferencias va cifrado en el almacen de la sesion (wipe() lo borra junto con la sesion)
+    val prefs = CapturePrefs(context) { fail -> secureText(session, SensitivePrefs.STORE_KEY, fail) }
+    val versionCode: Long = try {
+        val info = context.packageManager.getPackageInfo(context.packageName, 0)
+        if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else @Suppress("DEPRECATION") info.versionCode.toLong()
+    } catch (e: Exception) {
+        0L
+    }
     val drafts: DraftRepository = EncryptedDraftRepository(
         storage = AtomicFileStorage(File(context.noBackupFilesDir, "drafts.bin")),
         cipher = KeystoreAesGcm(DRAFTS_KEY_ALIAS),
@@ -23,15 +33,13 @@ class CaptureGraph private constructor(context: Context) {
     )
     val recent = RecentApps(prefs)
     val notifier = CaptureNotifier(context.applicationContext, prefs)
-    val session = SecureKeyValueStore(File(context.noBackupFilesDir, "session"), KeystoreAesGcm(SESSION_KEY_ALIAS))
-    val autoLog = AutoSavedLog(object : TextStore {
-        override fun read() = session.get(LOG_KEY)
-        override fun write(value: String?) { if (value == null) session.remove(LOG_KEY) else session.set(LOG_KEY, value) }
-    }, System::currentTimeMillis)
-    val diagnostics = DiagnosticsLog(object : TextStore {
-        override fun read() = session.get(DIAG_KEY)
-        override fun write(value: String?) { if (value == null) session.remove(DIAG_KEY) else session.set(DIAG_KEY, value) }
-    }, System::currentTimeMillis)
+    private val fail: (String) -> Unit = { prefs.recordFailure(it, System.currentTimeMillis()) }
+    val autoLog = AutoSavedLog(secureText(session, LOG_KEY, fail), System::currentTimeMillis)
+    val diagnostics = DiagnosticsLog(secureText(session, DIAG_KEY, fail), System::currentTimeMillis)
+    // Avisos ya vistos y ya convertidos en borrador (solo hashes): almacen aparte, NO se borra con el cierre de sesion para que un
+    // gasto ya enviado no renazca desde la barra ni por un reenvio del sistema
+    private val seenStore = SecureKeyValueStore(File(context.noBackupFilesDir, "seen"), KeystoreAesGcm(SESSION_KEY_ALIAS))
+    val ledger = NoticeLedger(secureText(seenStore, LEDGER_KEY, fail))
     val processor = CaptureProcessor(
         whitelist = prefs::effectiveWhitelist,
         repository = drafts,
@@ -48,13 +56,9 @@ class CaptureGraph private constructor(context: Context) {
         diag = diagnostics,
         notificationsAllowed = { androidx.core.app.NotificationManagerCompat.from(context.applicationContext).areNotificationsEnabled() },
         onAutoSaved = { SyncScheduler.enqueue(context.applicationContext) },
+        ledger = ledger,
     )
-    // Avisos ya vistos (solo hashes): almacen aparte, NO se borra con el cierre de sesion para que un gasto ya enviado no renazca desde la barra
-    private val seenStore = SecureKeyValueStore(File(context.noBackupFilesDir, "seen"), KeystoreAesGcm(SESSION_KEY_ALIAS))
-    val seen = SeenNotices(object : TextStore {
-        override fun read() = seenStore.get(SEEN_KEY)
-        override fun write(value: String?) { if (value == null) seenStore.remove(SEEN_KEY) else seenStore.set(SEEN_KEY, value) }
-    })
+    val seen = SeenNotices(secureText(seenStore, SEEN_KEY, fail))
     val rescanner = NotificationRescanner(
         accepts = { processor.accepts(it) },
         process = { p, t, x, at -> processor.process(p, t, x, at) },
@@ -62,6 +66,7 @@ class CaptureGraph private constructor(context: Context) {
         clock = System::currentTimeMillis,
         recent = { p, at -> if (p != context.packageName) recent.record(p, at) },
         onFailure = { prefs.recordFailure(it, System.currentTimeMillis()) },
+        processNotice = { processor.process(it) },
     )
     private val transport = UrlConnectionTransport()
     val syncer = ExpenseSyncer(
@@ -99,7 +104,8 @@ class CaptureGraph private constructor(context: Context) {
         null
     }
 
-    fun saveProfile(profile: AutoProfile) = session.set(PROFILE_KEY, profile.toJson())
+    /** false si no se pudo guardar cifrado (Keystore roto): el plugin lo informa en vez de tumbar la app. */
+    fun saveProfile(profile: AutoProfile): Boolean = session.trySet(PROFILE_KEY, profile.toJson())
 
     fun clearProfile() = session.remove(PROFILE_KEY)
 
@@ -108,6 +114,16 @@ class CaptureGraph private constructor(context: Context) {
         const val LOG_KEY = "auto-log"
         const val DIAG_KEY = "diag-log"
         const val SEEN_KEY = "seen-notices"
+        const val LEDGER_KEY = "notice-ledger"
+
+        /** Claves del almacen seguro que son de la capa nativa: el WebView no las lee ni escribe (secureGet/secureSet/secureRemove). */
+        private val RESERVED_KEYS = setOf(PROFILE_KEY, LOG_KEY, DIAG_KEY, SensitivePrefs.STORE_KEY)
+
+        fun isReservedKey(key: String): Boolean = key in RESERVED_KEYS
+
+        /** Texto cifrado en [store] que nunca lanza (fallos por nombre de clase). */
+        fun secureText(store: SecureKeyValueStore, key: String, onFailure: (String) -> Unit): TextStore =
+            SafeTextStore({ store.get(key) }, { v -> if (v == null) store.remove(key) else store.set(key, v) }, onFailure)
         private const val DRAFTS_KEY_ALIAS = "contigo_drafts_v1"
         private const val SESSION_KEY_ALIAS = "contigo_session_v1"
 

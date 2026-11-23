@@ -122,3 +122,17 @@ describe('RF-03: avisos que NO son un gasto', () => {
     expect(parseBankNotice('Compra por $5.000 en LIBRERIA DEMO el 20/11/2026.', NOW_RF03)).toMatchObject({ kind: 'expense', amount: 5_000 })
   })
 })
+
+describe('giro y giraste son un retiro de efectivo', () => {
+  const now = new Date(2026, 9, 15)
+  it.each(['Giraste $50.000 en cajero Banco Estado', 'Giro de $20.000 en cajero automático', 'Retiraste $30.000 con tu tarjeta'])('%s', (t) => {
+    const n = parseBankNotice(t, now)
+    expect(n).toMatchObject({ kind: 'expense', withdrawal: true, merchant: 'Retiro de efectivo' })
+  })
+  it('una compra normal no es retiro', () => {
+    expect(parseBankNotice('Compraste $12.990 en Lider', now)).not.toHaveProperty('withdrawal')
+  })
+  it('un abono sigue siendo abono', () => {
+    expect(parseBankNotice('Recibiste un abono de $20.000', now)).toEqual({ kind: 'income' })
+  })
+})

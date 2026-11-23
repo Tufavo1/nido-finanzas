@@ -16,9 +16,11 @@ internal object MoneyExtractor {
     // "$12,99", "$12.99", "$12,5": decimales de estilo extranjero (un monto en dolares sin marca) o ambiguos. No se adivina (R2-09).
     private val AMBIGUOUS_DECIMALS = Regex("^[.,]\\d{1,2}(?!\\d)")
     private val ZERO_CENTS = Regex("^[.,]0{1,2}(?!\\d)")
+    // «$ 12.990» puede traer un espacio duro (U+00A0) o angosto (U+202F) entre el signo y el numero.
+    private const val GAP = "[\\s\u00a0\u202f]*"
     private val PATTERNS = listOf(
-        Regex("\\$\\s*$DIGITS"),
-        Regex("\\bCLP\\s*$DIGITS", RegexOption.IGNORE_CASE),
+        Regex("\\$$GAP$DIGITS"),
+        Regex("\\bCLP$GAP$DIGITS", RegexOption.IGNORE_CASE),
         Regex("\\b$DIGITS\\s*pesos\\b", RegexOption.IGNORE_CASE),
         Regex("\\b$DIGITS\\s*CLP\\b", RegexOption.IGNORE_CASE),
     )

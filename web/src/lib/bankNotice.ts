@@ -8,7 +8,7 @@
  */
 
 export type BankNotice =
-  | { kind: 'expense'; amount: number; /** Comercio o persona; vacío si no se reconoce */ merchant: string; /** AAAA-MM-DD; null = hoy */ date: string | null }
+  | { kind: 'expense'; amount: number; /** «Giro»/«Giraste»: retiro de efectivo, confianza baja: nunca se guarda solo, se confirma */ withdrawal?: true; /** Comercio o persona; vacío si no se reconoce */ merchant: string; /** AAAA-MM-DD; null = hoy */ date: string | null }
   /** Plata que entró (abono, depósito, devolución): no es un gasto */
   | { kind: 'income' }
 
@@ -22,6 +22,9 @@ const AMOUNT = new RegExp(`\\$\\s*${NUM}(?:,\\d{1,2})?|\\bCLP\\s*${NUM}(?:,\\d{1
  */
 const NOT_A_MOVEMENT = /\b(?:clave|codigo|contrasena|password|otp|oferta|descuento|cupon|promocion|ahorra|aprovecha|sorteo|saldo|rechazad|declinad|no autorizad|fondos insuficientes|pago cuota|pago de cuota|pago minimo|recuerda|estado de cuenta|monto facturado|linea de credito|no aprobad|fallid|preaprobad|intent|reconocemos|sospechos|bloqueamos|no autoriz|(?:pin|token|ingresa|cupo|gana)\b)/
 const withoutAccents = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+/** En Chile «giro» y «giraste» son un retiro de efectivo */
+const WITHDRAWAL = /\b(?:retiro|retiraste|giro|giraste)\b/
+export const WITHDRAWAL_LABEL = 'Retiro de efectivo'
 const FOREIGN = /US\$|\bUSD\b|\bEUR\b|€|\bUF\b/i
 const INCOME = /\brecibiste\b|\babono\b|\bdeposit(ado|aron)\b|\bte (han |ha )?(transferido|transfirieron|depositado)\b|\btransferencia recibida\b|\bdevoluci[oó]n\b|\breverso\b|\breembolso\b/i
 /** Dónde termina el nombre del comercio */
@@ -85,6 +88,7 @@ export function parseBankNotice(text: string, now: Date): BankNotice | null {
   const amount = Number((m[1] ?? m[2] ?? m[3] ?? '').replace(/[. \u00a0]/g, ''))
   if (!Number.isFinite(amount) || amount <= 0) return null
   if (INCOME.test(t)) return { kind: 'income' }
+  if (WITHDRAWAL.test(withoutAccents(t))) return { kind: 'expense', amount, withdrawal: true, merchant: WITHDRAWAL_LABEL, date: findDate(t, now) }
   const before = t.slice(0, m.index)
   const after = t.slice(m.index + m[0].length)
   return { kind: 'expense', amount, merchant: findMerchant(before, after, t), date: findDate(t, now) }

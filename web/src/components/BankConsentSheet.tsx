@@ -7,6 +7,7 @@ import { activatedMessage, consentNext, foundLine, parseDetectedBanks, writeCons
 import type { ConsentStep, DetectedBank, DetectedBanksApi } from '../lib/bankConsent'
 import type { CaptureConfig } from '../lib/captureConfig'
 import { ContigoNative } from '../lib/nativeBridge'
+import { pluginErrorText } from '../lib/nativeSettings'
 import { logError } from '../lib/safeLog'
 import { rescanNow } from '../lib/rescan'
 import { setUpdateSuppressed } from '../lib/appUpdateStore'
@@ -100,7 +101,7 @@ export default function BankConsentSheet({ config, onConfig, onToast, onClose }:
     } catch (e) {
       logError(e, 'BankConsentSheet')
       setAuto(!next)
-      onToast('No se pudo guardar el cambio\nInténtalo de nuevo.', 'error')
+      onToast(pluginErrorText(e) ?? 'No se pudo guardar el cambio\nInténtalo de nuevo.', 'error')
     }
   }
   function finish() {

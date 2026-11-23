@@ -50,3 +50,10 @@ class RecordingHealth : HealthRecorder {
     override fun recordEvent(nowMillis: Long) { events++ }
     override fun recordFailure(errorClass: String, nowMillis: Long) { failures += errorClass }
 }
+
+/** Archivo simple (AtomicFile de Android no corre en la JVM): para probar SecureKeyValueStore de punta a punta con bytes en disco. */
+class FileStorage(private val file: java.io.File) : BlobStorage {
+    override fun read(): ByteArray? = if (file.exists()) file.readBytes() else null
+    override fun write(bytes: ByteArray) { file.parentFile?.mkdirs(); file.writeBytes(bytes) }
+    override fun delete() { file.delete() }
+}

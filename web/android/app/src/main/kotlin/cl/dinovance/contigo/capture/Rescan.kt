@@ -4,8 +4,20 @@ package cl.dinovance.contigo.capture
 import org.json.JSONArray
 import java.security.MessageDigest
 
-/** Aviso activo en la barra. El texto se lee SOLO si el paquete esta permitido (RF-01), por eso va en una funcion. */
-class ActiveNotice(val packageName: String, val key: String, val postTime: Long, val read: () -> Pair<String?, String?>)
+/**
+ * Aviso activo en la barra. El texto se lee SOLO si el paquete esta permitido (RF-01), por eso va en una funcion.
+ * [extract] (ronda 5) lee todos los campos y la estructura; si falta se usa [read] (titulo y texto). [skip]: resumen de grupo o
+ * aviso fijo/de servicio (por banderas, sin leer el texto): no se examina.
+ */
+class ActiveNotice(
+    val packageName: String,
+    val key: String,
+    val postTime: Long,
+    val whenMillis: Long = 0,
+    val skip: Boolean = false,
+    val extract: (() -> ExtractedNotice)? = null,
+    val read: () -> Pair<String?, String?>,
+)
 
 /**
  * Avisos ya vistos, para no procesar dos veces lo que onNotificationPosted ya tomo ni repetir en cada conexion. Guarda SOLO
@@ -53,6 +65,8 @@ class NotificationRescanner(
     /** Modo aprender: solo paquete y hora, de cualquier app (nunca texto). */
     private val recent: (pkg: String, postTime: Long) -> Unit,
     private val onFailure: (String) -> Unit = {},
+    /** Camino completo (clave, `when` y estructura del aviso); si se da, reemplaza a [process]. */
+    private val processNotice: ((IncomingNotice) -> Outcome)? = null,
 ) {
     fun rescan(active: List<ActiveNotice>): Int = scan(active).processed
 
@@ -62,7 +76,7 @@ class NotificationRescanner(
         val now = clock()
         val fresh = active.filter { now - it.postTime <= MAX_AGE_MILLIS }.sortedByDescending { it.postTime }
         fresh.forEach { try { recent(it.packageName, it.postTime) } catch (e: Exception) { onFailure(e.javaClass.simpleName) } }
-        val allowed = fresh.filter { accepts(it.packageName) }
+        val allowed = fresh.filter { !it.skip && accepts(it.packageName) }
         val examined = allowed.take(MAX_PER_PASS)
         val todo = examined.filterNot { seen.has(it.packageName, it.key, it.postTime) }
         val done = ArrayList<Triple<String, String, Long>>()
@@ -70,16 +84,22 @@ class NotificationRescanner(
         for (n in todo) {
             var outcome: Outcome? = null
             try {
-                val (title, text) = n.read()
-                outcome = process(n.packageName, title, text, n.postTime)
+                outcome = if (processNotice != null) {
+                    val e = n.extract?.invoke() ?: n.read().let { (t, x) -> ExtractedNotice(t, x, NoticeShape.of(t, x)) }
+                    processNotice.invoke(IncomingNotice(n.packageName, e.title, e.body, n.postTime, n.key, n.whenMillis, e.shape))
+                } else {
+                    val (title, text) = n.read()
+                    process(n.packageName, title, text, n.postTime)
+                }
                 // Solo cuenta lo que de verdad quedo guardado como movimiento nuevo (no repetidos ni avisos que no eran un movimiento)
                 if (outcome == Outcome.STORED || outcome == Outcome.NO_SESSION) processed++
             } catch (e: Throwable) {
                 onFailure(e.javaClass.simpleName)
             }
-            // Los fallos se marcan para no reintentar en cada conexion. Un aviso que NO se pudo leer como movimiento queda sin marcar:
-            // si mejora la lectura (una version nueva), la proxima busqueda lo toma. Las apps de banco avisan poco, el costo es bajo.
-            if (outcome != Outcome.NOT_A_MOVEMENT) done.add(Triple(n.packageName, n.key, n.postTime))
+            // Un aviso cuyos extras no se pueden leer (lanza) se marca para no reintentar en cada conexion. Queda SIN marcar, para
+            // reintentarlo, lo que no se pudo leer como movimiento (si mejora la lectura, una version nueva lo toma) y lo que fallo al
+            // guardar o no cupo (FAILED, QUEUE_FULL): el procesador reconoce el mismo aviso y no lo duplica (ronda 5).
+            if (outcome !in RETRY) done.add(Triple(n.packageName, n.key, n.postTime))
         }
         if (done.isNotEmpty()) seen.markAll(done)
         return ScanReport(examined.size, processed, examined.size - todo.size, fresh.size - allowed.size)
@@ -88,6 +108,9 @@ class NotificationRescanner(
     companion object {
         const val MAX_AGE_MILLIS = 24L * 60 * 60 * 1000
         const val MAX_PER_PASS = 50
+
+        /** Resultados que dejan el aviso sin marcar como visto, para reintentarlo. */
+        val RETRY = setOf(Outcome.NOT_A_MOVEMENT, Outcome.FAILED, Outcome.QUEUE_FULL)
     }
 }
 

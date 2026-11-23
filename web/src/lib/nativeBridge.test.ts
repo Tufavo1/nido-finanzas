@@ -184,3 +184,12 @@ describe('adaptadores de bancos detectados y diagnostico', () => {
     expect(adaptDiagnostics({ items: Array.from({ length: 30 }, () => row('NO_AMOUNT')) }).items).toHaveLength(20)
   })
 })
+
+describe('adaptDiagnostics: pista aditiva', () => {
+  it('pasa la pista si viene y la omite si no', async () => {
+    const { adaptDiagnostics } = await import('./nativeBridge')
+    const r = adaptDiagnostics({ items: [{ reason: 'NO_AMOUNT', atMillis: 1, hint: 'EMPTY', shape: { title: 0 } }, { reason: 'INCOME', atMillis: 2, hint: null }] })
+    expect(r.items[0]).toEqual({ reason: 'NO_AMOUNT', at: 1, hint: 'EMPTY' })
+    expect(r.items[1]).toEqual({ reason: 'INCOME', at: 2 })
+  })
+})
