@@ -262,7 +262,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
   }
 
   /* ---------- Deudas ---------- */
-  const debts = summarizeDebts(data.debts, data.debtPayments, now)
+  const debts = summarizeDebts(data.debts, data.debtPayments, now, data.expenses, data.debts)
   if (isCurrent) {
     for (const f of debts.findings) {
       if (f.level === 'ok') continue

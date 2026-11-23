@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Debt, DebtPayment } from '../lib/data'
+import type { Debt, DebtPayment, Expense } from '../lib/data'
 import { PRODUCTS } from '../lib/bankData'
 import type { RateEntry, RateProduct } from '../lib/bankData'
 import { compareDebt, monthlyRange, offersFor, productForDebt } from '../lib/bankRates'
@@ -63,13 +63,13 @@ function vigenciaText(o: BankOffer, product: RateProduct): string {
 }
 
 /** Las tasas que publican los bancos y cómo se compara cada deuda con ellas. Todo es desplegable. */
-export default function BankRates({ debts, payments }: { debts: Debt[]; payments: DebtPayment[] }) {
+export default function BankRates({ debts, payments, expenses = [] }: { debts: Debt[]; payments: DebtPayment[]; expenses?: Expense[] }) {
   const now = useMemo(() => new Date(), [])
   const [open, setOpen] = useState(false)
   const mine = useMemo(
     () =>
       debts
-        .map((d) => ({ d, v: debtView(d, payments, now), product: productForDebt(d) }))
+        .map((d) => ({ d, v: debtView(d, payments, now, expenses, debts), product: productForDebt(d) }))
         .filter((x) => x.v.remaining > 0 && x.product !== null)
         .map(({ d, v, product }) => ({ d, v, comparison: compareDebt({ product: product!, rate: d.monthly_rate, amount: v.remaining, payment: d.monthly_payment, now }) }))
         .filter((x): x is typeof x & { comparison: DebtComparison } => x.comparison !== null),

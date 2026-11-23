@@ -173,6 +173,7 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
             </div>
             <span>{d.merchant ?? 'Sin comercio'}</span>
             {d.account && <span className="muted small-text">Con {d.account}</span>}
+            {d.medium === 'CREDIT' && <span className="muted small-text">Es con tarjeta de crédito: no baja tu saldo de débito, sube lo usado de la tarjeta.</span>}
             <span className="muted small-text">
               {name ? `Categoría sugerida: ${name}` : 'Aún no sabemos la categoría.'}
               {d.sourcePackage ? ` Detectado desde ${sourceLabel(d.sourcePackage, appNames)}.` : ''}

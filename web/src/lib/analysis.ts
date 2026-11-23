@@ -384,7 +384,7 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
     insights.push({ level: 'ok', title: `Gastaste ${Math.round(100 - (cost * 100) / avgPrev)} % menos que tu promedio`, detail: `${money(cost)} frente a ${money(avgPrev)} de tus meses anteriores.` })
   }
 
-  for (const f of summarizeDebts(input.debts, input.debtPayments, now).findings.filter((x) => x.level !== 'ok').slice(0, 2)) insights.push(f)
+  for (const f of summarizeDebts(input.debts, input.debtPayments, now, input.history, input.debts).findings.filter((x) => x.level !== 'ok').slice(0, 2)) insights.push(f)
 
   insights.sort((a, b) => RANK[a.level] - RANK[b.level])
   if (insights.length === 0 && cost > 0) insights.push({ level: 'ok', title: 'Todo en orden', detail: 'No veo nada que corregir con los datos de este mes.' })

@@ -19,7 +19,7 @@ import Venn from '../components/Venn'
 import { MonthCurveCard, SixMonthsCard, WeekdayCard } from '../components/HomeCharts'
 import { compact, monthGrid } from '../lib/calendar'
 import { daysLeftInMonth, money } from '../lib/format'
-import { analyzeSalary, monthIncome, myDebtShare } from '../lib/finance'
+import { analyzeSalary, monthIncome, salaryFlows } from '../lib/finance'
 import { monthKey as monthKeyOf, myShare } from '../lib/analysis'
 import { dayExpenses, deltaText, latestExpenses, monthStatus, topCategories } from '../lib/homeSummary'
 import { pendingFixedThisMonth } from '../lib/upcoming'
@@ -93,14 +93,19 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
 
   // Sueldo: dato privado, solo se calcula para mí y nunca para la pareja
   const mine = all.people.find((p) => p.userId === hh.me.user_id)
+  // «Te queda»: sin las compras con tarjeta (suben la tarjeta, no bajan la débito), con lo REALMENTE pagado a deudas y la cuota que falta como por pagar
+  const flows =
+    mine && data.salary
+      ? salaryFlows({ expenses: data.expenses, debts: data.debts, debtPayments: data.debtPayments, meId: hh.me.user_id, split, month, trueCost: mine.trueCost })
+      : null
   const salaryCheck =
-    data.salary && mine && (view === 'all' || view === hh.me.user_id)
+    data.salary && mine && flows && (view === 'all' || view === hh.me.user_id)
       ? analyzeSalary({
           income: monthIncome(data.salary, data.incomes),
-          spent: mine.trueCost,
-          commitments: myDebtShare(data.debts, data.debtPayments, hh.me.user_id, split),
+          spent: flows.spent,
+          commitments: flows.commitments,
           month,
-          pendingFixed: pendingFixedThisMonth(data.recurring, hh.me.user_id, split),
+          pendingFixed: pendingFixedThisMonth(data.recurring, hh.me.user_id, split) + flows.pendingDebt,
           fixedBooked: data.expenses.reduce((s, e) => (e.recurring_id ? s + myShare(e, hh.me.user_id, split) : s), 0),
           saved: savedInMonth(data.contributions, hh.me.user_id, monthKeyOf(month)),
         })

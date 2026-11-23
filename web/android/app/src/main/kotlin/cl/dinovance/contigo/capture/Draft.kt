@@ -38,6 +38,7 @@ data class Draft(
         .put("installment", candidate.installment?.let { JSONObject().put("n", it.n).put("total", it.total) } ?: JSONObject.NULL)
         .put("fingerprint", candidate.fingerprint)
         .put("account", candidate.account ?: JSONObject.NULL)
+        .put("medium", candidate.medium.name)
         .put("postedAtMillis", postedAtMillis)
         .put("createdAtMillis", createdAtMillis)
         .put("status", status.name)

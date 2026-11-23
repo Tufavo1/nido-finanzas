@@ -232,7 +232,7 @@ export function buildNumbers(input: AnalysisInput, a: Analysis): Numbers {
       remaining += v.remaining * share
       interest += v.monthlyInterest * share
     }
-    const sm = summarizeDebts(mine, input.debtPayments, now)
+    const sm = summarizeDebts(mine, input.debtPayments, now, input.history, input.debts)
     debts = {
       remaining: Math.round(remaining),
       payment: myDebtShare(input.debts, input.debtPayments, meId, memberCount),

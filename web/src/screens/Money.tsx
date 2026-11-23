@@ -15,7 +15,7 @@ import { isCustomSplit, percentOf, splitOf } from '../lib/split'
 import ScopeBar from '../components/ScopeBar'
 import { resolveScope, scopeDebts, scopeDebtShares } from '../lib/scope'
 import type { Scope } from '../lib/scope'
-import { debtView, monthIncome, monthsToPayoff, summarizeDebts } from '../lib/finance'
+import { cardBalance, debtView, monthIncome, monthsToPayoff, summarizeDebts } from '../lib/finance'
 import type { DebtView } from '../lib/finance'
 import { money, todayISO } from '../lib/format'
 import { computeMetrics } from '../lib/metrics'
@@ -278,8 +278,12 @@ function DebtCard({
   const [pDate, setPDate] = useState('')
   const [payConfirm, setPayConfirm] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [updBank, setUpdBank] = useState(false)
+  const [bankBal, setBankBal] = useState('')
   const setError = useToastError(onToast)
   const myPays = data.debtPayments.filter((p) => p.debt_id === d.id)
+  const isCard = d.kind === 'tarjeta'
+  const cardBal = isCard ? cardBalance(d, data.debtPayments, data.expenses, data.debts) : null
   const owner = d.owner_id ? hh.everyone.find((m) => m.user_id === d.owner_id) : null
   // Las deudas personales de la pareja solo se ven: la base de datos tampoco deja tocarlas
   const canManage = d.owner_id === null || d.owner_id === hh.me.user_id
@@ -311,6 +315,28 @@ function DebtCard({
     }
     setPaying(false)
     onToast(`Pago registrado\nSe abonaron **${money(n)}** a la deuda.`)
+    await data.refresh()
+  }
+
+  // Tarjeta: el «cupo utilizado» del estado de cuenta manda; la app suma encima las compras y pagos nuevos
+  async function saveBankBalance(e: FormEvent) {
+    e.preventDefault()
+    const n = Number(bankBal.replace(/\D/g, ''))
+    if (!Number.isFinite(n) || n < 0 || bankBal.trim() === '') {
+      setError('Escribe el cupo utilizado que dice tu banco')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    const { error: err } = await supabase.from('debts').update({ reported_balance: n, reported_at: todayISO() }).eq('id', d.id)
+    setBusy(false)
+    if (err) {
+      setError('No se pudo actualizar el saldo. Revisa tu conexión e intenta de nuevo.')
+      return
+    }
+    setUpdBank(false)
+    setBankBal('')
+    onToast(`Saldo actualizado\nTu tarjeta queda en **${money(n)}** según tu banco.`)
     await data.refresh()
   }
 
@@ -444,7 +470,30 @@ function DebtCard({
               <strong className="cat-title">{d.name}</strong>
               <span className="muted">{done ? 'Ya no se debe nada' : 'Todavía falta pagar'}</span>
               <span className="cat-big num">{money(v.remaining)}</span>
-              <span className="muted">La deuda era de {money(d.original_amount)}</span>
+              {isCard && cardBal ? (
+                <span className="muted small-text">
+                  {cardBal.informed && cardBal.informedAt
+                    ? `Saldo de tu banco al ${cardBal.informedAt.slice(8, 10)}/${cardBal.informedAt.slice(5, 7)}${cardBal.sinceInformed > 0 ? `, más ${money(cardBal.sinceInformed)} en compras nuevas` : ''}.`
+                    : 'Aún no pones el saldo que dice tu banco: así no se corre.'}
+                </span>
+              ) : (
+                <span className="muted">La deuda era de {money(d.original_amount)}</span>
+              )}
+              {isCard && canManage && !updBank && (
+                <button type="button" className="btn ghost small" onClick={() => setUpdBank(true)}>
+                  Actualizar con mi estado de cuenta
+                </button>
+              )}
+              {isCard && updBank && (
+                <form className="stack tight" onSubmit={(e) => void saveBankBalance(e)}>
+                  <label className="muted small-text" htmlFor="bank-bal">Cupo utilizado según tu banco</label>
+                  <input id="bank-bal" className="input" inputMode="numeric" autoComplete="off" placeholder="Ej. 1056489" value={bankBal} onChange={(e) => setBankBal(e.target.value.replace(/\D/g, '').slice(0, 10))} />
+                  <div className="row">
+                    <button type="submit" className="btn small" disabled={busy}>{busy ? <Spin label="Guardando…" /> : 'Guardar'}</button>
+                    <button type="button" className="btn ghost small" disabled={busy} onClick={() => setUpdBank(false)}>Cancelar</button>
+                  </div>
+                </form>
+              )}
             </div>
 
             <div className="stack tight">
@@ -902,7 +951,7 @@ function ArchivedDebts({ hh, data, who, onToast }: { hh: Household; data: Househ
   }
 
   function detail(d: HouseholdData['debts'][number]) {
-    const v = debtView(d, data.debtPayments, now)
+    const v = debtView(d, data.debtPayments, now, data.expenses, data.debts)
     const pays = data.debtPayments.filter((p) => p.debt_id === d.id)
     const owner = d.owner_id ? hh.everyone.find((m) => m.user_id === d.owner_id) : null
     const kindLabel = KINDS.find((k) => k.key === d.kind)?.label ?? 'Otra'
@@ -994,7 +1043,7 @@ function ArchivedDebts({ hh, data, who, onToast }: { hh: Household; data: Househ
       {open && (
         <div id="archived-debts" className="fixed-grid wide">
           {shown.map((d) => {
-            const v = debtView(d, data.debtPayments, now)
+            const v = debtView(d, data.debtPayments, now, data.expenses, data.debts)
             return (
               <button
                 key={d.id}
@@ -1025,10 +1074,10 @@ function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
   const [showAll, setShowAll] = useState(false)
   const who = resolveScope(scope, hh.members)
   const debts = scopeDebts(data.debts, who)
-  const real = summarizeDebts(debts, data.debtPayments)
+  const real = summarizeDebts(debts, data.debtPayments, undefined, data.expenses, data.debts)
   // Para una persona, las deudas compartidas cuentan solo su parte en los totales y el análisis
   const mine = scopeDebtShares(data.debts, data.debtPayments, who, splitOf(hh.members))
-  const s = summarizeDebts(mine.debts, mine.payments)
+  const s = summarizeDebts(mine.debts, mine.payments, undefined, data.expenses, data.debts)
   const empty = debts.length === 0
   const person = hh.members.find((m) => m.user_id === who)
 

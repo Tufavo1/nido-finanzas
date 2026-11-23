@@ -183,8 +183,9 @@ export interface DebtSummary {
   findings: Finding[]
 }
 
-export function summarizeDebts(debts: Debt[], payments: DebtPayment[], now: Date = new Date()): DebtSummary {
-  const views = debts.map((d) => debtView(d, payments, now)).sort((a, b) => b.debt.monthly_rate - a.debt.monthly_rate)
+/** [expenses] y [allDebts] hacen que una tarjeta cuente sus compras; sin ellos se comporta como siempre. */
+export function summarizeDebts(debts: Debt[], payments: DebtPayment[], now: Date = new Date(), expenses: PaidExpense[] = [], allDebts: Debt[] = debts): DebtSummary {
+  const views = debts.map((d) => debtView(d, payments, now, expenses, allDebts)).sort((a, b) => b.debt.monthly_rate - a.debt.monthly_rate)
   const active = views.filter((v) => v.remaining > 0)
   const remaining = sumBy(active, (v) => v.remaining)
   const monthly = sumBy(active, (v) => v.debt.monthly_payment)
