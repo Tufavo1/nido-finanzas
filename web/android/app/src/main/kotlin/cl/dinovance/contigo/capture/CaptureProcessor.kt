@@ -1,9 +1,12 @@
 // Copyright (c) 2026 Dinovance
 package cl.dinovance.contigo.capture
 
+import cl.nido.parser.Confidence
 import cl.nido.parser.Kind
+import cl.nido.parser.NoticeStyle
 import cl.nido.parser.NotificationParser
 import cl.nido.parser.ParseRejection
+import java.util.TimeZone
 
 enum class Outcome { IGNORED_PACKAGE, NO_SESSION, NOT_A_MOVEMENT, DUPLICATE, STORED, QUEUE_FULL, FAILED }
 
@@ -56,6 +59,13 @@ class CaptureProcessor(
     private val notificationsAllowed: () -> Boolean = { true },
     /** Registro persistente (solo hashes) de avisos ya convertidos en borrador: deduplica reenvios aunque el proceso muera (ronda 5). */
     private val ledger: NoticeLedger? = null,
+    /**
+     * Regla CROSS-FUENTE (banco + Billetera Google): misma compra avisada por dos apps. Sin almacen persistente se usa una memoria del
+     * proceso (pruebas y caminos antiguos); en produccion CaptureGraph pasa una cifrada.
+     */
+    private val purchases: PurchaseMemory = PurchaseMemory(MemoryTextStore()),
+    /** Zona de la persona en un instante (America/Santiago): solo para notar un aviso viejo por la fecha de su texto. */
+    private val utcOffset: (Long) -> Long = { SANTIAGO.getOffset(it).toLong() },
 ) {
     private class Stored(val fingerprint: String, val key: String, val amount: Long, var blankMerchant: Boolean, val draftId: String, val at: Long)
 
@@ -91,9 +101,12 @@ class CaptureProcessor(
         // la misma sesión (R2-03). Siempre queda constancia en la salud del servicio.
         val orphan = requireOwner && owner == null
         val parser = NotificationParser(whitelist())
-        val parsed = parser.parseDetailed(packageName, title, text, postedAtMillis)
-        val candidate = parsed.candidate
         val bankId = auto?.bankOfPackage(packageName)
+        // Billetera Google se lee con su propio estilo (piezas sueltas, «CLP 20,000»); lo decide la FUENTE, nunca el texto.
+        val wallet = bankId == BankPresets.WALLET_ID
+        strictDiag = wallet
+        val parsed = parser.parseDetailed(packageName, title, text, postedAtMillis, if (wallet) NoticeStyle.WALLET else NoticeStyle.BANK, utcOffset(postedAtMillis))
+        val candidate = parsed.candidate
         val raw = listOfNotNull(title?.takeIf { it.isNotBlank() }, text).joinToString(" | ")
         if (candidate == null) {
             val reason = if (parsed.rejection == ParseRejection.DISCARDED) DiagReason.NOT_AN_EXPENSE else DiagReason.NO_AMOUNT
@@ -116,6 +129,9 @@ class CaptureProcessor(
             remember(ids, n, "")
             return Outcome.DUPLICATE
         }
+        // La misma compra ya avisada por OTRA app (banco y Billetera Google): no se crea otro borrador.
+        val crossSource = isExpense && candidate.confidence != Confidence.LOW
+        if (crossSource && sameCompraOtherSource(ids, n, candidate, orphan, bankId, raw, shape, now)) return Outcome.DUPLICATE
         recent.removeAll { now - it.at >= DEDUPE_WINDOW_MILLIS }
         val key = dedupeKey(candidate.kind, candidate.amountClp, candidate.merchant)
         // Mismo aviso repetido: misma huella o mismo monto y comercio a menos de 45 s de lo ULTIMO GUARDADO (el sistema reenvia
@@ -139,8 +155,10 @@ class CaptureProcessor(
         val maybe = recent.any { it.key == key }
         // Registro automatico: banco asociado y activado, dentro del tope, confianza ALTA, gasto, categoria aprendida, dueno con
         // perfil vigente y sin duda de duplicado. Cualquier otra cosa pide confirmacion como siempre.
-        val autoCategory = if (orphan || maybe || !isExpense) null else autoCategory(packageName, candidate, owner)
-        val autoIncome = !orphan && !maybe && isIncome && autoIncome(packageName, candidate, owner)
+        // Un aviso viejo reentregado (la fecha de su texto es de otro dia) nunca se guarda solo: queda para que la persona decida.
+        val stale = parsed.staleDate
+        val autoCategory = if (orphan || maybe || stale || !isExpense) null else autoCategory(packageName, candidate, owner)
+        val autoIncome = !orphan && !maybe && !stale && isIncome && autoIncome(packageName, candidate, owner)
         val saveAlone = autoCategory != null || autoIncome
         val draft = Draft(
             newId(), candidate, postedAtMillis, now, if (saveAlone) DraftStatus.CONFIRMED else DraftStatus.PENDING,
@@ -153,6 +171,7 @@ class CaptureProcessor(
             return Outcome.QUEUE_FULL
         }
         remember(ids, n, draft.id)
+        if (crossSource) purchases.add(packageName, candidate.amountClp, postedAtMillis, draft.id, now)
         recent.add(Stored(candidate.fingerprint, key, candidate.amountClp, isExpense && candidate.merchant.isNullOrBlank(), draft.id, now))
         while (recent.size > MAX_RECENT) recent.removeAt(0)
         if (orphan) {
@@ -161,7 +180,7 @@ class CaptureProcessor(
             return Outcome.NO_SESSION
         }
         if (parsed.ambiguousAmount) diag(DiagReason.AMBIGUOUS_AMOUNT, bankId, raw, shape)
-        if (draft.status == DraftStatus.PENDING && (isExpense || isIncome)) whyNotAuto(packageName, candidate, owner, maybe, bankId, raw)
+        if (draft.status == DraftStatus.PENDING && (isExpense || isIncome)) whyNotAuto(packageName, candidate, owner, maybe, bankId, raw, stale)
         if (!notificationsAllowed()) diag(DiagReason.NOTIFICATIONS_OFF, bankId, raw, shape)
         if (draft.autoSaved) {
             val merchant = candidate.merchant?.trim().orEmpty()
@@ -175,8 +194,34 @@ class CaptureProcessor(
         return Outcome.STORED
     }
 
+    // Avisos de Billetera Google: el comercio va al inicio sin «en», asi que el diagnostico usa la mascara estricta (S-20).
+    private var strictDiag = false
+
     private fun diag(reason: DiagReason, bankId: String?, raw: String, shape: NoticeShape? = null) {
-        try { diag?.add(reason, bankId, raw, shape) } catch (e: Exception) { health.recordFailure("DiagFailed", clock()) }
+        try { diag?.add(reason, bankId, raw, shape, strictDiag) } catch (e: Exception) { health.recordFailure("DiagFailed", clock()) }
+    }
+
+    /**
+     * Regla CROSS-FUENTE: este gasto y uno de OTRA app con el mismo monto y postTime a menos de 10 min son la misma compra
+     * ([PurchaseMemory]). Gana el primero; este no crea borrador y queda en el diagnostico como DUPLICATE. Si el primero sigue pendiente y
+     * no tenia comercio, se completa con el de este (y su confianza), una sola vez. Si el primero ya se guardo, se envio o se ignoro,
+     * igual se descarta. Dentro de la MISMA app no aplica: alli manda la logica de siempre.
+     */
+    private fun sameCompraOtherSource(
+        ids: NoticeIds, n: IncomingNotice, c: cl.nido.parser.ParsedCandidate, orphan: Boolean, bankId: String?, raw: String, shape: NoticeShape, now: Long,
+    ): Boolean {
+        val match = purchases.claim(n.packageName, c.amountClp, n.postedAtMillis, now) ?: return false
+        val old = repository.list().firstOrNull { it.id == match.draftId }
+        if (old != null && old.status == DraftStatus.PENDING && old.candidate.kind == Kind.EXPENSE && old.candidate.merchant.isNullOrBlank() && !c.merchant.isNullOrBlank()) {
+            val merged = old.candidate.copy(merchant = c.merchant, confidence = c.confidence, account = old.candidate.account ?: c.account)
+            if (repository.update(old.id) { it.copy(candidate = merged) }) {
+                recent.firstOrNull { it.draftId == old.id }?.blankMerchant = false
+                if (!orphan) repository.list().firstOrNull { it.id == old.id }?.let(notifier::show)
+            }
+        }
+        diag(DiagReason.DUPLICATE, bankId, raw, shape)
+        remember(ids, n, match.draftId)
+        return true
     }
 
     /** Resumenes del aviso: identidad (ranura + `when` + contenido), ranura (paquete + clave de Android) y monto. Solo hashes. */
@@ -233,13 +278,14 @@ class CaptureProcessor(
     }
 
     /** Solo para bancos asociados: por que este gasto no se guardo solo (el primero que aplique). */
-    private fun whyNotAuto(packageName: String, c: cl.nido.parser.ParsedCandidate, owner: String?, maybe: Boolean, bankId: String?, raw: String) {
+    private fun whyNotAuto(packageName: String, c: cl.nido.parser.ParsedCandidate, owner: String?, maybe: Boolean, bankId: String?, raw: String, stale: Boolean = false) {
         val cfg = auto ?: return
         if (bankId == null) return
         val p = profile()
         val reason = when {
             !cfg.autoEnabled(bankId) -> DiagReason.BANK_OFF
             maybe -> DiagReason.DUPLICATE
+            stale -> DiagReason.STALE_DATE
             p == null || owner == null || p.ownerKey != owner -> DiagReason.NO_PROFILE
             c.confidence != cl.nido.parser.Confidence.HIGH || (c.kind == Kind.EXPENSE && c.merchant.isNullOrBlank()) -> DiagReason.LOW_CONFIDENCE
             c.amountClp > cfg.maxClp() -> DiagReason.CAP_EXCEEDED
@@ -295,5 +341,15 @@ class CaptureProcessor(
         private const val MAX_RECENT = 200
         /** Rotulo del ingreso guardado solo; igual que INCOME_SOURCE de web/src/lib/movements.ts. */
         const val INCOME_SOURCE = "Ingreso extra"
+        private val SANTIAGO: TimeZone = TimeZone.getTimeZone("America/Santiago")
     }
+}
+
+/** Texto en memoria (sin persistir): memoria cross-fuente por defecto cuando no hay almacen cifrado. */
+class MemoryTextStore : TextStore {
+    private var value: String? = null
+
+    override fun read(): String? = value
+
+    override fun write(value: String?) { this.value = value }
 }

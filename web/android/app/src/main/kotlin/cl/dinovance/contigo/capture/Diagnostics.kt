@@ -8,6 +8,8 @@ import org.json.JSONObject
 enum class DiagReason {
     PACKAGE_NOT_ALLOWED, NO_SESSION, NO_PROFILE, NOT_AN_EXPENSE, INCOME, AMBIGUOUS_AMOUNT, NO_AMOUNT, LOW_CONFIDENCE, DUPLICATE, QUEUE_FULL,
     CAP_EXCEEDED, CATEGORY_UNKNOWN, BANK_OFF, NOTIFICATIONS_OFF,
+    /** La fecha del texto («20 nov») queda a mas de 36 h del dia en que llego el aviso: aviso viejo reentregado, no se guarda solo. */
+    STALE_DATE,
 }
 
 /** [shape]: que campos traia el aviso y su largo (sin contenido); null en diagnosticos antiguos o si no se leyo el aviso. */
@@ -32,6 +34,21 @@ object MaskText {
     private fun hide(t: String): String {
         var first = true
         return buildString { for (c in t) append(if (c.isLetter()) (if (first) c else '*').also { first = false } else c) }
+    }
+
+    // Palabras que se dejan legibles en el modo estricto: formato del aviso, no datos de la persona.
+    private val KEEP = setOf(
+        "clp", "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "sept", "set", "oct", "nov", "dic", "hoy", "ayer", "de", "en", "a", "con", "tu",
+        "compra", "compraste", "pago", "pagaste", "reembolso", "devolucion", "visa", "mastercard", "debito", "credito", "tarjeta", "billetera", "google", "wallet",
+    )
+
+    /**
+     * Modo estricto (Billetera Google): el comercio va AL INICIO, sin «en» que lo anuncie, asi que [mask] lo dejaria legible. Aqui toda
+     * palabra queda con su inicial y «*» salvo las de formato ([KEEP]); los digitos, «#». Mismo tope.
+     */
+    fun maskStrict(text: String?): String {
+        val digits = buildString { for (c in text.orEmpty().take(SOURCE_MAX)) append(if (c.isDigit()) '#' else if (c == '\n' || c == '\r' || c == '\t') ' ' else c) }
+        return digits.split(' ').joinToString(" ") { t -> if (word(t) in KEEP) t else hide(t) }.take(MAX)
     }
 
     fun mask(text: String?): String {
@@ -66,8 +83,8 @@ class DiagnosticsLog(private val store: TextStore, private val clock: () -> Long
     fun list(): List<DiagEntry> = load()
 
     @Synchronized
-    fun add(reason: DiagReason, bankId: String?, rawText: String?, shape: NoticeShape? = null) {
-        val e = DiagEntry(clock(), bankId, reason, MaskText.mask(rawText), shape)
+    fun add(reason: DiagReason, bankId: String?, rawText: String?, shape: NoticeShape? = null, strict: Boolean = false) {
+        val e = DiagEntry(clock(), bankId, reason, if (strict) MaskText.maskStrict(rawText) else MaskText.mask(rawText), shape)
         save((listOf(e) + load()).take(MAX))
     }
 

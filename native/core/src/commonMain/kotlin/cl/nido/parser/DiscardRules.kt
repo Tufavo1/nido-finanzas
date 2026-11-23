@@ -16,6 +16,9 @@ internal object DiscardRules {
     // Palabras cortas: solo valen enteras ("cupo" si, "cupon" ya esta arriba; "pin" si, "pintura" no).
     private val WHOLE_WORDS = listOf("pin", "token", "ingresa", "cupo", "gana")
     private val FOREIGN_CURRENCY = Regex("US\\$|\\bUSD\\b|\\bEUR\\b|€|\\bUF\\b", RegexOption.IGNORE_CASE)
+    // Otras monedas (Billetera Google muestra el codigo ISO junto al monto: «COP 20,000», «ARS 15,000»). Solo en MAYUSCULAS y pegadas a
+    // un numero, para no descartar un comercio que contenga esas letras («Pen Drive Store»). Nunca se convierten ni se guardan como pesos.
+    private val OTHER_CURRENCY = Regex("\\b(?:COP|ARS|PEN|MXN|BRL|GBP|JPY|CAD|AUD|CHF|CNY|UYU|BOB|PYG)[\\s  ]*\\$?[\\s  ]*\\d|\\d[\\s  ]*(?:COP|ARS|PEN|MXN|BRL|GBP|JPY|CAD|AUD|CHF|CNY|UYU|BOB|PYG)\\b|£|\\bR\\$")
 
     // Cada palabra debe empezar una palabra del aviso: "clave" cuenta, "esclavo" no.
     private val DISCARD_WORDS: Regex =
@@ -26,7 +29,7 @@ internal object DiscardRules {
     private val CLOSING_PHRASE = Regex("\\bingresa a (?:la|tu) app(?:licacion)?\\b")
 
     fun shouldDiscard(rawText: String, rawTitle: String?): Boolean {
-        if (FOREIGN_CURRENCY.containsMatchIn(rawText)) return true
+        if (FOREIGN_CURRENCY.containsMatchIn(rawText) || OTHER_CURRENCY.containsMatchIn(rawText)) return true
         // «!Ingresa a la App y revisa tus movimientos!» es un cierre habitual de los avisos de movimiento, no una instruccion.
         val haystack = CLOSING_PHRASE.replace(TextNormalizer.forKeywords(listOfNotNull(rawTitle, rawText).joinToString(" ")), " ")
         return DISCARD_WORDS.containsMatchIn(haystack)

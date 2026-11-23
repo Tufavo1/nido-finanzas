@@ -82,10 +82,11 @@ class BankDetectionTest {
     fun `activar todo prende solo los bancos con app y lo informa, sin apps no hace nada`() {
         val s = Store()
         val none = BankSetup(s).setAll(true)
-        assertTrue(none.enabled.isEmpty()); assertEquals(4, none.withoutApp.size); assertTrue(s.auto.values.none { it })
+        // Migrado (2026-11-23, Billetera Google es una fuente mas): 5 fuentes sin app, antes 4.
+        assertTrue(none.enabled.isEmpty()); assertEquals(5, none.withoutApp.size); assertTrue(s.auto.values.none { it })
         s.det["santander"] = setOf("x.s"); s.man["banco-chile"] = "x.c"
         val r = BankSetup(s).setAll(true)
-        assertEquals(setOf("santander", "banco-chile"), r.enabled.toSet()); assertEquals(setOf("banco-estado", "banco-falabella"), r.withoutApp.toSet())
+        assertEquals(setOf("santander", "banco-chile"), r.enabled.toSet()); assertEquals(setOf("banco-estado", "banco-falabella", "billetera-google"), r.withoutApp.toSet())
         assertTrue(s.auto["santander"] == true && s.auto["banco-chile"] == true && s.auto["banco-estado"] != true)
         val off = BankSetup(s).setAll(false)
         assertTrue(s.auto.values.none { it }); assertEquals(setOf("santander", "banco-chile"), off.disabled.toSet())

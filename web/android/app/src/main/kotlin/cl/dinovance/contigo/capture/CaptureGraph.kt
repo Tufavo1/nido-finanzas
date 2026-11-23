@@ -40,6 +40,8 @@ class CaptureGraph private constructor(context: Context) {
     // gasto ya enviado no renazca desde la barra ni por un reenvio del sistema
     private val seenStore = SecureKeyValueStore(File(context.noBackupFilesDir, "seen"), KeystoreAesGcm(SESSION_KEY_ALIAS))
     val ledger = NoticeLedger(secureText(seenStore, LEDGER_KEY, fail))
+    // Compras ya convertidas en borrador (solo hashes): regla cross-fuente banco + Billetera Google, mismo almacen que el registro
+    val purchases = PurchaseMemory(secureText(seenStore, PURCHASES_KEY, fail))
     val processor = CaptureProcessor(
         whitelist = prefs::effectiveWhitelist,
         repository = drafts,
@@ -57,6 +59,7 @@ class CaptureGraph private constructor(context: Context) {
         notificationsAllowed = { androidx.core.app.NotificationManagerCompat.from(context.applicationContext).areNotificationsEnabled() },
         onAutoSaved = { SyncScheduler.enqueue(context.applicationContext) },
         ledger = ledger,
+        purchases = purchases,
     )
     val seen = SeenNotices(secureText(seenStore, SEEN_KEY, fail))
     val rescanner = NotificationRescanner(
@@ -115,6 +118,7 @@ class CaptureGraph private constructor(context: Context) {
         const val DIAG_KEY = "diag-log"
         const val SEEN_KEY = "seen-notices"
         const val LEDGER_KEY = "notice-ledger"
+        const val PURCHASES_KEY = "purchase-memory"
 
         /** Claves del almacen seguro que son de la capa nativa: el WebView no las lee ni escribe (secureGet/secureSet/secureRemove). */
         private val RESERVED_KEYS = setOf(PROFILE_KEY, LOG_KEY, DIAG_KEY, SensitivePrefs.STORE_KEY)

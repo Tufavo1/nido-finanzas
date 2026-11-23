@@ -57,7 +57,8 @@ internal object MerchantExtractor {
 
     private fun cutAtEnd(rest: String): String = END_OF_NAME.find(rest)?.let { rest.substring(0, it.range.first) } ?: rest
 
-    private fun clean(raw: String): String {
+    /** Limpieza comun del nombre (caracteres inseguros, espacios, ciudad final, MAYUSCULAS a Titulo, tope de largo). */
+    internal fun clean(raw: String): String {
         val name0 = UnsafeChars.strip(raw.map { if (it == '\t' || it == '\r' || it == '\n' || it.category == CharCategory.SPACE_SEPARATOR) ' ' else it }.joinToString("")).replace(Regex("\\s+"), " ").trim().trimEnd('.', ',', ';', ':')
         val name = stripCity(name0)
         val readable = if (isAllCaps(name)) toTitleCase(name) else name
