@@ -15,6 +15,8 @@ interface Props {
   d: NativeDraft
   dayLabel: string
   debts: DebtLite[]
+  /** Deudas de la pareja que no se pueden elegir, explicado */
+  debtsNote?: string
   categories: { id: string; name: string }[]
   history: { note: string | null; category_id: string }[]
   /** Hay un guardado en curso: todo se apaga para no duplicar toques */
@@ -72,7 +74,7 @@ export function Choices<T extends string>({ label, value, options, onChange, dis
  * «Pagaste a tu tarjeta» y «Transferiste a …»: pregunta a dónde va (una deuda, una deuda nueva o un gasto) y guarda con UN solo botón.
  * Lo que no se eligió queda fuera de la vista. Nunca se guarda solo.
  */
-export default function RoutedMovement({ d, dayLabel, debts, categories, history, off, run, onPayDebt, onPayNewDebt, onSaveAsExpense, onIgnore, monthLeft }: Props) {
+export default function RoutedMovement({ d, dayLabel, debts, debtsNote, categories, history, off, run, onPayDebt, onPayNewDebt, onSaveAsExpense, onIgnore, monthLeft }: Props) {
   const transfer = d.kind === 'TRANSFER_OUT'
   // La transferencia se compara por el destinatario; el pago de tarjeta, por la cuenta del aviso
   const match = matchDebt(transfer ? (d.merchant ?? d.account) : d.account, debts)
@@ -128,8 +130,9 @@ export default function RoutedMovement({ d, dayLabel, debts, categories, history
       />
 
       {inDebtPath && debts.length > 0 && target === 'debt' && (
-        <Choices label="¿Cuál deuda?" value={debtId} options={debts.map((x) => ({ value: x.id, text: x.name }))} disabled={off} onChange={(v) => setDebtId(v)} />
+        <Choices label="¿Cuál deuda?" value={debtId} options={debts.map((x) => ({ value: x.id, text: x.label ? `${x.name} · ${x.label}` : x.name }))} disabled={off} onChange={(v) => setDebtId(v)} />
       )}
+      {inDebtPath && target === 'debt' && debtsNote && <span className="line-help">{debtsNote}</span>}
       {transfer && inDebtPath && (
         <button type="button" className="btn ghost small" disabled={off} onClick={() => setTarget(target === 'new' ? 'debt' : 'new')}>
           {target === 'new' ? 'Elegir una deuda que ya tengo' : 'Crear una deuda nueva'}

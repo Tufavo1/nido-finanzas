@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Dinovance
 import { describe, expect, it } from 'vitest'
-import { chosenId, matchDebt, moveChoice, normalize } from './debtMatch'
+import { chosenId, matchDebt, moveChoice, normalize, partnerOnlyCount, payableDebts } from './debtMatch'
 
 const d = (id: string, name: string, archived = false) => ({ id, name, archived })
 
@@ -56,5 +56,35 @@ describe('opciones tipo radio', () => {
     expect(moveChoice(1, 'End', 3)).toBe(2)
     expect(moveChoice(1, 'Enter', 3)).toBeNull()
     expect(moveChoice(0, 'ArrowDown', 0)).toBeNull()
+  })
+})
+
+describe('deudas que se pueden pagar desde un aviso (propias o compartidas, nunca las personales de la pareja)', () => {
+  const me = 'u-yo'
+  const pareja = 'u-pareja'
+  const debts = [
+    { id: 'a', name: 'Banco Falabella · Tarjeta de crédito', owner_id: me },
+    { id: 'b', name: 'CMR Mastercard Premium', owner_id: pareja },
+    { id: 'c', name: 'Crédito de la casa', owner_id: null },
+    { id: 'd', name: 'Préstamo viejo', owner_id: me, archived: true },
+  ]
+
+  it('deja solo las mías y las compartidas, con su etiqueta', () => {
+    const r = payableDebts(debts, me)
+    expect(r.map((x) => x.id)).toEqual(['a', 'c'])
+    expect(r.map((x) => x.label)).toEqual(['Tuya', 'Compartida'])
+  })
+
+  it('cuenta las personales de la pareja que quedan fuera', () => {
+    expect(partnerOnlyCount(debts, me)).toBe(1)
+  })
+
+  it('el emparejamiento por nombre nunca elige la deuda de la pareja aunque se llame igual', () => {
+    const m = matchDebt('CMR Mastercard Premium', payableDebts(debts, me))
+    expect(m.kind === 'one' ? m.debt.id : null).not.toBe('b')
+  })
+
+  it('sin dueño informado (datos viejos) se trata como compartida', () => {
+    expect(payableDebts([{ id: 'x', name: 'Algo' }], me)[0]?.label).toBe('Compartida')
   })
 })

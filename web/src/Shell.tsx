@@ -9,6 +9,7 @@ import ConfirmLeave from './components/ConfirmLeave'
 import DetectedInbox from './components/DetectedInbox'
 import UnsentBanner from './components/UnsentBanner'
 import { candidateToDraft } from './lib/candidates'
+import { partnerOnlyCount, payableDebts } from './lib/debtMatch'
 import { movementExpenseDraft } from './lib/movements'
 import { debtPayImpact, monthFreeNow, monthLeftAfter } from './lib/monthLeft'
 import type { MonthEffect } from './lib/monthLeft'
@@ -303,7 +304,13 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
         autoSaved={detected.autoSaved}
         onUndoAuto={(id) => void detected.undoAuto(id)}
         onKeepBoth={detected.keepBoth}
-        debts={data.debts.filter((x) => !x.archived)}
+        debts={payableDebts(data.debts, hh.me.user_id)}
+        debtsNote={(() => {
+          const n = partnerOnlyCount(data.debts, hh.me.user_id)
+          if (n === 0) return undefined
+          const other = hh.everyone.find((m) => m.user_id !== hh.me.user_id)?.display_name ?? 'tu pareja'
+          return `${n === 1 ? 'Una deuda personal de' : `${n} deudas personales de`} ${other} no aparece${n === 1 ? '' : 'n'} aquí: solo ${other} puede anotar pagos en ${n === 1 ? 'ella' : 'ellas'}.`
+        })()}
         onSaveIncome={detected.saveIncome}
         onPayDebt={detected.saveDebtPayment}
         onPayNewDebt={detected.saveDebtPaymentNew}
