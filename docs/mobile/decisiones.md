@@ -27,7 +27,7 @@ El dueño del proyecto no estaba disponible; la sesión principal fijó estos va
 - **Front-end:** `web/src/**` (excepto tests de QA), estilos y recursos. Usa el plugin a través de una interfaz TypeScript.
 - **iOS:** `web/ios/**` y `docs/mobile/ios.md`.
 - **Docker/DevOps:** `docker/**`, `scripts/docker-*.sh`, `docker-compose.mobile.yml`.
-- **Seguridad:** revisa todo, escribe `docs/mobile/seguridad.md` y propone parches como archivos; no edita código de otros.
+- **Seguridad:** revisa todo, escribe el informe de seguridad (documento privado, fuera del repositorio) y propone parches como archivos; no edita código de otros.
 
 ## Reglas comunes
 `AGENTS.md` del repo manda: solo local, nada de producción, sin `git push`, sin `gh`, sin leer `.env*`, sin imprimir secretos, sin sudo; reportar solo lo verificado con comandos reales. Ciclo TDD obligatorio: requisito → test → ver que FALLA → código mínimo → ver que PASA → refactor.

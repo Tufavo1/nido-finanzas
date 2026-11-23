@@ -27,3 +27,9 @@ web/android/.gradle/
 web/android/**/build/
 web/android/local.properties
 web/android/app/google-services.json
+
+# Informes de seguridad y QA: describen debilidades, viven FUERA del repositorio publico (ver ~/proyectos/_privado-contigo)
+/docs/mobile/seguridad.md
+/docs/mobile/seguridad/
+/docs/mobile/auditoria.md
+/docs/mobile/qa-*.md

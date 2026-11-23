@@ -2,7 +2,7 @@
 # Politica de seguridad del APK de Contigo (fuente UNICA de verdad).
 # La leen: web/android/app/src/test/kotlin/cl/dinovance/contigo/ManifestSecurityTest.kt (manifiesto FUSIONADO,
 # en cada `gradle :app:testDebugUnitTest`) y scripts/verify-apk-security.sh (APK ya compilado, con aapt2/apksigner).
-# Agregar una linea aqui es una decision de seguridad: justificala en docs/mobile/seguridad.md (Ronda 5).
+# Agregar una linea aqui es una decision de seguridad: justificala en el informe de seguridad (privado, fuera del repositorio) (Ronda 5).
 # Formato: <clave> <valor> [<valor2>]   (# = comentario; "-" = sin valor)
 
 package cl.dinovance.contigo
