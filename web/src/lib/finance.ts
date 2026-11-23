@@ -525,7 +525,7 @@ export interface CardBalance {
 
 /**
  * Saldo de una tarjeta, sin interés automático (lo cobra el banco). Con saldo informado: ese saldo + compras
- * posteriores − pagos posteriores. Sin él: lo anotado + compras desde el alta − pagos. Nunca bajo 0.
+ * posteriores − pagos desde esa fecha (el del mismo día incluido). Sin él: lo anotado + compras desde el alta − pagos. Nunca bajo 0.
  */
 export function cardBalance(debt: Debt, payments: DebtPayment[], expenses: PaidExpense[], allDebts: Debt[]): CardBalance {
   const charges = cardCharges(debt, expenses, allDebts)
@@ -533,7 +533,7 @@ export function cardBalance(debt: Debt, payments: DebtPayment[], expenses: PaidE
   const at = debt.reported_balance != null && debt.reported_at ? debt.reported_at.slice(0, 10) : null
   if (at !== null) {
     const since = sumBy(charges.filter((e) => e.spent_on > at), (e) => e.amount)
-    const paidAfter = sumBy(mine.filter((p) => p.paid_on > at), (p) => p.amount)
+    const paidAfter = sumBy(mine.filter((p) => p.paid_on >= at), (p) => p.amount)
     return { used: Math.max(0, (debt.reported_balance ?? 0) + since - paidAfter), informed: true, informedAt: at, sinceInformed: since }
   }
   const from = debt.created_at.slice(0, 10)

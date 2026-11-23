@@ -145,6 +145,10 @@ describe('R5 cardBalance con saldo informado', () => {
     const p = [pay(d.id, 100_000, '2026-11-08'), pay(d.id, 50_000, '2026-11-20')]
     expect(cardBalance(d, p, e, [d])).toEqual({ used: 275_000, informed: true, informedAt: '2026-11-10', sinceInformed: 25_000 })
   })
+  it('R5 un pago anotado el mismo día del saldo informado sí resta (saldo 1.056.489, pago 150 → 1.056.339)', () => {
+    const t = debt({ reported_balance: 1_056_489, reported_at: '2026-11-23' })
+    expect(cardBalance(t, [pay(t.id, 150, '2026-11-23')], [], [t]).used).toBe(1_056_339)
+  })
   it('R5 nunca baja de 0', () => {
     const low = debt({ reported_balance: 10_000, reported_at: '2026-11-10' })
     expect(cardBalance(low, [pay(low.id, 50_000, '2026-11-12')], [], [low]).used).toBe(0)
