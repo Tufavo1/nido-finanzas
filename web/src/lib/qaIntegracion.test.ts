@@ -96,7 +96,7 @@ describe('H-08 (h) registros sin datos: console.error no recibe el error crudo e
     const raw: string[] = []
     for (const f of files) {
       src(f).split('\n').forEach((line, i) => {
-        if (/console\.(error|warn)\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\)/.test(line)) raw.push(`${f.replace('../', '')}:${i + 1}`)
+        if (/console\.(error|warn)\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\)/.test(line)) raw.push(`${f.replaceAll('../', '')}:${i + 1}`)
       })
     }
     expect(raw).toEqual([])
