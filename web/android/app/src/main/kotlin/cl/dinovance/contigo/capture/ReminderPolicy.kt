@@ -13,5 +13,8 @@ object ReminderPolicy {
     }
 
     fun pendingToSend(drafts: List<Draft>, activeOwner: String?): Int =
-        OwnerFilter.visible(drafts, activeOwner).count { it.status == DraftStatus.CONFIRMED && it.candidate.kind == cl.nido.parser.Kind.EXPENSE && !it.syncRejected }
+        OwnerFilter.visible(drafts, activeOwner).count { it.status == DraftStatus.CONFIRMED && sendsAlone(it.candidate.kind) && !it.syncRejected }
+
+    /** Lo que el telefono envia solo: gastos (expenses) e ingresos extra (incomes). Pagos de deuda y transferencias jamas. */
+    fun sendsAlone(kind: cl.nido.parser.Kind): Boolean = kind == cl.nido.parser.Kind.EXPENSE || kind == cl.nido.parser.Kind.INCOME
 }

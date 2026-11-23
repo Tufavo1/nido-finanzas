@@ -48,19 +48,28 @@ class BankNoticeFlowTest {
     private fun send(t: String) = p().process(bank, null, t, now).also { now += 200_000 }
 
     @Test
-    fun `ingreso, pago de deuda y reversa llegan pendientes y nunca se guardan solos`() {
+    fun `pago de deuda y reversa llegan pendientes y nunca se guardan solos`() {
+        // Migrado (pedido del dueño, 2026-11-22): «Recibiste» ahora SI se guarda solo como ingreso extra (ver la prueba siguiente);
+        // pagos a la tarjeta, reversas, anulaciones y devoluciones siguen pendientes.
         listOf(
-            "Recibiste \$10.000 Te trasnfirieron \$10.000 a tu Cuenta Banco Falabella 2236. !Ingresa a la App y revisa tus movimientos!",
             "Pagaste \$34.400 a tu CMR Mastercard Premium. Revisa mas detalles en tu app",
             "Pagaste \$34.400 14:35 a tu CMR Mastercard Premium",
             "Reversa de compra por \$6.778 en Ganaderia Rio Bueno con tu Debito Banco Falabella",
             "Anulaste \$6.778 en Ganaderia Rio Bueno", "Devolucion de \$6.778 de Ganaderia Rio Bueno",
         ).forEach { assertEquals(it, Outcome.STORED, send(it)) }
         val l = repo.list()
-        assertEquals(6, l.size)
+        assertEquals(5, l.size)
         assertTrue(l.all { it.status == DraftStatus.PENDING && !it.autoSaved && it.categoryId == null })
         assertEquals(0, synced)
         assertTrue(l.none { it.candidate.kind == Kind.EXPENSE })
+    }
+
+    @Test
+    fun `recibiste se guarda solo como ingreso extra, sin categoria`() {
+        assertEquals(Outcome.STORED, send("Recibiste \$10.000 Te trasnfirieron \$10.000 a tu Cuenta Banco Falabella 2236. !Ingresa a la App y revisa tus movimientos!"))
+        val d = repo.list().single()
+        assertEquals(Kind.INCOME, d.candidate.kind)
+        assertTrue(d.autoSaved && d.status == DraftStatus.CONFIRMED); assertNull(d.categoryId); assertEquals(1, synced)
     }
 
     @Test

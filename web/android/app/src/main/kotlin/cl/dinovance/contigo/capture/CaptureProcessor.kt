@@ -90,9 +90,12 @@ class CaptureProcessor(
             diag(reason, bankId, raw)
             return Outcome.NOT_A_MOVEMENT
         }
-        // Ingresos («Recibiste») y pagos a tu tarjeta («Pagaste ... a tu CMR») tambien llegan a la bandeja, pero NUNCA se guardan solos:
-        // la persona decide si es un ingreso o a que deuda corresponde el pago.
+        // Pagos a tu tarjeta («Pagaste ... a tu CMR») y transferencias («Transferiste ... a NOMBRE») llegan a la bandeja pero NUNCA
+        // se guardan solos: la persona decide a que deuda va o si fue gasto. Un ingreso («Recibiste») se guarda solo como ingreso
+        // extra con las mismas barreras que un gasto.
         val isExpense = candidate.kind == Kind.EXPENSE
+        // Solo la plata que te mandan («Recibiste»): un abono, devolucion o reversa es INCOME pero lo revisa la persona.
+        val isIncome = candidate.kind == Kind.INCOME && parsed.extraIncome
         health.recordEvent(now)
         recent.removeAll { now - it.at >= DEDUPE_WINDOW_MILLIS }
         val key = dedupeKey(candidate.kind, candidate.amountClp, candidate.merchant)
@@ -118,9 +121,11 @@ class CaptureProcessor(
         // Registro automatico: banco asociado y activado, dentro del tope, confianza ALTA, gasto, categoria aprendida, dueno con
         // perfil vigente y sin duda de duplicado. Cualquier otra cosa pide confirmacion como siempre.
         val autoCategory = if (orphan || maybe || !isExpense) null else autoCategory(packageName, candidate, owner)
+        val autoIncome = !orphan && !maybe && isIncome && autoIncome(packageName, candidate, owner)
+        val saveAlone = autoCategory != null || autoIncome
         val draft = Draft(
-            newId(), candidate, postedAtMillis, now, if (autoCategory != null) DraftStatus.CONFIRMED else DraftStatus.PENDING,
-            packageName, owner, maybe, autoCategory, autoCategory != null,
+            newId(), candidate, postedAtMillis, now, if (saveAlone) DraftStatus.CONFIRMED else DraftStatus.PENDING,
+            packageName, owner, maybe, autoCategory, saveAlone,
         )
         if (!addOrMakeRoom(draft, owner)) {
             health.recordFailure("QueueFull", now)
@@ -136,11 +141,12 @@ class CaptureProcessor(
             return Outcome.NO_SESSION
         }
         if (parsed.ambiguousAmount) diag(DiagReason.AMBIGUOUS_AMOUNT, bankId, raw)
-        if (draft.status == DraftStatus.PENDING && isExpense) whyNotAuto(packageName, candidate, owner, maybe, bankId, raw)
+        if (draft.status == DraftStatus.PENDING && (isExpense || isIncome)) whyNotAuto(packageName, candidate, owner, maybe, bankId, raw)
         if (!notificationsAllowed()) diag(DiagReason.NOTIFICATIONS_OFF, bankId, raw)
         if (draft.autoSaved) {
             val merchant = candidate.merchant?.trim().orEmpty()
-            autoLog?.add(AutoSavedEntry(draft.id.lowercase(), candidate.amountClp, merchant.ifEmpty { "Gasto" }, now, false, owner))
+            val note = if (isIncome) INCOME_SOURCE else merchant.ifEmpty { "Gasto" }
+            autoLog?.add(AutoSavedEntry(draft.id.lowercase(), candidate.amountClp, note, now, false, owner, kind = candidate.kind))
             notifier.autoSaved(draft)
             onAutoSaved()
         } else {
@@ -162,24 +168,39 @@ class CaptureProcessor(
             !cfg.autoEnabled(bankId) -> DiagReason.BANK_OFF
             maybe -> DiagReason.DUPLICATE
             p == null || owner == null || p.ownerKey != owner -> DiagReason.NO_PROFILE
-            c.confidence != cl.nido.parser.Confidence.HIGH || c.merchant.isNullOrBlank() -> DiagReason.LOW_CONFIDENCE
+            c.confidence != cl.nido.parser.Confidence.HIGH || (c.kind == Kind.EXPENSE && c.merchant.isNullOrBlank()) -> DiagReason.LOW_CONFIDENCE
             c.amountClp > cfg.maxClp() -> DiagReason.CAP_EXCEEDED
-            p.categoryFor(c.merchant) == null -> DiagReason.CATEGORY_UNKNOWN
+            c.kind == Kind.EXPENSE && (p.categoryFor(c.merchant) ?: p.defaultCategoryId) == null -> DiagReason.CATEGORY_UNKNOWN
             else -> return
         }
         diag(reason, bankId, raw)
     }
 
+    /** Categoria con que el gasto se guarda solo: la aprendida del comercio o, si es nuevo, la general del perfil. null = preguntar. */
     private fun autoCategory(packageName: String, candidate: cl.nido.parser.ParsedCandidate, owner: String?): String? {
         val cfg = auto ?: return null
+        val p = autoProfile(cfg, packageName, owner) ?: return null
+        val category = p.categoryFor(candidate.merchant) ?: p.defaultCategoryId
+        return if (decide(cfg, candidate, category != null)) category else null
+    }
+
+    /** Ingreso extra: mismas barreras (banco activado, perfil del dueno, confianza ALTA, tope), sin comercio ni categoria. */
+    private fun autoIncome(packageName: String, candidate: cl.nido.parser.ParsedCandidate, owner: String?): Boolean {
+        val cfg = auto ?: return false
+        autoProfile(cfg, packageName, owner) ?: return false
+        return decide(cfg, candidate, false)
+    }
+
+    private fun autoProfile(cfg: AutoConfig, packageName: String, owner: String?): AutoProfile? {
         val bank = cfg.bankOfPackage(packageName) ?: return null
         if (!cfg.autoEnabled(bank)) return null
         val p = profile() ?: return null
-        if (owner == null || p.ownerKey != owner) return null
-        val category = p.categoryFor(candidate.merchant)
-        val decision = cl.nido.parser.AutoCaptureRules.decide(candidate, cl.nido.parser.CaptureSettings(cl.nido.parser.CaptureMode.AUTO, cfg.maxClp()), category != null)
-        return if (decision == cl.nido.parser.CaptureDecision.AUTO_SAVE) category else null
+        return if (owner == null || p.ownerKey != owner) null else p
     }
+
+    private fun decide(cfg: AutoConfig, candidate: cl.nido.parser.ParsedCandidate, hasCategory: Boolean): Boolean =
+        cl.nido.parser.AutoCaptureRules.decide(candidate, cl.nido.parser.CaptureSettings(cl.nido.parser.CaptureMode.AUTO, cfg.maxClp()), hasCategory) ==
+            cl.nido.parser.CaptureDecision.AUTO_SAVE
 
     // Si la bandeja esta llena se limpian SOLO borradores de otro dueno de hace mas de 30 dias (nadie los vera). Lo de la
     // persona activa, confirmado o no, jamas se borra (R2-04).
@@ -198,5 +219,7 @@ class CaptureProcessor(
         private const val SAME_NOTICE_WINDOW_MILLIS = 45_000L
         private const val REFINE_WINDOW_MILLIS = 30_000L
         private const val MAX_RECENT = 200
+        /** Rotulo del ingreso guardado solo; igual que INCOME_SOURCE de web/src/lib/movements.ts. */
+        const val INCOME_SOURCE = "Ingreso extra"
     }
 }

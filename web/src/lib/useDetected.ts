@@ -17,8 +17,8 @@ import type { OfflineQueue } from './offlineQueue'
 import { unsentCount, unsentDrafts } from './draftFlags'
 import { enqueueWithNotice } from './queueNotice'
 import { deleteExpense, insertExpenseRow } from './saveExpense'
-import { debtPaymentRow, incomeRow, saveMovement } from './movements'
-import { insertDebtPaymentRow, insertIncomeRow } from './saveMovement'
+import { debtPaymentRow, incomeRow, newDebtRow, saveMovement } from './movements'
+import { deleteIncomeRow, insertDebtPaymentRow, insertDebtRow, insertIncomeRow } from './saveMovement'
 import { useAppResume } from './useAppResume'
 import { onRescanned, rescanNow } from './rescan'
 import { logError } from './safeLog'
@@ -145,7 +145,7 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
         removeDraft: (id) => ContigoNative.removeDraft({ id }),
         onRemoveError: (e) => logError(e, 'useDetected'),
       })
-      notify(`Ingreso guardado\n**${money(d.amountClp)}** sumados a tu balance.`, 'success')
+      notify(`Ingreso extra guardado\n**${money(d.amountClp)}** sumados a tu balance.`, 'success')
       await data.refresh()
       await load()
     },
@@ -155,12 +155,29 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
   /** «Registrar pago»: abona a la deuda elegida; si falla lanza y el borrador queda. */
   const saveDebtPayment = useCallback(
     async (d: NativeDraft, debtId: string) => {
-      await saveMovement(d, 'DEBT_PAYMENT', {
+      await saveMovement(d, ['DEBT_PAYMENT', 'TRANSFER_OUT'], {
         insert: () => insertDebtPaymentRow(debtPaymentRow(hh.household.id, d, debtId, hh.me.user_id)),
         removeDraft: (id) => ContigoNative.removeDraft({ id }),
         onRemoveError: (e) => logError(e, 'useDetected'),
       })
       notify(`Pago registrado\nSe abonaron **${money(d.amountClp)}** a la deuda.`, 'success')
+      await data.refresh()
+      await load()
+    },
+    [hh.household.id, hh.me.user_id, data, notify, load],
+  )
+
+  /** «Crear una deuda nueva»: crea la deuda (nombre y saldo) y registra el pago contra ella; si falla lanza y el borrador queda. */
+  const saveDebtPaymentNew = useCallback(
+    async (d: NativeDraft, name: string, balance: number) => {
+      const debt = newDebtRow(hh.household.id, d, name, balance)
+      await saveMovement(d, ['DEBT_PAYMENT', 'TRANSFER_OUT'], {
+        // Ids estables: si el pago falla después de crear la deuda, reintentar reconoce la deuda ya creada
+        insert: async () => (await insertDebtRow(debt)) && (await insertDebtPaymentRow(debtPaymentRow(hh.household.id, d, debt.id, hh.me.user_id))),
+        removeDraft: (id) => ContigoNative.removeDraft({ id }),
+        onRemoveError: (e) => logError(e, 'useDetected'),
+      })
+      notify(`Deuda creada y pago registrado\nSe abonaron **${money(d.amountClp)}** a «${debt.name}».`, 'success')
       await data.refresh()
       await load()
     },
@@ -188,20 +205,22 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
   const undoAuto = useCallback(
     async function run(id: string): Promise<void> {
       try {
+        const income = autoSaved.find((a) => a.id === id)?.kind === 'income'
         const r = await ContigoNative.undoAutoSaved({ id })
         if (r.needsDelete) {
-          await deleteExpense(id)
+          if (income) await deleteIncomeRow(id)
+          else await deleteExpense(id)
           await ContigoNative.dismissAutoSaved({ id })
           await data.refresh()
         }
-        notify('Gasto deshecho\nLo quité de tus gastos.', 'info')
+        notify(income ? 'Ingreso deshecho\nLo quité de tus ingresos extra.' : 'Gasto deshecho\nLo quité de tus gastos.', 'info')
         await load()
       } catch (e) {
         logError(e, 'useDetected')
         notify('No se pudo deshacer\nRevisa tu conexión e inténtalo de nuevo.', 'error', { label: 'Reintentar', onAction: () => void run(id) })
       }
     },
-    [data, notify, load],
+    [data, notify, load, autoSaved],
   )
 
   /** «Conservar ambos»: la persona dice que no es un duplicado */
@@ -239,5 +258,5 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
   const waiting = (drafts ?? []).filter((d) => stuck.has(d.id) || !autoIds.has(d.id))
   const localUnsent = unsentDrafts(waiting)
   const unsent = { count: unsentCount(pending, localUnsent.length) }
-  return { drafts: drafts === null ? null : waiting, unsent, appNames, autoSaved, undoAuto, kept, keepBoth, sendNow, failed, openId, clearOpen, save, saveIncome, saveDebtPayment, ignore, reload: load, ctx }
+  return { drafts: drafts === null ? null : waiting, unsent, appNames, autoSaved, undoAuto, kept, keepBoth, sendNow, failed, openId, clearOpen, save, saveIncome, saveDebtPayment, saveDebtPaymentNew, ignore, reload: load, ctx }
 }

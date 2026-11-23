@@ -9,6 +9,10 @@ import ConfirmLeave from './components/ConfirmLeave'
 import DetectedInbox from './components/DetectedInbox'
 import UnsentBanner from './components/UnsentBanner'
 import { candidateToDraft } from './lib/candidates'
+import { movementExpenseDraft } from './lib/movements'
+import { debtPayImpact, monthFreeNow, monthLeftAfter } from './lib/monthLeft'
+import type { MonthEffect } from './lib/monthLeft'
+import { splitOf } from './lib/split'
 import type { ParsedCandidate } from './lib/candidates'
 import { linkToDraft } from './lib/linkGuard'
 import { registerOverlay } from './lib/overlays'
@@ -287,7 +291,9 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
         categories={data.categories}
         history={detected.ctx.history}
         onReview={(d) => setReviewId(d.id)}
-        onSaveWith={(d, categoryId) => detected.save({ ...candidateToDraft(d, draftOpts), category_id: categoryId }, d.id)}
+        onSaveWith={(d, categoryId) =>
+          detected.save(d.kind === 'DEBT_PAYMENT' || d.kind === 'TRANSFER_OUT' ? movementExpenseDraft(d, draftOpts, categoryId) : { ...candidateToDraft(d, draftOpts), category_id: categoryId }, d.id)
+        }
         onIgnore={(d) => void detected.ignore(d)}
         onRetry={() => void detected.reload()}
         onSettings={() => setTab('security')}
@@ -299,7 +305,13 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
         debts={data.debts.filter((x) => !x.archived)}
         onSaveIncome={detected.saveIncome}
         onPayDebt={detected.saveDebtPayment}
-        onGoMoney={() => setTab('money')}
+        onPayNewDebt={detected.saveDebtPaymentNew}
+        monthLeft={(d, effect: MonthEffect, debtId?: string) => {
+          const split = splitOf(hh.members)
+          const free = isCurrent ? monthFreeNow(data, hh.me.user_id, split, now) : null
+          const impact = effect === 'debt' && debtId ? debtPayImpact(data.debts, data.debtPayments, debtId, d.amountClp, hh.me.user_id, split, now) : 0
+          return monthLeftAfter(free, effect, d.amountClp, impact)
+        }}
       />
     )
   } else if (tab === 'home') {

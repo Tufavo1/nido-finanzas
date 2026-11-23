@@ -60,6 +60,8 @@ export interface AutoProfileOptions {
   paidBy: string
   shared: boolean
   categories: { key: string; categoryId: string }[]
+  /** Categoría general (Otros / Sin categoría / la primera) para guardar solo comercios nuevos; se omite si no hay categorías */
+  defaultCategoryId?: string
 }
 
 export interface AppInfo {
@@ -284,7 +286,7 @@ export const ContigoNative: ContigoNativePlugin = new Proxy(rawNative, {
 /** true dentro de la app Android o iOS; false en el navegador (PWA). */
 export const isNativeApp = (): boolean => Capacitor.isNativePlatform()
 
-const KINDS: readonly CandidateKind[] = ['EXPENSE', 'INCOME', 'DEBT_PAYMENT']
+const KINDS: readonly CandidateKind[] = ['EXPENSE', 'INCOME', 'DEBT_PAYMENT', 'TRANSFER_OUT']
 const CONFIDENCES: readonly CandidateConfidence[] = ['HIGH', 'MEDIUM', 'LOW']
 const MAX_AMOUNT = 10_000_000_000
 const MAX_MERCHANT = 60
@@ -430,6 +432,8 @@ export interface AutoSavedItem {
   synced: boolean
   /** pending: en el teléfono; synced: ya enviado; rejected: la base lo rechazó */
   status?: 'pending' | 'synced' | 'rejected'
+  /** expense (por defecto si el teléfono no lo dice) o income: un ingreso extra guardado solo */
+  kind?: 'expense' | 'income'
 }
 
 /** Valida la lista de guardados automáticos que llega del plugin (frontera). */
@@ -441,7 +445,7 @@ export function parseAutoSaved(raw: unknown): AutoSavedItem[] {
     const { id, amount, note, at, synced } = r
     if (typeof id !== 'string' || id === '' || !isCount(amount) || amount < 1 || amount >= MAX_AMOUNT) continue
     if (typeof note !== 'string' || note.length > 120 || !isCount(at) || typeof synced !== 'boolean') continue
-    out.push({ id, amount, note, at, synced, status: r['status'] === 'rejected' ? 'rejected' : synced ? 'synced' : 'pending' })
+    out.push({ id, amount, note, at, synced, status: r['status'] === 'rejected' ? 'rejected' : synced ? 'synced' : 'pending', kind: r['kind'] === 'income' || r['kind'] === 'INCOME' ? 'income' : 'expense' })
   }
   return out
 }

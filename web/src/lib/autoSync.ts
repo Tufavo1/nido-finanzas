@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Dinovance
 // Datos que el teléfono necesita para guardar y enviar solo, con la app cerrada. Lógica pura.
+import { pickDefaultCategory } from './autoCategory'
 import { buildAutoCategories, ownerKeyOf } from './nativeBridge'
 import type { AutoProfileOptions } from './nativeBridge'
 import { resolveApiBase } from './nativeApi'
@@ -25,6 +26,7 @@ interface ProfileInput {
 
 /** Quien guarda es siempre la persona dueña del teléfono (`paidBy`); un gasto personal nunca va a nombre de la pareja. */
 export function buildAutoProfile(i: ProfileInput): AutoProfileOptions {
+  const defaultCategoryId = pickDefaultCategory(i.categories)
   return {
     ownerKey: ownerKeyOf(i.userId, i.householdId),
     userId: i.userId,
@@ -32,5 +34,7 @@ export function buildAutoProfile(i: ProfileInput): AutoProfileOptions {
     paidBy: i.userId,
     shared: i.shared,
     categories: buildAutoCategories(i.history, new Set(i.categories.map((c) => c.id))),
+    // Sin esto el teléfono no guarda solo un comercio nuevo; sin categorías se omite
+    ...(defaultCategoryId ? { defaultCategoryId } : {}),
   }
 }

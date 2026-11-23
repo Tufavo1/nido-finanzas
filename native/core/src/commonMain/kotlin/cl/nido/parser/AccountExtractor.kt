@@ -8,8 +8,8 @@ package cl.nido.parser
  */
 internal object AccountExtractor {
     private const val MAX_LENGTH = 60
-    private val AFTER = Regex("\\b(con|a|en)\\s+(?:tu|su)\\s+(.+)", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-    // «en tu app» no es una cuenta: con «en» solo vale si sigue un medio de pago
+    private val AFTER = Regex("\\b(con|a|en|desde)\\s+(?:tu|su)\\s+(.+)", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    // «en tu app» no es una cuenta: con «en» (o «desde», cuenta de origen de una transferencia) solo vale si sigue un medio de pago
     private val EN_OK = Regex("^(?:cuenta|tarjeta|cmr|debito|credito|linea)\\b", RegexOption.IGNORE_CASE)
     private val END = Regex("\\s+terminada\\s+en\\b|\\s+si\\s+no\\b|\\s+revisa\\b|\\s+llama\\b|\\s+mas\\s+detalles\\b|[.!?;\\n]|$", RegexOption.IGNORE_CASE)
     private val TERMINADA = Regex("^\\s*terminada\\s+en\\s+[^0-9]{0,4}(\\d{4,})", RegexOption.IGNORE_CASE)
@@ -19,7 +19,8 @@ internal object AccountExtractor {
     fun find(body: String): String? {
         val rest = AFTER.findAll(body).firstNotNullOfOrNull { m ->
             val tail = m.groupValues[2]
-            if (m.groupValues[1].equals("en", ignoreCase = true) && !EN_OK.containsMatchIn(tail)) null else tail
+            val word = m.groupValues[1].lowercase()
+            if ((word == "en" || word == "desde") && !EN_OK.containsMatchIn(tail)) null else tail
         } ?: return null
         val cut = END.find(rest)
         var name = (if (cut != null) rest.substring(0, cut.range.first) else rest).trim()

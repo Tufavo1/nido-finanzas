@@ -1,8 +1,11 @@
 // Copyright (c) 2026 Dinovance
 import { learnedCategory, suggestCategory } from './categorize'
 
-/** EXPENSE: compra. INCOME: plata que entró. DEBT_PAYMENT: pago a tu propia tarjeta o crédito (no es gasto). */
-export type CandidateKind = 'EXPENSE' | 'INCOME' | 'DEBT_PAYMENT'
+/**
+ * EXPENSE: compra. INCOME: plata que entró (ingreso extra). DEBT_PAYMENT: pago a tu propia tarjeta o crédito (no es gasto).
+ * TRANSFER_OUT: transferencia que hiciste a otra persona (el destinatario viene en merchant): gasto o pago de deuda, lo decide la persona.
+ */
+export type CandidateKind = 'EXPENSE' | 'INCOME' | 'DEBT_PAYMENT' | 'TRANSFER_OUT'
 export type CandidateConfidence = 'HIGH' | 'MEDIUM' | 'LOW'
 
 /** Lo que entrega el plugin nativo (ParsedCandidate de Kotlin + fecha del aviso). Nunca incluye el texto bruto. */

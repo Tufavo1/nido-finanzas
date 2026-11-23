@@ -208,3 +208,25 @@ El servicio de escucha solo recibía avisos NUEVOS (`onNotificationPosted`): un 
 - `scanned`: avisos activos de apps PERMITIDAS examinados (≤ 24 h, tope 50, los más recientes). `processed`: cuántos generaron un borrador nuevo. `alreadySeen`: cuántos ya estaban marcados en `SeenNotices` (no se reprocesan). `otherApps`: cantidad de avisos activos de apps NO permitidas (la propia app no cuenta). `connected`: el servicio de escucha está conectado.
 - `reason` (UNA causa probable, en este orden): `LISTENER_OFF` (permiso de acceso a notificaciones apagado o servicio no conectado), `NO_BANK_APP` (no hay apps permitidas ni bancos detectados), `NOTHING_ACTIVE` (hay bancos pero ningún aviso activo de ellos en las últimas 24 h), `ONLY_SEEN` (todos los examinados ya estaban vistos), `OK`.
 - Lógica pura en `ScanResult.of` (`capture/Rescan.kt`), probada con fakes para cada razón. Cambio de comportamiento: los avisos ya vistos ahora cuentan dentro del tope de 50 examinados.
+
+## Tipos de aviso Falabella/CMR y contrato `kind` (2026-11-22)
+
+Cuatro formas de aviso, con o sin el monto en el título (aviso partido: título «Transferiste $5.000» + cuerpo «a Juan Perez. Revisa más detalles en tu app»):
+
+| Aviso | `kind` | ¿Se guarda solo? |
+|---|---|---|
+| «Compraste $X en COMERCIO» | `EXPENSE` | Sí, con banco activado, confianza ALTA, dentro del tope, perfil del dueño y sin duda de duplicado. Categoría: la aprendida del comercio o, si es nuevo, `defaultCategoryId` del perfil. Sin ninguna de las dos, pregunta. |
+| «Recibiste $X» / «Te transfirieron $X» | `INCOME` | Sí, como **Ingreso extra** (mismas barreras y mismo tope que un gasto, sin comercio ni categoría). Abonos, devoluciones, reversas y anulaciones también son `INCOME` pero NO se guardan solos (`ParseResult.extraIncome = false`). |
+| «Pagaste $X a tu CMR…» | `DEBT_PAYMENT` | Nunca: la persona elige la deuda. |
+| «Transferiste $X a NOMBRE» (también «Transferencia realizada a NOMBRE por $X», «Hiciste una transferencia de $X a NOMBRE») | `TRANSFER_OUT` | Nunca: la persona decide si fue gasto o pago de deuda. `merchant` = destinatario (sin «Revisa más detalles…» ni ciudad), `account` = cuenta de origen si aparece («con tu …» o «desde tu …»). Confianza ALTA con destinatario, MEDIA sin él. «No transferiste» y transferencias fallidas o rechazadas se descartan. Un retiro sigue como gasto de confianza BAJA. |
+
+**`kind` en el JSON** de `listDrafts`/`draftsChanged` (y en el borrador cifrado): es el nombre del enum de Kotlin, en MAYÚSCULAS, igual que hasta hoy: `'EXPENSE' | 'INCOME' | 'DEBT_PAYMENT' | 'TRANSFER_OUT'`. El resto de los campos no cambia (`id, amountClp, merchant, kind, confidence, installment, fingerprint, account, postedAtMillis, createdAtMillis, status, sourcePackage, ownerKey, possibleDuplicate, categoryId, autoSaved, syncRejected, bankAutoOff`). No se usan minúsculas: romperían los borradores ya guardados (`Kind.valueOf`) y el front actual (`DetectedInbox.tsx` compara con `'DEBT_PAYMENT'`).
+
+**Notificación propia**: gasto = Guardar / Cambiar categoría / Ignorar; ingreso y pago de deuda = Revisar / Ignorar; transferencia = solo «Revisar», con el texto «Transferiste $X a NOMBRE: ¿gasto o pago de deuda?». Ingreso guardado solo: «Ingreso extra guardado» / «Guardé $X en Ingresos extra».
+
+**Envío en segundo plano** (`ExpenseSyncer`): `EXPENSE` -> `POST /rest/v1/expenses` y luego `notify` a la pareja. `INCOME` -> `POST /rest/v1/incomes` con `{id, household_id, amount, source: 'Ingreso extra', received_on}` (`id` = id del borrador, UUID v4 = `draftExpenseId`; `received_on` = día del aviso en America/Santiago; `user_id` lo pone la base). Un ingreso es PRIVADO: jamás llama a `notify` ni sale a otro lado. `DEBT_PAYMENT` y `TRANSFER_OUT` nunca se envían (`pathOf`/`rowOf` devuelven null). `pendingToSend` cuenta gastos e ingresos confirmados.
+
+**`setAutoProfile`** acepta el campo opcional `defaultCategoryId` (UUID). Perfil guardado:
+`{"ownerKey","userId","householdId","paidBy","shared","categories":{...},"defaultCategoryId":"<uuid>"|null}`. Un perfil antiguo sin el campo o con un valor que no sea UUID sigue valiendo, con `defaultCategoryId = null` (comportamiento anterior).
+
+**Registro de guardados solos** (`listAutoSaved`): cada ítem es `{id, amount, note, at, synced, status, kind}` con `kind` = `'EXPENSE' | 'INCOME'`; para un ingreso `note` = `'Ingreso extra'`. Un registro antiguo sin tipo se lee como `EXPENSE`. Deshacer (`undoAutoSaved`) es igual para ambos; si responde `needsDelete`, el front debe borrar la fila en `expenses` o en `incomes` según `kind`.

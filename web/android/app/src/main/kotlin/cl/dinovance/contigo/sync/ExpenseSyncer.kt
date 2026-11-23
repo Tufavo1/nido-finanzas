@@ -3,9 +3,12 @@ package cl.dinovance.contigo.sync
 
 import cl.dinovance.contigo.capture.AutoProfile
 import cl.dinovance.contigo.capture.AutoSavedLog
+import cl.dinovance.contigo.capture.CaptureProcessor
 import cl.dinovance.contigo.capture.Draft
 import cl.dinovance.contigo.capture.DraftRepository
 import cl.dinovance.contigo.capture.DraftStatus
+import cl.dinovance.contigo.capture.ReminderPolicy
+import cl.nido.parser.Kind
 import org.json.JSONObject
 import java.io.IOException
 import java.time.Instant
@@ -38,7 +41,8 @@ interface SyncStatusStore {
 }
 
 /**
- * Envia a Supabase los gastos confirmados del dueno activo, con la app cerrada, y avisa a la pareja (notify). El id del gasto
+ * Envia a Supabase los gastos (expenses) e ingresos extra (incomes) confirmados del dueno activo, con la app cerrada, y avisa a
+ * la pareja (notify) SOLO de los gastos: un ingreso es privado y jamas se avisa ni se manda a nadie mas. El id del gasto
  * sale del borrador (el mismo en cada reintento) y 23505 (ya existia) cuenta como exito: reenviar nunca duplica. Los que no
  * puede enviar se quedan en la cola cifrada; el recordatorio de siempre avisa a la persona. Todo lo que toca la cola va bajo
  * el mismo cerrojo que Deshacer ([coordinated]) para que nunca se crucen.
@@ -66,9 +70,10 @@ class ExpenseSyncer(
         val me = owner() ?: return SyncResult.NO_SESSION
         val p = profile()?.takeIf { it.ownerKey == me } ?: return SyncResult.NO_SESSION
         val base = apiBase()?.takeIf { it.startsWith("https://") } ?: return SyncResult.NO_SESSION
-        val todo = repository.list().filter { it.status == DraftStatus.CONFIRMED && it.candidate.kind == cl.nido.parser.Kind.EXPENSE && it.ownerKey == me && !it.syncRejected }
-            .mapNotNull { d -> rowOf(d, p)?.let { d to it } }
-        val pendingNotify = log?.listFor(me)?.filter { it.synced && !it.notified && !it.rejected && clock() - it.at < NOTIFY_WINDOW_MILLIS }.orEmpty()
+        val todo = repository.list().filter { it.status == DraftStatus.CONFIRMED && ReminderPolicy.sendsAlone(it.candidate.kind) && it.ownerKey == me && !it.syncRejected }
+            .mapNotNull { d -> val path = pathOf(d); val row = rowOf(d, p); if (path != null && row != null) Triple(d, path, row) else null }
+        // Solo gastos: un ingreso extra es privado (la pareja no lo ve) y nunca dispara notify.
+        val pendingNotify = log?.listFor(me)?.filter { it.kind == Kind.EXPENSE && it.synced && !it.notified && !it.rejected && clock() - it.at < NOTIFY_WINDOW_MILLIS }.orEmpty()
         if (todo.isEmpty() && pendingNotify.isEmpty()) return SyncResult.NOTHING_TO_SEND
         var token = session.accessToken(clock() / 1000) ?: if (session.refresh()) session.accessToken(clock() / 1000) else null
         if (token == null) {
@@ -82,8 +87,8 @@ class ExpenseSyncer(
             return SyncResult.NO_SESSION
         }
         var rejected = false
-        for ((draft, row) in todo) {
-            var r = post(base, "/rest/v1/expenses", token!!, row.toString()) ?: return retry("NETWORK")
+        for ((draft, path, row) in todo) {
+            var r = post(base, path, token!!, row.toString()) ?: return retry("NETWORK")
             if (r.status == 401 && session.refresh()) {
                 token = session.accessToken(clock() / 1000) ?: return retry("AUTH")
                 if (!tokenBelongsTo(token, p.userId)) {
@@ -91,13 +96,13 @@ class ExpenseSyncer(
                     onOwnerMismatch()
                     return SyncResult.NO_SESSION
                 }
-                r = post(base, "/rest/v1/expenses", token, row.toString()) ?: return retry("NETWORK")
+                r = post(base, path, token, row.toString()) ?: return retry("NETWORK")
             }
             when {
                 r.status in 200..299 || (r.status == 409 && r.body.contains("23505")) -> {
                     repository.remove(draft.id)
                     log?.markSynced(draft.id.lowercase())
-                    if (!notify(base, token, draft.id.lowercase())) return retry("NOTIFY")
+                    if (draft.candidate.kind == Kind.EXPENSE && !notify(base, token, draft.id.lowercase())) return retry("NOTIFY")
                 }
                 r.status == 401 -> return retry("AUTH")
                 r.status == 429 || r.status >= 500 -> return retry("SERVER")
@@ -156,19 +161,37 @@ class ExpenseSyncer(
         return sub.equals(userId, ignoreCase = true)
     }
 
-    /** Fila de expenses; null si el borrador no se puede enviar solo (sin categoria o id raro): lo envia la app. */
+    /** Tabla a la que va el borrador: gasto -> expenses, ingreso -> incomes; pago de deuda o transferencia -> ninguna (null). */
+    internal fun pathOf(d: Draft): String? = when (d.candidate.kind) {
+        Kind.EXPENSE -> "/rest/v1/expenses"
+        Kind.INCOME -> "/rest/v1/incomes"
+        Kind.DEBT_PAYMENT, Kind.TRANSFER_OUT -> null
+    }
+
+    /**
+     * Fila a enviar; null si el borrador no se puede enviar solo (sin categoria, id raro, pago de deuda o transferencia): lo hace
+     * la app. El id es el del borrador (UUID v4 = draftExpenseId del front): reenviar nunca duplica.
+     */
     internal fun rowOf(d: Draft, p: AutoProfile): JSONObject? {
-        // Segunda barrera: solo los GASTOS se envian como fila de expenses; un ingreso o un pago de deuda jamas (R4).
-        if (d.candidate.kind != cl.nido.parser.Kind.EXPENSE) return null
-        val category = d.categoryId ?: p.categoryFor(d.candidate.merchant) ?: return null
         val id = d.id.lowercase().takeIf { UUID.matches(it) } ?: return null
+        val day = Instant.ofEpochMilli(d.postedAtMillis).atZone(zone).toLocalDate().toString()
+        // Segunda barrera: solo un GASTO arma fila de expenses y solo un INGRESO de incomes; pago de deuda y transferencia jamas.
+        when (d.candidate.kind) {
+            Kind.EXPENSE -> {}
+            // Igual que incomeRow de web/src/lib/movements.ts: user_id lo pone la base (auth.uid()), received_on = dia del aviso en Chile
+            Kind.INCOME -> return if (d.candidate.amountClp <= 0) null else JSONObject()
+                .put("id", id).put("household_id", p.householdId).put("amount", d.candidate.amountClp)
+                .put("source", CaptureProcessor.INCOME_SOURCE).put("received_on", day)
+            Kind.DEBT_PAYMENT, Kind.TRANSFER_OUT -> return null
+        }
+        val category = d.categoryId ?: p.categoryFor(d.candidate.merchant) ?: return null
         val merchant = d.candidate.merchant?.trim().orEmpty()
         val inst = d.candidate.installment
         val note = safeTake(if (inst == null) merchant else if (merchant.isEmpty()) "cuota ${inst.n}/${inst.total}" else "$merchant (cuota ${inst.n}/${inst.total})", MAX_NOTE)
         return JSONObject()
             .put("id", id).put("household_id", p.householdId).put("category_id", category)
             .put("amount", d.candidate.amountClp).put("paid_by", if (p.shared) p.paidBy else p.userId).put("shared", p.shared)
-            .put("note", note).put("spent_on", Instant.ofEpochMilli(d.postedAtMillis).atZone(zone).toLocalDate().toString())
+            .put("note", note).put("spent_on", day)
     }
 
     companion object {

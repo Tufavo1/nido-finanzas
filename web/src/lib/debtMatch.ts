@@ -75,6 +75,9 @@ export function matchDebt<D extends DebtLite>(account: string | null | undefined
   return { kind: 'choose', debts: active.slice(0, MAX_CHOICES) }
 }
 
+/** Deuda que se deja marcada de antemano: solo si el aviso apunta claramente a una; si no, ninguna (la persona elige). */
+export const preselectDebt = (m: DebtMatch): string | null => (m.kind === 'one' ? m.debt.id : null)
+
 /** Flechas del teclado sobre una lista de opciones (radio): arriba/izquierda atrás, abajo/derecha adelante, con vuelta; null si la tecla no mueve. */
 export function moveChoice(index: number, key: string, len: number): number | null {
   if (len <= 0) return null

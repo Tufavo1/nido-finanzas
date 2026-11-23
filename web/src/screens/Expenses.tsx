@@ -2,7 +2,7 @@ import EmptyState from '../components/EmptyState'
 import ScreenHelp from '../components/ScreenHelp'
 import { useMemo, useState } from 'react'
 import type { Household } from '../App'
-import type { HouseholdData } from '../lib/data'
+import type { Expense, HouseholdData } from '../lib/data'
 import ScopeBar from '../components/ScopeBar'
 import { splitOf } from '../lib/split'
 import { resolveScope, scopeExpenses } from '../lib/scope'
@@ -21,6 +21,10 @@ import type { Notify } from '../components/Toast'
 import Modal from '../components/Modal'
 import Spin from '../components/Spin'
 import { useDesktop } from '../lib/useDesktop'
+import ExpenseToDebt from '../components/ExpenseToDebt'
+import { ConvertError, canConvertToDebt, undoExpenseToDebt } from '../lib/expenseToDebt'
+import { convertExpenseInDb, reinsertExpense, removePayment } from '../lib/expenseToDebtDb'
+import type { DebtDest } from '../lib/expenseToDebtDb'
 
 export default function Expenses({
   hh,
@@ -212,12 +216,46 @@ export default function Expenses({
     await data.refresh()
   }
 
+  const [toDebt, setToDebt] = useState(false)
+  const [converting, setConverting] = useState(false)
+
+  /** «Fue pago de una deuda»: pago primero, gasto fuera después; si el borrado falla se retira el pago. */
+  async function convert(e: Expense, dest: DebtDest) {
+    setConverting(true)
+    setError(null)
+    try {
+      const r = await convertExpenseInDb({ householdId: hh.household.id, meId: hh.me.user_id, expense: e, dest })
+      setSelExp(null)
+      setToDebt(false)
+      onToast('Listo, ahora cuenta como pago de deuda\nSe quitó de tus gastos.', 'success', {
+        label: 'Deshacer',
+        onAction: () => {
+          void undoExpenseToDebt({ reinsertExpense: () => reinsertExpense(e), deletePayment: () => removePayment(r.paymentId) })
+            .then(() => data.refresh())
+            .then(() => onToast('Deshecho\nVolvió a tus gastos.', 'info'))
+            .catch(() => onToast('No se pudo deshacer\nRevisa tu conexión e inténtalo de nuevo.', 'error'))
+        },
+      })
+      await data.refresh()
+    } catch (err) {
+      const stage = err instanceof ConvertError ? err.stage : 'payment'
+      setError(
+        stage === 'compensate'
+          ? 'No pudimos terminar el cambio y puede verse doble. Revisa tus gastos y tus pagos de deuda.'
+          : 'No se pudo pasar el gasto a pago de deuda. No se cambió nada; revisa tu conexión e intenta de nuevo.',
+      )
+    } finally {
+      setConverting(false)
+    }
+  }
+
   const [selExp, setSelExp] = useState<string | null>(null)
   const selExpRow = selExp ? list.find((e) => e.id === selExp) : undefined
   function closeExp() {
     setSelExp(null)
     setEditExp(null)
     setConfirmId(null)
+    setToDebt(false)
     setError(null)
   }
 
@@ -768,11 +806,25 @@ export default function Expenses({
                   </p>
                 )}
                 <div className="stack tight">
-                  {selExpRow.shared || selExpRow.paid_by === hh.me.user_id ? (
+                  {toDebt && canConvertToDebt(selExpRow, hh.me.user_id) ? (
+                    <ExpenseToDebt
+                      amount={selExpRow.amount}
+                      note={selExpRow.note ?? ''}
+                      debts={data.debts.filter((x) => !x.archived)}
+                      busy={converting}
+                      onConfirm={(dest) => void convert(selExpRow, dest)}
+                      onCancel={() => setToDebt(false)}
+                    />
+                  ) : selExpRow.shared || selExpRow.paid_by === hh.me.user_id ? (
                     <>
                       <button type="button" className="btn" onClick={() => startEdit(selExpRow)}>
                         Editar información
                       </button>
+                      {canConvertToDebt(selExpRow, hh.me.user_id) && (
+                        <button type="button" className="btn ghost" onClick={() => setToDebt(true)}>
+                          Fue pago de una deuda
+                        </button>
+                      )}
                       <button type="button" className={confirmId === selExpRow.id ? 'btn danger' : 'btn ghost'} onClick={() => void remove(selExpRow.id)}>
                         {confirmId === selExpRow.id ? 'Toca otra vez para borrar' : 'Borrar gasto'}
                       </button>

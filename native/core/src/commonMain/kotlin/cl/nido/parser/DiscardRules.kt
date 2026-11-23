@@ -12,7 +12,7 @@ internal object DiscardRules {
     private val REJECTED = listOf("rechazad", "declinad", "no autorizad", "fondos insuficientes")
     private val DEBT_PAYMENT = listOf("pago cuota", "pago de cuota", "pago minimo", "recuerda", "estado de cuenta", "monto facturado", "linea de credito")
     // Avisos de credito, fraude, intentos y rechazos que no son un cobro (H-09).
-    private val NOT_CHARGED = listOf("no aprobad", "fallid", "preaprobad", "intent", "reconocemos", "sospechos", "bloqueamos", "no autoriz", "no pagaste", "no compraste", "no se pudo", "no pudo")
+    private val NOT_CHARGED = listOf("no aprobad", "fallid", "preaprobad", "intent", "reconocemos", "sospechos", "bloqueamos", "no autoriz", "no pagaste", "no compraste", "no transferiste", "no se pudo", "no pudo")
     // Palabras cortas: solo valen enteras ("cupo" si, "cupon" ya esta arriba; "pin" si, "pintura" no).
     private val WHOLE_WORDS = listOf("pin", "token", "ingresa", "cupo", "gana")
     private val FOREIGN_CURRENCY = Regex("US\\$|\\bUSD\\b|\\bEUR\\b|€|\\bUF\\b", RegexOption.IGNORE_CASE)
