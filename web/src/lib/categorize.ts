@@ -58,7 +58,8 @@ function mostUsed(history: Past[], valid: Set<string>, match: (note: string) => 
   return best
 }
 
-export function suggestCategory(note: string, categories: Cat[], history: Past[]): string | null {
+/** Solo lo aprendido del historial (mismo nombre o misma cadena); la lista fija de comercios no cuenta. */
+export function learnedCategory(note: string, categories: Cat[], history: Past[]): string | null {
   const n = norm(note)
   if (!n) return null
   const valid = new Set(categories.map((c) => c.id))
@@ -69,10 +70,14 @@ export function suggestCategory(note: string, categories: Cat[], history: Past[]
 
   // 2. El mismo comercio en otra sucursal: coincide la primera palabra
   const first = n.split(' ')[0] ?? ''
-  if (first.length >= 4) {
-    const chain = mostUsed(history, valid, (x) => x.split(' ')[0] === first)
-    if (chain) return chain
-  }
+  return first.length >= 4 ? mostUsed(history, valid, (x) => x.split(' ')[0] === first) : null
+}
+
+export function suggestCategory(note: string, categories: Cat[], history: Past[]): string | null {
+  const learned = learnedCategory(note, categories, history)
+  if (learned) return learned
+  const n = norm(note)
+  if (!n) return null
 
   // 3. Comercios conocidos
   const padded = ` ${n} `

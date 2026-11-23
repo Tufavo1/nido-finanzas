@@ -8,13 +8,23 @@
  */
 
 export type BankNotice =
-  | { kind: 'expense'; amount: number; /** Comercio o persona; vacío si no se reconoce */ merchant: string; /** AAAA-MM-DD; null = hoy */ date: string | null }
+  | { kind: 'expense'; amount: number; /** «Giro»/«Giraste»: retiro de efectivo, confianza baja: nunca se guarda solo, se confirma */ withdrawal?: true; /** Comercio o persona; vacío si no se reconoce */ merchant: string; /** AAAA-MM-DD; null = hoy */ date: string | null }
   /** Plata que entró (abono, depósito, devolución): no es un gasto */
   | { kind: 'income' }
 
 const MAX_MERCHANT = 60
-const NUM = '(\\d{1,3}(?:\\.\\d{3})+|\\d+)'
+const NUM = '(\\d{1,3}(?:\\.\\d{3})+|\\d{1,3}(?:[ \u00a0]\\d{3})+(?!\\d)|\\d+)'
 const AMOUNT = new RegExp(`\\$\\s*${NUM}(?:,\\d{1,2})?|\\bCLP\\s*${NUM}(?:,\\d{1,2})?|\\b${NUM}(?:,\\d{1,2})?\\s*pesos\\b`, 'i')
+/**
+ * RF-03: avisos que nunca son un gasto aunque traigan un monto (claves, promociones, saldos, compras
+ * rechazadas, pago de cuotas de deuda). Mismas palabras que el parser Kotlin (native/parser, DiscardRules).
+ * Se compara sin tildes y cada palabra debe empezar una palabra del aviso.
+ */
+const NOT_A_MOVEMENT = /\b(?:clave|codigo|contrasena|password|otp|oferta|descuento|cupon|promocion|ahorra|aprovecha|sorteo|saldo|rechazad|declinad|no autorizad|fondos insuficientes|pago cuota|pago de cuota|pago minimo|recuerda|estado de cuenta|monto facturado|linea de credito|no aprobad|fallid|preaprobad|intent|reconocemos|sospechos|bloqueamos|no autoriz|(?:pin|token|ingresa|cupo|gana)\b)/
+const withoutAccents = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+/** En Chile «giro» y «giraste» son un retiro de efectivo */
+const WITHDRAWAL = /\b(?:retiro|retiraste|giro|giraste)\b/
+export const WITHDRAWAL_LABEL = 'Retiro de efectivo'
 const FOREIGN = /US\$|\bUSD\b|\bEUR\b|€|\bUF\b/i
 const INCOME = /\brecibiste\b|\babono\b|\bdeposit(ado|aron)\b|\bte (han |ha )?(transferido|transfirieron|depositado)\b|\btransferencia recibida\b|\bdevoluci[oó]n\b|\breverso\b|\breembolso\b/i
 /** Dónde termina el nombre del comercio */
@@ -24,7 +34,7 @@ const DATE = /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{4}))?(?![\d/-])/
 const pad = (n: number) => String(n).padStart(2, '0')
 
 function cleanMerchant(raw: string): string {
-  let m = raw.replace(/\s+/g, ' ').replace(/[.,;:]+$/, '').trim()
+  let m = raw.replace(/[\s\u00a0]+/g, ' ').replace(/[.,;:]+$/, '').trim()
   // «LIDER EXPRESS» se lee mejor como «Lider Express»
   if (m && m === m.toUpperCase() && /\p{L}/u.test(m)) m = m.toLowerCase().replace(/(^|\s)\p{L}/gu, (c) => c.toUpperCase())
   return m.slice(0, MAX_MERCHANT)
@@ -37,7 +47,7 @@ function findMerchant(before: string, after: string, text: string): string {
     const cut = STOP.exec(rest)
     const name = cleanMerchant(cut ? rest.slice(0, cut.index) : rest)
     // «en tu cuenta», «en 3 cuotas»: no es un comercio
-    if (name && !/^(\d|tu\b|su\b|cuotas?\b)/i.test(name)) return name
+    if (name && !/^(\d+\s+(?:cuotas?|pagos?)\b|\d+$|tu\b|su\b|cuotas?\b)/i.test(name)) return name
   }
   // «Transferencia realizada a Juan Pérez por $20.000»
   if (/transfer/i.test(text)) {
@@ -65,12 +75,20 @@ function findDate(text: string, now: Date): string | null {
 /** null si el texto no trae un monto en pesos que se pueda anotar */
 export function parseBankNotice(text: string, now: Date): BankNotice | null {
   const t = text.trim()
-  if (!t || FOREIGN.test(t)) return null
+  if (!t || FOREIGN.test(t) || NOT_A_MOVEMENT.test(withoutAccents(t))) return null
   const m = AMOUNT.exec(t)
   if (!m) return null
-  const amount = Number((m[1] ?? m[2] ?? m[3] ?? '').replace(/\./g, ''))
+  // «$12,990» es ambiguo (coma de miles o centavos): no se adivina
+  const groupEnd = m.index + m[0].length - (/,\d{1,2}$/.exec(m[0])?.[0].length ?? 0)
+  if (/^,\d{3}(?!\d)/.test(t.slice(groupEnd))) return null
+  // «$12,99», «$12.99», «$12,5»: decimales de estilo extranjero o ambiguos (¿dólares?): no se anota como 12 pesos (R2-09)
+  const digits = m[1] ?? m[2] ?? m[3] ?? ''
+  const tail = t.slice(m.index + m[0].length - (/,\d{1,2}$/.exec(m[0])?.[0].length ?? 0))
+  if (/^\d+$/.test(digits) && /^[.,]\d{1,2}(?!\d)/.test(tail) && !/^[.,]0{1,2}(?!\d)/.test(tail)) return null
+  const amount = Number((m[1] ?? m[2] ?? m[3] ?? '').replace(/[. \u00a0]/g, ''))
   if (!Number.isFinite(amount) || amount <= 0) return null
   if (INCOME.test(t)) return { kind: 'income' }
+  if (WITHDRAWAL.test(withoutAccents(t))) return { kind: 'expense', amount, withdrawal: true, merchant: WITHDRAWAL_LABEL, date: findDate(t, now) }
   const before = t.slice(0, m.index)
   const after = t.slice(m.index + m[0].length)
   return { kind: 'expense', amount, merchant: findMerchant(before, after, t), date: findDate(t, now) }

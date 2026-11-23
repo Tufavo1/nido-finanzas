@@ -1,0 +1,93 @@
+--- a/web/worker/proxy.ts	2026-11-21 18:54:01.675569972 -0300
++++ b/web/worker/proxy.ts	2026-11-21 18:54:01.707993385 -0300
+@@ -61,6 +61,9 @@
+ export function isSameSite(headers: Headers, selfOrigin: string, method = 'GET'): boolean {
+   const origin = headers.get('origin')
+   const site = headers.get('sec-fetch-site')
++  // Cliente que no es un navegador (la app nativa usa HTTP nativo y no manda Origin ni Sec-Fetch-Site): no hay CSRF posible,
++  // porque CSRF exige un navegador, y un navegador SIEMPRE manda Origin en un POST. Si falta uno de los dos, se rechaza.
++  if (isWrite(method) && origin === null && site === null) return true
+   if (isWrite(method)) return origin === selfOrigin && (site === null || site === 'same-origin')
+   if (origin !== null && origin !== selfOrigin) return false
+   return site === null || site === 'same-origin' || site === 'none'
+--- a/web/android/app/build.gradle	2026-11-21 18:54:01.680233355 -0300
++++ b/web/android/app/build.gradle	2026-11-21 18:54:01.708057956 -0300
+@@ -20,10 +20,28 @@
+     kotlinOptions {
+         jvmTarget = '21'
+     }
++    // Firma de release: la llave vive FUERA del repo (~/.nido-signing/, montada en /signing por docker-android-build.sh).
++    def ksPath = System.getenv('NIDO_KEYSTORE_PROPERTIES')
++    def ksProps = new Properties()
++    if (ksPath && file(ksPath).exists()) file(ksPath).withInputStream { ksProps.load(it) }
++    signingConfigs {
++        release {
++            if (ksProps['storeFile']) {
++                storeFile file(ksProps['storeFile'])
++                storePassword ksProps['storePassword']
++                keyAlias ksProps['keyAlias']
++                keyPassword ksProps['keyPassword']
++            }
++        }
++    }
+     buildTypes {
+         release {
+-            minifyEnabled false
+-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
++            debuggable false
++            minifyEnabled true
++            shrinkResources true
++            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
++            // Sin llave no se firma: assembleRelease falla en vez de dejar un APK sin firmar o firmado con la llave de depuración
++            signingConfig ksProps['storeFile'] ? signingConfigs.release : null
+         }
+     }
+ }
+--- a/web/android/app/src/main/java/cl/dinovance/contigo/MainActivity.java	2026-11-21 18:54:01.684761418 -0300
++++ b/web/android/app/src/main/java/cl/dinovance/contigo/MainActivity.java	2026-11-21 18:54:01.708122617 -0300
+@@ -3,6 +3,7 @@
+ 
+ import android.content.Intent;
+ import android.os.Bundle;
++import android.view.WindowManager;
+ 
+ import cl.dinovance.contigo.plugin.ContigoNativePlugin;
+ import com.getcapacitor.BridgeActivity;
+@@ -13,6 +14,8 @@
+         // Los plugins locales se registran antes de super.onCreate (que arranca el puente).
+         registerPlugin(ContigoNativePlugin.class);
+         DeepLinkGuard.INSTANCE.sanitize(getIntent());
++        // Sin capturas de pantalla ni miniatura en «recientes»: la app muestra montos y comercios.
++        getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+         super.onCreate(savedInstanceState);
+     }
+ 
+--- a/web/android/app/src/main/res/xml/file_paths.xml	2026-11-21 18:54:01.689153617 -0300
++++ b/web/android/app/src/main/res/xml/file_paths.xml	2026-11-21 18:54:01.708151397 -0300
+@@ -1,5 +1,5 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ <paths xmlns:android="http://schemas.android.com/apk/res/android">
+-    <external-path name="my_images" path="." />
+-    <cache-path name="my_cache_images" path="." />
++    <!-- Nada se comparte por FileProvider hoy: solo una subcarpeta vacía, en vez de todo el almacenamiento externo. -->
++    <cache-path name="shared" path="shared/" />
+ </paths>
+\ No hay ningún carácter de nueva línea al final del archivo
+--- a/web/android/app/src/main/AndroidManifest.xml	2026-11-21 18:54:01.693423686 -0300
++++ b/web/android/app/src/main/AndroidManifest.xml	2026-11-21 18:54:01.708221038 -0300
+@@ -6,6 +6,7 @@
+     <application
+         android:name=".ContigoApplication"
+         android:allowBackup="false"
++        android:dataExtractionRules="@xml/data_extraction_rules"
+         android:fullBackupContent="false"
+         android:usesCleartextTraffic="false"
+         android:networkSecurityConfig="@xml/network_security_config"
+@@ -21,6 +22,7 @@
+             android:label="@string/title_activity_main"
+             android:theme="@style/AppTheme.NoActionBarLaunch"
+             android:launchMode="singleTask"
++            android:taskAffinity=""
+             android:exported="true">
+ 
+             <intent-filter>

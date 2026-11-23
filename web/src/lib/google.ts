@@ -1,6 +1,8 @@
 import { captchaToken } from './captcha'
 import { LEGAL_VERSION } from './legal'
+import { isNativeApp } from './nativeBridge'
 import { supabase } from './supabase'
+import { logError } from './safeLog'
 
 /**
  * Entrar con Google sin salir de Contigo (Google Identity Services): el botón de Google entrega un token a esta página
@@ -41,6 +43,8 @@ let script: Promise<Gsi> | null = null
 
 /** Carga el script oficial de Google una sola vez */
 export function loadGsi(): Promise<Gsi> {
+  // El botón web de Google no funciona dentro de la app (disallowed_useragent): en nativo no se carga
+  if (isNativeApp()) return Promise.reject(new Error('No disponible en la app'))
   script ??= new Promise<Gsi>((resolve, reject) => {
     const fail = () => {
       script = null
@@ -88,7 +92,7 @@ export async function signInWithGoogleToken(token: string, nonce: string): Promi
     await markTermsAccepted(data.session.user.user_metadata)
     return null
   } catch (e) {
-    console.error(e)
+    logError(e, 'google')
     return e instanceof Error && /robot|anti-bots/i.test(e.message) ? e.message : GOOGLE_ERROR
   }
 }

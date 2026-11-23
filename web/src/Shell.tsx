@@ -1,15 +1,46 @@
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Household } from './App'
-import ScreenLoader from './components/ScreenLoader'
+import { SkeletonScreen } from './components/Skeleton'
+import PullIndicator from './components/PullIndicator'
 import ErrorPage from './components/ErrorPage'
+import StatePage from './components/StatePage'
+import ConfirmExpense from './components/ConfirmExpense'
+import ConfirmLeave from './components/ConfirmLeave'
+import DetectedInbox from './components/DetectedInbox'
+import UnsentBanner from './components/UnsentBanner'
+import { candidateToDraft } from './lib/candidates'
+import { movementExpenseDraft } from './lib/movements'
+import { debtPayImpact, monthFreeNow, monthLeftAfter } from './lib/monthLeft'
+import type { MonthEffect } from './lib/monthLeft'
+import { splitOf } from './lib/split'
+import type { ParsedCandidate } from './lib/candidates'
+import { linkToDraft } from './lib/linkGuard'
+import { registerOverlay } from './lib/overlays'
+import { useCaptureConfig } from './lib/useCaptureConfig'
+import { useDeepLink } from './lib/useDeepLink'
+import { useAutoSync } from './lib/useAutoSync'
+import { useDetected } from './lib/useDetected'
+import { useExpenseQueue } from './lib/useExpenseQueue'
+import { errorScreen } from './lib/screenState'
 import { supabase } from './lib/supabase'
 import Icon from './components/Icon'
 import InstallBanner from './components/InstallBanner'
+import { checkUpdates } from './lib/appUpdateStore'
+import BankConsentSheet from './components/BankConsentSheet'
+import { readConsent, shouldAskConsent } from './lib/bankConsent'
+import { isNativeApp } from './lib/nativeBridge'
+import { refreshPushToken } from './lib/nativePush'
+import { useAppResume } from './lib/useAppResume'
+import { logError as logPushError } from './lib/safeLog'
+import NativeUpdateSheet from './components/NativeUpdateSheet'
+import NativeUpdateBanner from './components/NativeUpdateBanner'
 import UpdateBanner from './components/UpdateBanner'
 import LockScreen from './components/LockScreen'
 import OfflineBar from './components/OfflineBar'
 import Toast from './components/Toast'
-import type { ToastData, ToastKind } from './components/Toast'
+import { useToasts } from './lib/useToasts'
+import { useBackButton } from './lib/useBackButton'
+import { usePullToRefresh } from './lib/usePullToRefresh'
 import { useData } from './lib/data'
 import { ANNOUNCE_NEWS, NEWS_EVENT, TOUR_EVENT, markNewsSeen, markTourSeen, newsSeen, tourSeen } from './lib/tour'
 import { focusMain } from './lib/a11y'
@@ -24,6 +55,7 @@ import type { Scope } from './lib/scope'
 const Money = lazy(() => import('./screens/Money'))
 const Register = lazy(() => import('./screens/Register'))
 const Security = lazy(() => import('./screens/Security'))
+const NativeSettings = lazy(() => import('./screens/NativeSettings'))
 const Help = lazy(() => import('./screens/Help'))
 const Profile = lazy(() => import('./screens/Profile'))
 const Tour = lazy(() => import('./components/Tour'))
@@ -37,7 +69,7 @@ const TABS = [
 ] as const
 
 // Ajustes y Ayuda no tienen pestaña propia: se abren con el engranaje de Inicio. Registrar queda en el centro de las 5; Perfil se abre desde Ajustes
-type Tab = (typeof TABS)[number]['key'] | 'security' | 'help' | 'profile'
+type Tab = (typeof TABS)[number]['key'] | 'security' | 'help' | 'profile' | 'inbox'
 
 // Cuando el navegador está libre, deja listas las pantallas pesadas para que abran al instante
 function warmScreens() {
@@ -55,6 +87,11 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
     // El texto no se queda en la dirección ni en el historial del navegador
     if (notice) history.replaceState(null, '', '/?tab=add')
   }, [notice])
+  // Un enlace con ?tab= que no existe (viejo o mal escrito) muestra «No encontramos esa página»
+  const [notFound, setNotFound] = useState(() => {
+    const t = new URLSearchParams(location.search).get('tab')
+    return t !== null && !TABS.some((x) => x.key === t)
+  })
   const [tab, setTab] = useState<Tab>(() => {
     if (readSharedNotice(location.search, location.hash)) return 'add'
     const t = new URLSearchParams(location.search).get('tab')
@@ -86,10 +123,56 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
     const n = new Date()
     return { y: n.getFullYear(), m: n.getMonth() }
   })
-  const [toast, setToastData] = useState<ToastData | null>(null)
-  const clearToast = useCallback(() => setToastData(null), [])
-  const setToast = useCallback((text: string, kind: ToastKind = 'success') => setToastData({ text, kind, id: Date.now() }), [])
+  const { toast, notify: setToast, dismiss: dismissToast, act: actToast } = useToasts()
   const data = useData(hh.household.id, hh.me.user_id, ym.y, ym.m, reload)
+
+  // Captura de gastos: cola sin conexión, bandeja de detectados y enlace nido://gasto (una sola vía)
+  const { config: capture, save: saveCapture } = useCaptureConfig()
+  const queue = useExpenseQueue(hh.household.id, hh.me.user_id, data.refresh, setToast)
+  const detected = useDetected({ hh, data, config: capture, queue, notify: setToast })
+  // App Android: busca versión nueva al abrir y al volver a primer plano (máx. 1 vez cada 6 h; sin molestar durante el arranque)
+  useEffect(() => {
+    const t = window.setTimeout(() => void checkUpdates(), 4000)
+    return () => window.clearTimeout(t)
+  }, [])
+  useAppResume(() => void checkUpdates())
+  // Primera vez en la app Android: una hoja corta para conectar los bancos (sin insistir si dice «Ahora no»)
+  const [askBanks, setAskBanks] = useState(false)
+  useEffect(() => {
+    if (!isNativeApp() || !shouldAskConsent(readConsent())) return
+    const t = window.setTimeout(() => setAskBanks(true), 7000)
+    return () => window.clearTimeout(t)
+  }, [])
+  useAutoSync({ userId: hh.me.user_id, householdId: hh.household.id, shared: capture.shared, categories: data.categories, history: detected.ctx.history, ready: data.ready })
+  const [reviewId, setReviewId] = useState<string | null>(null)
+  const [linkCandidate, setLinkCandidate] = useState<ParsedCandidate | null>(null)
+  useDeepLink((url) => {
+    const r = linkToDraft(url, new Date())
+    if (r.ok) setLinkCandidate(r.candidate)
+    else setToast(`Enlace no válido\n${r.reason}`, 'warn')
+  })
+  // Si los avisos ya estaban activados, renueva el token en silencio (pudo rotar); nunca los activa solo
+  useEffect(() => {
+    if (isNativeApp()) void refreshPushToken().catch((e: unknown) => logPushError(e, 'Shell'))
+  }, [hh.me.user_id])
+  const draftOpts = useMemo(() => ({ paidBy: hh.me.user_id, shared: capture.shared, categories: data.categories, history: detected.ctx.history }), [hh.me.user_id, capture.shared, data.categories, detected.ctx.history])
+  const reviewDraft = detected.drafts?.find((d) => d.kind === 'EXPENSE' && d.id === (reviewId ?? detected.openId))
+  const review = useMemo(() => {
+    if (!data.ready) return null
+    if (reviewDraft) return { key: reviewDraft.id, nativeId: reviewDraft.id, expense: candidateToDraft(reviewDraft, draftOpts) }
+    if (linkCandidate) return { key: 'link', nativeId: undefined, expense: candidateToDraft(linkCandidate, draftOpts) }
+    return null
+  }, [data.ready, reviewDraft, linkCandidate, draftOpts])
+  const { clearOpen } = detected
+  const closeReview = useCallback(() => {
+    setReviewId(null)
+    setLinkCandidate(null)
+    clearOpen()
+  }, [clearOpen])
+  // «Atrás» en Confirmar gasto vuelve a la pantalla anterior; el borrador sigue en la bandeja (CA-11-4)
+  const reviewing = review !== null
+  useEffect(() => (reviewing ? registerOverlay(closeReview) : undefined), [reviewing, closeReview])
+  const [leaveTo, setLeaveTo] = useState<string | null>(null)
   // Guías: la de bienvenida sale sola la primera vez; la de novedades solo si tú la activas en lib/tour.ts. Ambas se abren desde Ajustes.
   const [tour, setTour] = useState<'welcome' | 'news' | null>(() =>
     !tourSeen(hh.me.user_id) ? 'welcome' : ANNOUNCE_NEWS && !newsSeen(hh.me.user_id) ? 'news' : null,
@@ -128,6 +211,10 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
     window.scrollTo(0, 0)
   }, [data.ready, tab])
 
+  // Botón atrás de Android: cierra la ventana abierta, vuelve de pestaña o minimiza desde Inicio
+  useBackButton(tab, (t) => setTab(t as Tab), setLeaveTo)
+  const pull = usePullToRefresh(() => data.refresh(), data.ready && !locked)
+
   const now = new Date()
   const isCurrent = ym.y === now.getFullYear() && ym.m === now.getMonth()
   const month = new Date(ym.y, ym.m, 1)
@@ -156,7 +243,19 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   }
 
   let body
-  if (data.error) {
+  if (notFound) {
+    body = (
+      <main className="screen center-y">
+        <StatePage
+          spec={errorScreen({ kind: 'NOT_FOUND' })}
+          onPrimary={() => {
+            history.replaceState(null, '', '/')
+            setNotFound(false)
+          }}
+        />
+      </main>
+    )
+  } else if (data.error) {
     body = (
       <main className="screen center-y">
         <ErrorPage
@@ -169,9 +268,52 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
     )
   } else if (!data.ready) {
     body = (
-      <main className="screen center-y">
-        <ScreenLoader />
-      </main>
+      <SkeletonScreen />
+    )
+  } else if (review) {
+    body = (
+      <ConfirmExpense
+        key={review.key}
+        draft={review.expense}
+        categories={data.categories}
+        members={hh.members}
+        onConfirm={async (f) => {
+          await detected.save(f, review.nativeId)
+          closeReview()
+        }}
+        onDiscard={closeReview}
+      />
+    )
+  } else if (tab === 'inbox') {
+    body = (
+      <DetectedInbox
+        drafts={detected.drafts}
+        failed={detected.failed}
+        categories={data.categories}
+        history={detected.ctx.history}
+        onReview={(d) => setReviewId(d.id)}
+        onSaveWith={(d, categoryId) =>
+          detected.save(d.kind === 'DEBT_PAYMENT' || d.kind === 'TRANSFER_OUT' ? movementExpenseDraft(d, draftOpts, categoryId) : { ...candidateToDraft(d, draftOpts), category_id: categoryId }, d.id)
+        }
+        onIgnore={(d) => void detected.ignore(d)}
+        onRetry={() => void detected.reload()}
+        onSettings={() => setTab('security')}
+        kept={detected.kept}
+        appNames={detected.appNames}
+        autoSaved={detected.autoSaved}
+        onUndoAuto={(id) => void detected.undoAuto(id)}
+        onKeepBoth={detected.keepBoth}
+        debts={data.debts.filter((x) => !x.archived)}
+        onSaveIncome={detected.saveIncome}
+        onPayDebt={detected.saveDebtPayment}
+        onPayNewDebt={detected.saveDebtPaymentNew}
+        monthLeft={(d, effect: MonthEffect, debtId?: string) => {
+          const split = splitOf(hh.members)
+          const free = isCurrent ? monthFreeNow(data, hh.me.user_id, split, now) : null
+          const impact = effect === 'debt' && debtId ? debtPayImpact(data.debts, data.debtPayments, debtId, d.amountClp, hh.me.user_id, split, now) : 0
+          return monthLeftAfter(free, effect, d.amountClp, impact)
+        }}
+      />
     )
   } else if (tab === 'home') {
     body = (
@@ -188,12 +330,14 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
         onToast={setToast}
         scope={scope}
         onScope={setScope}
+        detected={detected.drafts?.length ?? 0}
+        onInbox={() => setTab('inbox')}
       />
     )
   } else if (tab === 'expenses') {
     body = <Expenses hh={hh} data={data} month={month} onToast={setToast} scope={scope} onScope={setScope} onRegister={() => setTab('add')} initialCategory={expCat} />
   } else if (tab === 'add') {
-    body = <Register hh={hh} data={data} onSaved={backToNow} onToast={setToast} notice={notice} />
+    body = <Register hh={hh} data={data} onSaved={backToNow} onToast={setToast} notice={notice} queue={queue} />
   } else if (tab === 'money') {
     body = <Money key={moneyNav.n} hh={hh} data={data} month={month} onToast={setToast} section={moneyNav.section} scope={scope} onScope={setScope} />
   } else if (tab === 'goals') {
@@ -202,8 +346,11 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
     body = <Profile hh={hh} data={data} month={month} reload={reload} onToast={setToast} onGoSalary={() => goTo('money', 'salary')} onBack={() => setTab('security')} initialOpen={profileOpen} />
   } else if (tab === 'help') {
     body = <Help onBack={() => setTab('security')} />
+  } else if (isNativeApp()) {
+    // Ajustes pensados para la APK: 6 grupos. La PWA sigue con Security, igual que siempre
+    body = <NativeSettings hh={hh} data={data} month={month} reload={reload} onToast={setToast} onHelp={() => setTab('help')} onGoSalary={() => goTo('money', 'salary')} capture={capture} onCapture={saveCapture} onCleared={() => void detected.reload()} onSendNow={detected.sendNow} />
   } else {
-    body = <Security hh={hh} reload={reload} onToast={setToast} onHelp={() => setTab('help')} onProfile={() => {
+    body = <Security hh={hh} reload={reload} onToast={setToast} onHelp={() => setTab('help')} capture={capture} onCapture={saveCapture} onCleared={() => void detected.reload()} onSendNow={detected.sendNow} onProfile={() => {
       setProfileOpen('fin')
       setTab('profile')
     }} />
@@ -224,12 +371,9 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
         Saltar al contenido
       </a>
       <OfflineBar />
+      <UnsentBanner count={detected.unsent.count} onSend={detected.sendNow} />
       <Suspense
-        fallback={
-          <main className="screen center-y">
-            <ScreenLoader />
-          </main>
-        }
+        fallback={<SkeletonScreen />}
       >
         {body}
       </Suspense>
@@ -254,6 +398,12 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
               <Icon name={t.icon} />
             )}
             <span>{t.label}</span>
+            {t.key === 'home' && (detected.drafts?.length ?? 0) > 0 && (
+              <span className="badge">
+                {detected.drafts?.length}
+                <span className="sr-only"> movimientos detectados</span>
+              </span>
+            )}
           </button>
         ))}
       </nav>
@@ -262,9 +412,22 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
           <Tour kind={tour} onClose={closeTour} />
         </Suspense>
       )}
+      {leaveTo !== null && (
+        <ConfirmLeave
+          onStay={() => setLeaveTo(null)}
+          onLeave={() => {
+            setTab(leaveTo as Tab)
+            setLeaveTo(null)
+          }}
+        />
+      )}
       <InstallBanner onToast={setToast} />
       <UpdateBanner />
-      {toast && <Toast toast={toast} onDone={clearToast} />}
+      <NativeUpdateSheet />
+      {isNativeApp() && <NativeUpdateBanner />}
+      {askBanks && <BankConsentSheet config={capture} onConfig={saveCapture} onToast={setToast} onClose={() => setAskBanks(false)} />}
+      {toast && <Toast key={`${toast.id}-${toast.expiresAt}`} toast={toast} onDismiss={dismissToast} onAction={actToast} />}
+      <PullIndicator view={pull.view} refreshing={pull.refreshing} />
     </div>
   )
 }

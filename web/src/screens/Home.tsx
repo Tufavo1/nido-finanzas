@@ -19,7 +19,7 @@ import Venn from '../components/Venn'
 import { MonthCurveCard, SixMonthsCard, WeekdayCard } from '../components/HomeCharts'
 import { compact, monthGrid } from '../lib/calendar'
 import { daysLeftInMonth, money } from '../lib/format'
-import { analyzeSalary, myDebtShare } from '../lib/finance'
+import { analyzeSalary, monthIncome, myDebtShare } from '../lib/finance'
 import { monthKey as monthKeyOf, myShare } from '../lib/analysis'
 import { dayExpenses, deltaText, latestExpenses, monthStatus, topCategories } from '../lib/homeSummary'
 import { pendingFixedThisMonth } from '../lib/upcoming'
@@ -42,6 +42,9 @@ interface Props {
   onToast: Notify
   scope: Scope
   onScope: (s: Scope) => void
+  /** Gastos detectados esperando aprobación, y cómo abrir la bandeja */
+  detected?: number
+  onInbox?: () => void
 }
 
 const DOW = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
@@ -55,7 +58,7 @@ function Line({ label, value, strong }: { label: string; value: string; strong?:
   )
 }
 
-export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSettings, onCategory, onProfile, onToast, scope, onScope }: Props) {
+export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSettings, onCategory, onProfile, onToast, scope, onScope, detected = 0, onInbox }: Props) {
   const [day, setDay] = useState<number | null>(null)
   const [graphs, setGraphs] = useState(false)
   const [settle, setSettle] = useState(false)
@@ -93,7 +96,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
   const salaryCheck =
     data.salary && mine && (view === 'all' || view === hh.me.user_id)
       ? analyzeSalary({
-          income: data.salary.amount,
+          income: monthIncome(data.salary, data.incomes),
           spent: mine.trueCost,
           commitments: myDebtShare(data.debts, data.debtPayments, hh.me.user_id, split),
           month,
@@ -182,6 +185,17 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
           </button>
         </div>
       </div>
+
+      {detected > 0 && onInbox && (
+        <section className="card calm" aria-label="Movimientos detectados">
+          <span>
+            Detectamos <strong>{detected}</strong> {detected === 1 ? 'movimiento' : 'movimientos'} en tus avisos del banco.
+          </span>
+          <button type="button" className="btn small" onClick={onInbox}>
+            Revisar
+          </button>
+        </section>
+      )}
 
       <div className="row between" role="group" aria-label="Elegir mes">
         <button type="button" className="icon-btn" aria-label="Mes anterior" onClick={() => change(-1)}>

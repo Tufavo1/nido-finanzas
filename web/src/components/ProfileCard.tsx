@@ -10,6 +10,7 @@ import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
 import type { Notify } from './Toast'
 import Spin from './Spin'
+import { logError } from '../lib/safeLog'
 
 interface Props {
   hh: Household
@@ -72,7 +73,7 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
     setBusy(false)
     const failed = results.find((r) => r?.error)
     if (failed?.error) {
-      console.error(failed.error)
+      logError(failed.error, 'ProfileCard')
       setError('No se pudo guardar todo. Intenta de nuevo.')
       return
     }

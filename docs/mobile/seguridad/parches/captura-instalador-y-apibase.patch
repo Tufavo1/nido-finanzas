@@ -1,0 +1,60 @@
+--- a/web/android/app/src/main/kotlin/cl/dinovance/contigo/capture/BankDetection.kt	2026-11-22 19:22:34.253061355 -0300
++++ b/web/android/app/src/main/kotlin/cl/dinovance/contigo/capture/BankDetection.kt	2026-11-22 19:22:34.271977428 -0300
+@@ -4,7 +4,10 @@
+ import java.text.Normalizer
+ 
+ /** App instalada con icono de lanzador: paquete y nombre visible. Nada mas. */
+-data class InstalledApp(val packageName: String, val label: String)
++data class InstalledApp(val packageName: String, val label: String, /** Quien la instalo (installingPackageName); null = desconocido o archivo suelto. */ val installer: String? = null)
++
++/** SEGURIDAD (S-17): el nombre visible lo puede poner cualquier app. Solo se detecta por nombre si vino de Google Play. */
++const val TRUSTED_INSTALLER = "com.android.vending"
+ 
+ /** installed = coincide por nombre visible; seen = paquete aprendido (modo aprender / correccion manual); not_found = sin app. */
+ enum class DetectStatus { installed, seen, not_found }
+@@ -46,7 +49,7 @@
+         val out = ArrayList<DetectedBank>()
+         val used = HashSet<String>()
+         BankPresets.ALL.forEach { bank ->
+-            candidates.filter { BankMatcher.bankOf(it.label) == bank.id && used.add(it.packageName) }
++            candidates.filter { it.installer == TRUSTED_INSTALLER && BankMatcher.bankOf(it.label) == bank.id && used.add(it.packageName) }
+                 .forEach { out.add(DetectedBank(bank.id, it.label, it.packageName, DetectStatus.installed)) }
+         }
+         BankPresets.ALL.forEach { bank ->
+--- a/web/android/app/src/main/kotlin/cl/dinovance/contigo/capture/CaptureGraph.kt	2026-11-22 19:22:34.257759740 -0300
++++ b/web/android/app/src/main/kotlin/cl/dinovance/contigo/capture/CaptureGraph.kt	2026-11-22 19:22:34.272057909 -0300
+@@ -67,7 +67,7 @@
+         val pm = context.packageManager
+         val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+         val apps = try {
+-            pm.queryIntentActivities(intent, 0).map { InstalledApp(it.activityInfo.packageName, it.loadLabel(pm).toString()) }.distinctBy { it.packageName }
++            pm.queryIntentActivities(intent, 0).map { InstalledApp(it.activityInfo.packageName, it.loadLabel(pm).toString(), installerOf(pm, it.activityInfo.packageName)) }.distinctBy { it.packageName }
+         } catch (e: Exception) {
+             emptyList()
+         }
+@@ -79,6 +79,13 @@
+         return result
+     }
+ 
++    private fun installerOf(pm: android.content.pm.PackageManager, pkg: String): String? = try {
++        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) pm.getInstallSourceInfo(pkg).installingPackageName
++        else @Suppress("DEPRECATION") pm.getInstallerPackageName(pkg)
++    } catch (e: Exception) {
++        null
++    }
++
+     fun loadProfile(): AutoProfile? = try {
+         session.get(PROFILE_KEY)?.let(AutoProfile::parse)
+     } catch (e: Exception) {
+--- a/web/android/app/src/main/kotlin/cl/dinovance/contigo/plugin/ContigoNativePlugin.kt	2026-11-22 19:22:34.262371004 -0300
++++ b/web/android/app/src/main/kotlin/cl/dinovance/contigo/plugin/ContigoNativePlugin.kt	2026-11-22 19:22:34.272177781 -0300
+@@ -340,6 +340,9 @@
+     fun configureSync(call: PluginCall) {
+         val base = call.getString("apiBase")?.trimEnd('/')
+         if (base != null && (!base.startsWith("https://") || base.length > 200)) return call.reject("Dirección no válida", "INVALID_ARGUMENT")
++        // S-18: una vez fijada la direccion del Worker, el JS no puede cambiarla (evita desviar el token de fondo a otro host)
++        val current = graph.prefs.apiBase()
++        if (current != null && base != current) return call.reject("La dirección ya está fijada", "INVALID_ARGUMENT")
+         graph.prefs.setApiBase(base)
+         call.resolve()
+     }
