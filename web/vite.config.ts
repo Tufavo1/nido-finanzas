@@ -105,6 +105,8 @@ export default defineConfig(({ command, mode }) => {
           categories: ['finance', 'productivity'],
           display_override: ['standalone', 'minimal-ui'],
           prefer_related_applications: false,
+          // Android: Contigo aparece al «Compartir» un texto (por ejemplo, el aviso de compra del banco) y abre Registrar con él
+          share_target: { action: '/', method: 'GET', params: { title: 'title', text: 'text' } },
           shortcuts: [
             { name: 'Registrar un gasto', short_name: 'Registrar', url: '/?tab=add', icons: [{ src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' }] },
             { name: 'Ver mis gastos', short_name: 'Gastos', url: '/?tab=expenses', icons: [{ src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' }] },
@@ -123,6 +125,8 @@ export default defineConfig(({ command, mode }) => {
           navigateFallbackDenylist: [/^\/auth\//, /^\/supabase\//, /\.[a-z0-9]+$/i],
           importScripts: ['push-sw.js'],
           cleanupOutdatedCaches: true,
+          // La lista de licencias (~300 kB) se pide solo al abrirla: no se descarga por adelantado en cada instalación
+          globIgnores: ['**/package-lock-*.js'],
           clientsClaim: true,
           // Datos financieros: el proxy de Supabase y el captcha JAMÁS se guardan en la caché del service worker
           runtimeCaching: [

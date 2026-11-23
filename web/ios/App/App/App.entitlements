@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Notificaciones push (APNs). En TestFlight/App Store Xcode lo cambia a "production" al firmar. -->
+	<key>aps-environment</key>
+	<string>development</string>
+	<!-- Keychain solo de esta app. Sin iCloud ni grupos compartidos. -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)cl.dinovance.contigo</string>
+	</array>
+</dict>
+</plist>

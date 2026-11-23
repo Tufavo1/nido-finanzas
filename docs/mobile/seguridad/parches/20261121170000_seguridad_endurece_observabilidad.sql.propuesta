@@ -1,0 +1,46 @@
+-- Copyright (c) 2026 Dinovance
+-- PROPUESTA del agente SEGURIDAD (no es una migración activa). Para usarla: copiar a supabase/migrations/ con esta marca
+-- de tiempo (después de 20261121160000) y probarla en staging. Probada aquí dentro de BEGIN ... ROLLBACK.
+--  S-05 (seguridad.md): (1) purge_observability() solo limpiaba client_errors; security_events crecía sin límite (la ingesta
+--        de Kong puede meter 600 filas/min). Ahora también limpia security_events (mínimo 30 días).
+--        (2) Cualquier persona con sesión podía fabricar alertas 'medium' (PUSH_QUEUE_STUCK) y poner la salud de la cola en 'down'.
+--        Ahora cada persona cuenta como máximo 1 evento de seguridad por tipo cada hora.
+--  No incluye la validación de tipos de detail.count/window_s en ingest_security_event (pendiente, riesgo bajo).
+
+create or replace function public.purge_observability(p_days int default 90)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform set_config('nido.purge', 'on', true);
+  delete from public.client_errors where at < now() - make_interval(days => greatest(p_days, 30));
+  delete from public.security_events where at < now() - make_interval(days => greatest(p_days, 30));
+  perform set_config('nido.purge', 'off', true);
+end;
+$$;
+revoke all on function public.purge_observability(int) from public, anon, authenticated;
+
+-- Disparador: un evento por (tipo, persona) por hora para los eventos que fabrica la app (no toca los de Kong ni los de roles)
+create or replace function public.security_events_app_throttle()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.kind in ('listener_revoked', 'push_queue_stuck') and exists (
+       select 1 from public.security_events e
+        where e.kind = new.kind and e.actor_hint is not distinct from new.actor_hint and e.at > now() - interval '1 hour') then
+    return null;  -- se descarta en silencio, igual que el límite de client_errors
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.security_events_app_throttle() from public, anon, authenticated;
+drop trigger if exists security_events_app_throttle on public.security_events;
+create trigger security_events_app_throttle before insert on public.security_events
+  for each row execute function public.security_events_app_throttle();
+-- Nota: report_client_error registra push_queue_stuck SIN actor (null). Para que el tope sea por persona hay que pasar
+-- public.actor_hint(auth.uid()) también en ese caso (cambio de una línea en report_client_error).

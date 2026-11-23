@@ -4,6 +4,7 @@ import Logo from '../components/Logo'
 import { STRENGTH_LABEL, passwordStrength } from '../lib/security'
 import { supabase } from '../lib/supabase'
 import Spin from '../components/Spin'
+import { logError } from '../lib/safeLog'
 
 /** Pantalla que se abre desde el correo de recuperación: elegir la contraseña nueva. */
 export default function ResetPassword({ onDone }: { onDone: () => void }) {
@@ -45,7 +46,7 @@ export default function ResetPassword({ onDone }: { onDone: () => void }) {
     if (factorId) {
       const { error: mfaErr } = await supabase.auth.mfa.challengeAndVerify({ factorId, code: code.trim() })
       if (mfaErr) {
-        console.error(mfaErr)
+        logError(mfaErr, 'ResetPassword')
         setBusy(false)
         setError('Ese código no es correcto o ya venció. Revisa tu app de verificación e inténtalo de nuevo.')
         return
@@ -54,7 +55,7 @@ export default function ResetPassword({ onDone }: { onDone: () => void }) {
     const { error: err } = await supabase.auth.updateUser({ password: pw })
     setBusy(false)
     if (err) {
-      console.error(err)
+      logError(err, 'ResetPassword')
       const m = err.message.toLowerCase()
       setError(
         m.includes('different') || m.includes('same')

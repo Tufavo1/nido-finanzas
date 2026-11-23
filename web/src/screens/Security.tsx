@@ -3,19 +3,24 @@ import LegalModal from '../components/LegalModal'
 import { Suspense, lazy, useState } from 'react'
 import type { Household } from '../App'
 import AboutCard from '../components/AboutCard'
+import { nativeCopy } from '../lib/appUpdate'
+import { isNativeApp } from '../lib/nativeBridge'
 import InstallGuide from '../components/InstallGuide'
 import BackupCard from '../components/BackupCard'
 import LockSettings from '../components/LockSettings'
 import SecurityInfo from '../components/SecurityInfo'
 import SettingsItem from '../components/SettingsItem'
+import CaptureSettings from '../components/CaptureSettings'
+import type { CaptureConfig } from '../lib/captureConfig'
 import AccessCard from '../components/AccessCard'
 import PasswordCard from '../components/PasswordCard'
 import MfaCard from '../components/MfaCard'
 import { getLockMinutes } from '../lib/applock'
-import { VERSION } from '../lib/about'
+import { VERSION, copyright } from '../lib/about'
 import LeaveAccount from '../components/LeaveAccount'
 import PushToggle from '../components/PushToggle'
 import ThemeToggle from '../components/ThemeToggle'
+import HapticsToggle from '../components/HapticsToggle'
 import { useIsAdmin } from '../lib/admin'
 import { supabase } from '../lib/supabase'
 import type { Notify } from '../components/Toast'
@@ -28,16 +33,25 @@ export default function Security({
   onToast,
   onHelp,
   onProfile,
+  capture,
+  onCapture,
+  onCleared,
+  onSendNow,
 }: {
   hh: Household
   reload: () => Promise<void>
   onToast: Notify
   onHelp: () => void
   onProfile: () => void
+  capture: CaptureConfig
+  onCapture: (next: CaptureConfig) => Promise<void>
+  onCleared: () => void
+  onSendNow: () => Promise<void>
 }) {
   const [open, setOpen] = useState<string | null>(null)
   const toggle = (id: string) => setOpen((cur) => (cur === id ? null : id))
   const isAdmin = useIsAdmin()
+  const native = isNativeApp()
   const [showAdmin, setShowAdmin] = useState(false)
   const [legal, setLegal] = useState<'privacy' | 'terms' | null>(null)
 
@@ -83,6 +97,7 @@ export default function Security({
 
         <SettingsItem {...item} id="theme" icon="gear" title="Apariencia" summary="Claro, oscuro o automático" open={open === 'theme'}>
           <ThemeToggle />
+          <HapticsToggle />
         </SettingsItem>
       </div>
 
@@ -114,15 +129,31 @@ export default function Security({
         )}
       </div>
 
+      <h2 className="set-group">Captura de gastos</h2>
+      <div className="set-list">
+        <SettingsItem {...item} id="capture" icon="bell" title="Captura de gastos" summary="Detecta gastos en los avisos de tu banco" open={open === 'capture'}>
+          <CaptureSettings config={capture} onConfig={onCapture} onToast={onToast} onCleared={onCleared} onSendNow={onSendNow} />
+        </SettingsItem>
+      </div>
+
       <h2 className="set-group">Aplicación</h2>
       <div className="set-list">
-        <SettingsItem {...item} id="install" icon="download" title="Cómo instalar Contigo" summary="En iPhone o Android" open={open === 'install'}>
-          <section className="card">
-            <InstallGuide onToast={onToast} />
-          </section>
-        </SettingsItem>
+        {!native && (
+          <SettingsItem {...item} id="install" icon="download" title="Cómo instalar Contigo" summary="En iPhone o Android" open={open === 'install'}>
+            <section className="card">
+              <InstallGuide onToast={onToast} />
+            </section>
+          </SettingsItem>
+        )}
         {isAdmin && (
-          <SettingsItem {...item} id="access" icon="wallet" title="Instalación y conexión" summary="Internet, app instalada y avisos" open={open === 'access'}>
+          <SettingsItem
+            {...item}
+            id="access"
+            icon="wallet"
+            title={native ? nativeCopy.accessTitle : 'Instalación y conexión'}
+            summary={native ? nativeCopy.accessSummary : 'Internet, app instalada y avisos'}
+            open={open === 'access'}
+          >
             <AccessCard onToast={onToast} />
           </SettingsItem>
         )}
@@ -156,13 +187,14 @@ export default function Security({
         </SettingsItem>
 
         <SettingsItem {...item} id="about" icon="info" title="Acerca de Contigo" summary={`Versión ${VERSION}`} open={open === 'about'}>
-          <AboutCard onToast={onToast} />
+          <AboutCard onToast={onToast} onPrivacy={() => setLegal('privacy')} />
         </SettingsItem>
       </div>
 
       <button className="btn danger" type="button" onClick={() => void supabase.auth.signOut()}>
         Cerrar sesión
       </button>
+      <p className="muted small-text app-footer">{copyright()}</p>
       {legal && <LegalModal doc={legal} onClose={() => setLegal(null)} />}
     </main>
   )

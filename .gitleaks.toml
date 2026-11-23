@@ -1,0 +1,14 @@
+# Copyright (c) 2026 Dinovance
+# Configuracion de gitleaks: parte de las reglas por defecto y solo exceptua los textos de EJEMPLO que el repo
+# usa a proposito para probar su propio detector de secretos. No hay claves reales en estos archivos.
+title = "Contigo"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Datos falsos de prueba del detector (codeHygiene) y el informe de auditoria que los menciona"
+paths = [
+  '''web/src/lib/codeHygiene\.test\.ts''',
+  '''docs/mobile/auditoria\.md''',
+]

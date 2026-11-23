@@ -38,3 +38,15 @@ export const NEEDS: Need[] = [
     why: 'Opcional. Te avisamos cuando tu pareja anota un gasto o un aporte. Los puedes apagar cuando quieras.',
   },
 ]
+
+/** En la app Android no se instala nada ni hay navegador: se quita «instalar» y se ajustan los textos */
+export function needsFor(native: boolean): Need[] {
+  if (!native) return NEEDS
+  return NEEDS.filter((n) => n.id !== 'install').map((n) =>
+    n.id === 'bots'
+      ? { ...n, why: 'Al entrar o crear tu cuenta hacemos un chequeo rápido para saber que no eres un robot. Si no te deja pasar, revisa tu internet e inténtalo de nuevo.' }
+      : n.id === 'push'
+        ? { ...n, why: 'Opcional. Te avisamos cuando tu pareja anota un gasto o un aporte. Los puedes apagar cuando quieras en Ajustes.' }
+        : n,
+  )
+}

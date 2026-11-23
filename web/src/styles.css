@@ -289,7 +289,7 @@ button:disabled { cursor: default; }
 .switch[aria-checked='true'] { background: var(--accent); }
 .switch[aria-checked='true']::after { transform: translateX(20px); background: var(--ink); }
 
-.btn.small { height: 44px; border-radius: 12px; font-size: 14px; padding: 0 14px; flex: none; }
+.btn.small { height: 48px; border-radius: 12px; font-size: 14px; padding: 0 14px; flex: none; }
 .link-btn { background: none; border: 0; color: var(--text); padding: 4px 0; font-size: 14px; }
 .icon-btn {
   min-width: 44px;
@@ -348,8 +348,8 @@ button:disabled { cursor: default; }
 .cal-day:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 
 /* ---------- Accesibilidad y pulido ---------- */
-.btn, .chip, .seg button, .key, .tab { min-height: 44px; }
-.icon-btn { min-width: 44px; height: 44px; }
+.btn, .chip, .seg button, .key, .tab { min-height: 48px; } /* áreas táctiles de al menos 48 dp (Material) */
+.icon-btn { min-width: 48px; height: 48px; }
 .cal-day:focus-visible, .chip:focus-visible, .key:focus-visible, .icon-btn:focus-visible,
 .link-btn:focus-visible, .switch:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
 .empty { text-align: center; padding: 8px 0; display: flex; flex-direction: column; gap: 10px; align-items: center; }
@@ -439,6 +439,12 @@ main:focus, main h1:focus { outline: none; }
   --r-card: 26px;
   --r-pill: 999px;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Tokens de diseño: espaciado, tipografía y radios para los componentes nuevos */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px;
+  --fs-sm: 13px; --fs-md: 15px; --fs-lg: 17px;
+  --r-sm: 8px; --r-md: 14px;
+  --skel: color-mix(in srgb, var(--text) 10%, var(--surface));
+  --skel-hi: color-mix(in srgb, var(--text) 18%, var(--surface));
   --shadow-card: 0 1px 0 color-mix(in srgb, var(--text) 5%, transparent),
     0 16px 34px -20px color-mix(in srgb, var(--ink) 45%, transparent);
 }
@@ -578,7 +584,7 @@ body::before {
     inset 0 -2px 0 color-mix(in srgb, var(--accent-ink) 14%, transparent);
 }
 .btn.ghost, .btn.danger { border-width: 1.5px; box-shadow: none; }
-.btn.small { height: 44px; border-radius: var(--r-pill); }
+.btn.small { height: 48px; border-radius: var(--r-pill); }
 .btn:active:not(:disabled), .chip:active, .key:active { transform: scale(0.97); }
 .input {
   height: 54px;
@@ -1877,3 +1883,165 @@ button.setup-item:focus-visible { outline: 3px solid var(--accent-ink); outline-
 .loader-card .muted { color: rgba(255, 255, 255, 0.85); }
 .loader-card .logo-loader { width: 120px !important; height: 120px !important; }
 .loader-card .logo-loader-ring { border-color: rgba(255, 255, 255, 0.25); border-top-color: #fff; }
+
+/* ---------- Pantalla de error (403, 502…): número grande, una frase y un botón ---------- */
+.err-page { padding: 24px; text-align: center; gap: 12px; }
+.screen .err-page { height: auto; }
+.err-code { font-size: 72px; line-height: 1; font-weight: 800; letter-spacing: -2px; color: var(--accent-ink); }
+.err-page .muted { max-width: 34ch; margin: 0; }
+.err-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 320px; margin-top: 12px; }
+
+/* ---------- Inicio: categorías tocables (toda la fila es el botón) ---------- */
+.top-cat { display: flex; flex-direction: column; gap: 6px; width: 100%; min-height: 56px; padding: 12px 0; background: none; border: 0; border-top: 1px solid var(--line); text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.top-cat:first-child { border-top: 0; }
+.top-cat:active { opacity: 0.7; }
+
+.reg-notice { min-height: 112px; padding: 12px; font-size: 17px; line-height: 24px; resize: vertical; }
+
+/* ---------- Registrar con el monto primero ---------- */
+.reg-kind button { font-size: 15px; }
+.reg-note .input { text-align: center; font-size: 17px; min-height: 52px; }
+.reg-catrow { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px; scroll-padding: 0 16px; }
+.reg-catrow::-webkit-scrollbar { display: none; }
+.reg-catrow .chip { flex: none; font-size: 15px; }
+.screen.reg { gap: 10px; }
+.screen.reg .reg-keys .key { height: 46px; font-size: 22px; }
+.screen.reg .reg-amount { padding-top: 10px; padding-bottom: 10px; }
+.screen.reg .reg-amount .amount.big { font-size: 40px; line-height: 44px; }
+.screen.reg .reg-save { min-height: 56px; }
+.reg-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.reg-links .btn { gap: 6px; }
+
+/* ---------- Skeletons: se ven igual de día y de noche porque salen del color del texto ---------- */
+.skel { display: block; border-radius: var(--r-sm); background: linear-gradient(90deg, var(--skel) 25%, var(--skel-hi) 50%, var(--skel) 75%); background-size: 200% 100%; animation: skel-shimmer 1.4s ease-in-out infinite; }
+.skel.round { border-radius: 50%; flex: none; }
+.skel-card { gap: var(--sp-3); }
+.skel-row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-1) 0; }
+.skel-col { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.skel-bars { display: flex; align-items: flex-end; gap: var(--sp-2); height: 120px; }
+.skel-bars .skel { flex: 1; }
+@keyframes skel-shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none !important; background: var(--skel); } }
+
+/* ---------- Avisos con acción ---------- */
+.toast-action { flex: none; min-height: 48px; padding: 0 var(--sp-3); border: 0; background: none; color: var(--accent-ink); font-weight: 700; font-size: var(--fs-md); border-radius: var(--r-md); }
+.toast-action:hover { background: var(--surface-2); }
+.toast-action:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 1px; }
+
+/* ---------- Pantallas de estado ---------- */
+.state-icon { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--accent-ink); }
+.perm { gap: var(--sp-3); }
+.perm-title { margin: 0; font-family: var(--font-display); font-size: 19px; }
+.perm-points { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-md); }
+.app-footer { text-align: center; margin: 0; padding-bottom: var(--sp-2); }
+.license-list { max-height: 260px; overflow: auto; margin: 0; padding: var(--sp-3); font-size: 12px; line-height: 1.5; background: var(--surface-2); border-radius: var(--r-md); white-space: pre-wrap; word-break: break-word; }
+.license-list:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
+/* ---------- Actualizar al deslizar ---------- */
+.screen { overscroll-behavior-y: contain; }
+.pull { position: fixed; z-index: 30; left: 50%; top: env(safe-area-inset-top); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-pill); background: var(--surface); border: 1px solid var(--line); color: var(--text); font-size: var(--fs-sm); font-weight: 600; box-shadow: var(--shadow-card); pointer-events: none; }
+
+/* ---------- Dentro de la app nativa: sin selección accidental de texto en la interfaz ---------- */
+.native .tabbar, .native .btn, .native .chip { -webkit-user-select: none; user-select: none; }
+
+/* ---------- Panel de seguridad (administrador) ---------- */
+.sev { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: var(--r-pill); border: 1.5px solid var(--sev-c, var(--line)); color: var(--text); background: color-mix(in srgb, var(--sev-c, var(--line)) 18%, var(--surface)); }
+.sev-critical { --sev-c: var(--warn); }
+.sev-high { --sev-c: #c9622b; }
+.sev-medium { --sev-c: #c9a02b; }
+.sev-low { --sev-c: var(--blue); }
+.sev-info { --sev-c: var(--accent-ink); }
+.sec-alerts, .sec-health, .sec-timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.sec-alert { display: flex; flex-direction: column; gap: 4px; padding: var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--line); border-left: 6px solid var(--sev-c); background: var(--surface); }
+.sec-health .health { display: flex; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--line); }
+.health-degraded { border-color: var(--amber); }
+.health-down { border-color: var(--warn); color: var(--warn); }
+.sec-timeline { border-left: 2px solid var(--line); padding-left: var(--sp-4); }
+.sec-timeline li { display: flex; flex-direction: column; gap: 2px; position: relative; }
+.sec-timeline li::before { content: ''; position: absolute; left: calc(-1 * var(--sp-4) - 6px); top: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-ink); }
+.sec-limit { padding: var(--sp-4); }
+
+/* ---------- Gastos por enviar y posibles duplicados ---------- */
+.unsent-bar { position: sticky; top: 0; z-index: 39; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-sm); background: color-mix(in srgb, var(--amber) 55%, var(--surface)); color: var(--text); border-bottom: 1px solid var(--line); }
+.card.dup { border-color: var(--amber); border-width: 2px; }
+.dup-note { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border-radius: var(--r-md); background: var(--surface-2); }
+
+/* Barra de avance de la actualización de la app Android */
+.progress { height: 10px; border-radius: 999px; background: var(--skel); overflow: hidden; }
+.progress-bar { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .2s ease; }
+.progress-bar.indeterminate { animation: progress-slide 1.2s ease-in-out infinite; }
+@keyframes progress-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .progress-bar.indeterminate { animation: none; } .progress-bar { transition: none; } }
+
+/* Las ventanas (Modal) tenían el fondo transparente y el texto se confundía con la pantalla de atrás. */
+.sheet { background: var(--surface); border: 1px solid var(--line); box-shadow: 0 -10px 40px rgb(0 0 0 / 0.35); color: var(--text, inherit); }
+.sheet:not(.card):not(:has(> .card)) { padding: 10px 22px calc(env(safe-area-inset-bottom) + 24px); display: flex; flex-direction: column; gap: 14px; }
+.sheet-back { background: rgb(0 0 0 / 0.6); }
+
+/* Ventanas de bancos: título visible, botones anchos para el pulgar y texto siempre sobre fondo opaco. */
+.sheet .perm-title { color: var(--text); font-size: 22px; line-height: 1.25; }
+.sheet .muted { color: var(--muted); }
+.sheet .picker { gap: 14px; }
+.sheet .picker > .btn:not(.small) { width: 100%; min-height: 52px; font-size: 17px; }
+.sheet .picker > .btn:not(.ghost):not(.danger) { font-weight: 700; box-shadow: 0 2px 10px color-mix(in srgb, var(--accent-ink) 30%, transparent); }
+.sheet .picker > .btn.ghost { color: var(--text); border-color: var(--field-line); }
+.sheet .chip { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+
+/* ---------- Movimientos detectados: grupos, un solo botón principal y salida secundaria ---------- */
+.mov-title { margin: var(--sp-4, 16px) 0 0; font-family: var(--font-display); font-size: 17px; color: var(--text); }
+.card.detected { gap: 8px; border-left: 4px solid var(--line); }
+.card.detected.kind-expense { border-left-color: var(--accent-ink); }
+.card.detected.kind-income { border-left-color: var(--accent); }
+.card.detected.kind-debt { border-left-color: var(--blue); }
+.card.detected .detected-actions { margin-top: 12px; gap: 16px; align-items: stretch; flex-wrap: wrap; }
+.card.detected .detected-actions > .btn:not(.ghost) { flex: 1 1 160px; min-height: 52px; }
+.card.detected .detected-actions > .btn.ghost { flex: none; min-height: 48px; }
+.card.detected .stack > .btn.ghost { min-height: 48px; width: 100%; justify-content: flex-start; text-align: left; }
+.card.detected .more { margin-top: 4px; }
+.card.detected .more > summary { min-height: 48px; display: flex; align-items: center; cursor: pointer; color: var(--accent-ink); font-weight: 600; }
+.card.detected .more > summary:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.card.detected .more .row { gap: 12px; flex-wrap: wrap; }
+
+/* Interruptores: toda la fila se toca, la explicación queda pegada a su etiqueta */
+.row.tap { min-height: 56px; cursor: pointer; }
+.row.tap .stack.tight { gap: 2px; }
+
+/* Elegir deuda: opciones tipo radio, fila entera tocable */
+.radio-list { display: flex; flex-direction: column; gap: 8px; }
+.radio-opt { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; text-align: left; border-radius: 14px; border: 1.5px solid var(--field-line); background: var(--surface); color: var(--text); font-weight: 600; }
+.radio-opt[aria-checked='true'] { border-color: var(--accent-ink); background: var(--surface-2); }
+.radio-dot { flex: none; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--field-line); position: relative; }
+.radio-opt[aria-checked='true'] .radio-dot { border-color: var(--accent-ink); }
+.radio-opt[aria-checked='true'] .radio-dot::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--accent-ink); }
+.radio-opt:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
+
+/* Bordes de controles con 3:1 (WCAG 1.4.11): interruptor y botón secundario */
+.switch { border: 1.5px solid var(--field-line); }
+.switch[aria-checked='true'] { border-color: var(--accent-ink); }
+.btn.ghost { border-color: var(--field-line); }
+
+/* Buscar gastos ahora */
+.scan { width: 100%; gap: 8px; }
+.scan-btn { width: 100%; min-height: 52px; }
+.scan-result { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-height: 0; }
+.scan-result:empty { display: none; }
+
+/* Banner de actualización de la app Android */
+.install-banner.update-banner { flex-direction: column; align-items: stretch; gap: 8px; z-index: 25; background: var(--surface); color: var(--text); border: 1px solid var(--field-line); }
+.update-banner .update-actions { display: flex; flex-direction: column; gap: 8px; }
+.update-banner .update-actions > .btn:not(.ghost) { width: 100%; min-height: 52px; }
+.update-banner .update-actions > .btn.ghost { min-height: 48px; }
+
+/* Ajustes de la APK (NativeSettings): filas grandes, montos para tocar y zona de peligro aparte */
+.auto-row { min-height: 52px; }
+.auto-row + .auto-row { border-top: 1px solid var(--line); padding-top: 10px; }
+.set-plain { padding: 8px 16px; }
+.set-list .set-plain { border-top: 1px solid var(--line); }
+.set-line { margin: -4px 4px 0; }
+.set-sub { margin: 18px 4px 0; font-size: 14px; font-weight: 700; color: var(--warn); }
+.danger-zone { border-color: var(--warn); }
+.seg.seg-wrap { flex-wrap: wrap; }
+.seg.seg-wrap button { flex: 1 1 auto; min-height: 48px; }
+.auto-status .btn, .first-use .btn { min-height: 52px; width: 100%; }
+.auto-issue + .auto-issue { border-top: 1px solid var(--line); padding-top: 10px; }
+.set-list .btn.ghost, .auto-status .btn { min-height: 48px; }

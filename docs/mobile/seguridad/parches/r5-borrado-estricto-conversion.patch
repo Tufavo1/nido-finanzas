@@ -1,0 +1,36 @@
+--- a/web/src/lib/saveExpense.ts
++++ b/web/src/lib/saveExpense.ts
+@@ -28,3 +28,13 @@
+   const { error } = await supabase.from('expenses').delete().eq('id', id)
+   if (error) throw error
+ }
++
++/**
++ * Borrado que exige haber borrado de verdad: con RLS, borrar una fila ajena (o ya borrada) NO da error, solo 0 filas.
++ * Lo usa «Fue pago de una deuda»: si el gasto no se borro, la conversion debe fallar y retirar el pago (sin doble conteo).
++ */
++export async function deleteExpenseStrict(id: string): Promise<void> {
++  const { data, error } = await supabase.from('expenses').delete().eq('id', id).select('id')
++  if (error) throw error
++  if (!data || data.length !== 1) throw new Error('El gasto no se borró')
++}
+--- a/web/src/lib/expenseToDebtDb.ts
++++ b/web/src/lib/expenseToDebtDb.ts
+@@ -4,7 +4,7 @@
+ import { convertExpenseToDebtPayment, paymentFromExpense } from './expenseToDebt'
+ import { newDebtRow } from './movements'
+ import { deleteDebtPaymentRow, insertDebtPaymentRow, insertDebtRow } from './saveMovement'
+-import { deleteExpense } from './saveExpense'
++import { deleteExpenseStrict } from './saveExpense'
+ import { insertExpenseRow } from './saveExpense'
+ 
+ export type DebtDest = { debtId: string } | { name: string; balance: number }
+@@ -18,7 +18,7 @@
+   await convertExpenseToDebtPayment({
+     createDebt: newDebt ? () => insertDebtRow(newDebt) : undefined,
+     insertPayment: () => insertDebtPaymentRow(payment),
+-    deleteExpense: () => deleteExpense(e.id),
++    deleteExpense: () => deleteExpenseStrict(e.id),
+     deletePayment: () => deleteDebtPaymentRow(payment.id),
+   })
+   return { paymentId: payment.id }

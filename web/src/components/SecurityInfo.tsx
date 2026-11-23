@@ -1,3 +1,4 @@
+import { isNativeApp } from '../lib/nativeBridge'
 import { useEffect, useState } from 'react'
 import { runSecurityChecks } from '../lib/securityChecks'
 import type { Check } from '../lib/securityChecks'
@@ -44,6 +45,19 @@ const GROUPS: { title: string; points: Point[] }[] = [
   },
 ]
 
+/** Lo mismo que el grupo web, dicho para la app Android: sin navegador, caché ni service worker */
+const NATIVE_APP_GROUP = {
+  title: 'Esta aplicación (Android)',
+  points: [
+    { title: 'Servidor de datos oculto', text: 'La dirección real del servidor de datos y su clave no están en el código de la app: pasan por un servidor intermedio que además filtra rutas y limita los intentos por persona.' },
+    { title: 'Sesión guardada cifrada', text: 'Tu sesión y lo que la app captura se guardan cifrados en el teléfono, con una llave que no sale del aparato.' },
+    { title: 'Sin rastreadores', text: 'No hay analítica ni publicidad de terceros.' },
+    { title: 'Permisos mínimos', text: 'La cámara, el micrófono y la ubicación no se piden. Las notificaciones y el acceso a los avisos del banco son opcionales.' },
+    { title: 'Texto siempre como texto', text: 'Lo que escribes (notas, nombres) se muestra como texto plano, nunca como código. Los archivos CSV que exportas neutralizan fórmulas peligrosas.' },
+    { title: 'Bloqueo por inactividad', text: 'Opcional: la app se tapa sola y pide tu contraseña tras el tiempo que elijas.' },
+  ],
+}
+
 const LIMITS = [
   'No es cifrado de extremo a extremo: los datos están cifrados en tránsito y en reposo, pero el servicio puede leerlos técnicamente para funcionar.',
   'El bloqueo de la app protege de miradas curiosas, no reemplaza el bloqueo de pantalla de tu teléfono.',
@@ -55,6 +69,7 @@ const MARK = { true: '✓', false: '!', null: '–' } as const
 
 /** Qué protege de verdad a esta app: comprobaciones en vivo + lo que está diseñado así + los límites, sin adornos */
 export default function SecurityInfo() {
+  const native = isNativeApp()
   const [checks, setChecks] = useState<Check[] | null>(null)
 
   useEffect(() => {
@@ -88,7 +103,7 @@ export default function SecurityInfo() {
         )}
       </section>
 
-      {GROUPS.map((g) => (
+      {(native ? [...GROUPS.slice(0, -1), NATIVE_APP_GROUP] : GROUPS).map((g) => (
         <section className="card" key={g.title}>
           <strong>{g.title}</strong>
           <ul className="check-list">

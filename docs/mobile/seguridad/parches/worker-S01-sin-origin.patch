@@ -1,0 +1,14 @@
+OBSOLETO (DEC-01 revisada): el Worker no se modifica; la app nativa envia el Origin del Worker. No aplicar.
+
+--- a/web/worker/proxy.ts	2026-11-21 18:54:01.675569972 -0300
++++ b/web/worker/proxy.ts	2026-11-21 18:54:01.707993385 -0300
+@@ -61,6 +61,9 @@
+ export function isSameSite(headers: Headers, selfOrigin: string, method = 'GET'): boolean {
+   const origin = headers.get('origin')
+   const site = headers.get('sec-fetch-site')
++  // Cliente que no es un navegador (la app nativa usa HTTP nativo y no manda Origin ni Sec-Fetch-Site): no hay CSRF posible,
++  // porque CSRF exige un navegador, y un navegador SIEMPRE manda Origin en un POST. Si falta uno de los dos, se rechaza.
++  if (isWrite(method) && origin === null && site === null) return true
+   if (isWrite(method)) return origin === selfOrigin && (site === null || site === 'same-origin')
+   if (origin !== null && origin !== selfOrigin) return false
+   return site === null || site === 'same-origin' || site === 'none'

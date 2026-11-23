@@ -1,0 +1,110 @@
+// Copyright (c) 2026 Dinovance
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace = "cl.dinovance.contigo"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "cl.dinovance.contigo"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        // Una sola fuente de verdad: version de web/package.json (X.Y.Z). versionCode = major*10000 + minor*100 + patch.
+        def appVersion = new groovy.json.JsonSlurper().parse(file('../../package.json')).version.toString()
+        def (major, minor, patch) = appVersion.tokenize('.').collect { it.toInteger() }
+        versionCode major * 10000 + minor * 100 + patch
+        versionName appVersion
+        // Repositorio de GitHub de donde se leen las actualizaciones (owner/repo); cambiable al compilar con NIDO_UPDATE_REPO
+        resValue "string", "update_repo", (System.getenv('NIDO_UPDATE_REPO') ?: 'Tufavo1/nido-finanzas')
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    kotlinOptions {
+        jvmTarget = '21'
+    }
+    // Firma de release: la llave vive FUERA del repo (~/.nido-signing/, montada en /signing por docker-android-build.sh).
+    def ksPath = System.getenv('NIDO_KEYSTORE_PROPERTIES')
+    def ksProps = new Properties()
+    if (ksPath && file(ksPath).exists()) file(ksPath).withInputStream { ksProps.load(it) }
+    signingConfigs {
+        release {
+            if (ksProps['storeFile']) {
+                storeFile file(ksProps['storeFile'])
+                storePassword ksProps['storePassword']
+                keyAlias ksProps['keyAlias']
+                keyPassword ksProps['keyPassword']
+            }
+            // Ronda 5: v2 + v3 (v3 permite rotar la llave en el futuro sin perder las actualizaciones). Sin v1: minSdk 26.
+            // No cambia la llave: un APK nuevo sigue actualizando al instalado si se firma con la MISMA llave.
+            enableV1Signing false
+            enableV2Signing true
+            enableV3Signing true
+        }
+    }
+    buildTypes {
+        release {
+            debuggable false
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig ksProps['storeFile'] ? signingConfigs.release : null
+        }
+    }
+    // Ronda 5: ManifestSecurityTest lee el manifiesto FUSIONADO de debug y de release (lo que traen las librerias).
+    testOptions {
+        unitTests.all { test ->
+            test.dependsOn('processDebugMainManifest', 'processReleaseMainManifest')
+            test.systemProperty 'contigo.appDir', projectDir.absolutePath
+            test.systemProperty 'contigo.repoRoot', rootProject.projectDir.parentFile.parentFile.absolutePath
+            test.systemProperty 'contigo.mergedManifest.debug', file('build/intermediates/merged_manifest/debug/processDebugMainManifest/AndroidManifest.xml').absolutePath
+            test.systemProperty 'contigo.mergedManifest.release', file('build/intermediates/merged_manifest/release/processReleaseMainManifest/AndroidManifest.xml').absolutePath
+        }
+    }
+    // Sin llave no se produce un release: nada de APK sin firmar ni firmado con la llave de depuracion.
+    gradle.taskGraph.whenReady { graph ->
+        if (graph.allTasks.any { it.name == 'assembleRelease' || it.name == 'packageRelease' } && !ksProps['storeFile']) {
+            throw new GradleException('Release sin llave de firma: define NIDO_KEYSTORE_PROPERTIES (ver docs/mobile/release.md)')
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    implementation "androidx.core:core-ktx:$androidxCoreVersion"
+    implementation "androidx.work:work-runtime:2.9.1"
+    // Entrar con Google sin WebView (Apache-2.0, versiones fijas)
+    implementation "androidx.credentials:credentials:1.3.0"
+    implementation "androidx.credentials:credentials-play-services-auth:1.3.0"
+    implementation "com.google.android.libraries.identity.googleid:googleid:1.1.1"
+    implementation 'cl.nido:core'
+    testImplementation "junit:junit:$junitVersion"
+    testImplementation 'org.json:json:20240303'
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

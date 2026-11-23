@@ -5,7 +5,7 @@ PWA de finanzas para hogares de 1 o 2 personas, en español y pesos chilenos. Pr
 ## REGLA DE ORO: SOLO LOCAL, NUNCA PRODUCCIÓN
 - Todo se trabaja y prueba en este equipo: `npm --prefix web run dev`, Supabase local (contenedor `supabase_db_nido`), tests.
 - Prohibido para agentes: desplegar (`wrangler`, `npm run deploy`), tocar el Supabase real (`db push`, `--linked`, `--remote`, `functions deploy`, `secrets`, `link`, `login`), `git push`, `gh`, `curl`/`wget`, contactar `contigo.dinovance.cl` o `*.supabase.co`, usar `SUPABASE_DB_URL`, correr `scripts/backup.sh`, o leer `.env*`/respaldos.
-- Una migración nueva solo se crea como archivo y se prueba en la base local. Aplicarla en producción lo hace el humano, a mano, fuera de OpenCode.
+- Una migración nueva solo se crea como archivo y se prueba en la base local. Aplicarla en producción lo hace el workflow `Despliegue` (`.github/workflows/deploy.yml`) cuando el humano aprueba el despliegue de `main`; ningún agente lo dispara.
 - Si una tarea parece requerir producción, el agente se detiene y lo dice.
 
 ## Estructura
