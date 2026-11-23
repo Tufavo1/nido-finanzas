@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PLACEHOLDER_KEY, normalizeKey, normalizeOrigin, cleanResponseHeaders, isSameSite, isSensitive, upstreamHeaders, upstreamPath, withRealKey, rewriteLocation } from './proxy'
+import { PLACEHOLDER_KEY, normalizeKey, normalizeOrigin, cleanResponseHeaders, isSameSite, isSensitive, upstreamHeaders, upstreamPath, withRealKey, rewriteLocation, isAllowedContentType } from './proxy'
 
 describe('upstreamPath', () => {
   it('deja pasar lo que usa la app', () => {
@@ -123,5 +123,38 @@ describe('rewriteLocation (inicio de sesión con Google)', () => {
     expect(rewriteLocation('https://accounts.google.com.evil.com/o/oauth2/v2/auth?x=1', origin)).toBe('/')
     expect(rewriteLocation('http://accounts.google.com/o/oauth2/v2/auth?x=1', origin)).toBe('/')
     expect(rewriteLocation('https://accounts.google.com/other', origin)).toBe('/')
+  })
+})
+
+describe('isSameSite en escrituras (CSRF)', () => {
+  const self = 'https://contigo.example'
+  it('una escritura debe probar que viene de este sitio', () => {
+    expect(isSameSite(new Headers({ origin: self }), self, 'POST')).toBe(true)
+    expect(isSameSite(new Headers({ origin: self, 'sec-fetch-site': 'same-origin' }), self, 'DELETE')).toBe(true)
+  })
+  it('sin origen, o con otro, la escritura se rechaza', () => {
+    expect(isSameSite(new Headers(), self, 'POST')).toBe(false)
+    expect(isSameSite(new Headers({ 'sec-fetch-site': 'none' }), self, 'PATCH')).toBe(false)
+    expect(isSameSite(new Headers({ origin: 'null' }), self, 'POST')).toBe(false)
+    expect(isSameSite(new Headers({ origin: self, 'sec-fetch-site': 'same-site' }), self, 'POST')).toBe(false)
+  })
+  it('leer sigue aceptando navegación directa', () => {
+    expect(isSameSite(new Headers(), self, 'GET')).toBe(true)
+  })
+})
+
+describe('isAllowedContentType', () => {
+  it('las escrituras solo aceptan JSON (o venir sin cuerpo)', () => {
+    expect(isAllowedContentType('POST', 'application/json')).toBe(true)
+    expect(isAllowedContentType('POST', 'application/json;charset=UTF-8')).toBe(true)
+    expect(isAllowedContentType('DELETE', null)).toBe(true)
+  })
+  it('rechaza los formatos que un formulario de otro sitio puede enviar', () => {
+    for (const ct of ['application/x-www-form-urlencoded', 'multipart/form-data; boundary=x', 'text/plain', 'TEXT/PLAIN;charset=UTF-8']) {
+      expect(isAllowedContentType('POST', ct), ct).toBe(false)
+    }
+  })
+  it('leer no lleva cuerpo: no se revisa', () => {
+    expect(isAllowedContentType('GET', 'text/plain')).toBe(true)
   })
 })

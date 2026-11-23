@@ -5,12 +5,14 @@ import Logo from '../components/Logo'
 import { INSTAGRAM_HANDLE, INSTAGRAM_URL, copyright } from '../lib/about'
 import { captchaToken } from '../lib/captcha'
 import GoogleButton from '../components/GoogleButton'
-import { NEEDS } from '../lib/needs'
+import { needsFor } from '../lib/needs'
+import { isNativeApp } from '../lib/nativeBridge'
 import { supabase } from '../lib/supabase'
 import { STRENGTH_LABEL, createThrottle, friendlyError, passwordStrength } from '../lib/security'
 import Spin from '../components/Spin'
 import LegalModal from '../components/LegalModal'
 import { LEGAL_VERSION } from '../lib/legal'
+import { logError } from '../lib/safeLog'
 
 const throttle = createThrottle()
 
@@ -66,7 +68,7 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
       if (error && /rate|too many|seconds/i.test(error.message)) {
         setMsg({ text: 'Ya te enviamos un correo hace poco. Espera un minuto y vuelve a pedirlo.', error: true })
       } else {
-        if (error) console.error(error)
+        if (error) logError(error, 'AuthScreen')
         setMsg({
           text: 'Listo. Si ese correo tiene una cuenta, te enviamos un enlace para crear una contraseña nueva. Revisa también la carpeta de spam.',
           error: false,
@@ -230,7 +232,7 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
         <details className="auth-needs">
           <summary>¿Qué necesito para usar Contigo?</summary>
           <ul>
-            {NEEDS.map((n) => (
+            {needsFor(isNativeApp()).map((n) => (
               <li key={n.id}>
                 <strong>{n.title}</strong> ({n.required ? 'necesario' : 'opcional'}): {n.why}
               </li>

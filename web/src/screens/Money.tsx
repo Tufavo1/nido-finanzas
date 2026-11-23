@@ -25,6 +25,7 @@ import { daysUntil, digitsOnly, inDays, longDate, monthName, nextOccurrence, dot
 import type { Notify } from '../components/Toast'
 import type { MoneySection } from '../lib/engine'
 import Spin from '../components/Spin'
+import { logError } from '../lib/safeLog'
 
 interface Props {
   hh: Household
@@ -88,7 +89,7 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
           .insert({ user_id: hh.me.user_id, household_id: hh.household.id, amount: n, pay_day: d })
     setBusy(false)
     if (err) {
-      console.error(err)
+      logError(err, 'Money')
       setError('No se pudo guardar tu sueldo. Intenta de nuevo.')
       return false
     }
@@ -781,7 +782,7 @@ function SplitSetting({ hh, data, split, custom, onToast }: Pick<Props, 'hh' | '
     const { error: err } = await supabase.rpc('set_expense_split', { pct })
     setBusy(false)
     if (err) {
-      console.error(err)
+      logError(err, 'Money')
       setError('No se pudo cambiar el reparto. Intenta de nuevo.')
       return
     }

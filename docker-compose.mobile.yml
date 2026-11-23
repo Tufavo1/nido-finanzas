@@ -1,0 +1,53 @@
+# Copyright (c) 2026 Dinovance
+# Compilacion y pruebas Android en contenedor. SOLO local, sin puertos publicados.
+# Uso: docker compose -f docker-compose.mobile.yml --profile build run --rm build
+# (normalmente a traves de scripts/docker-*.sh). SELinux: bind mounts con :z.
+name: nido-mobile
+
+x-android: &android
+  image: nido-mobile-android-build:1
+  build:
+    context: ./docker/android-build
+  user: "1000:1000"
+  working_dir: /work
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  environment:
+    HOME: /home/node
+  volumes:
+    - .:/work:z
+    # JDK, Gradle y SDK del host, SOLO LECTURA (ajustables por variable de entorno)
+    - ${NIDO_JDK_DIR:-${HOME}/dev/jdk-21}:/opt/jdk:ro,z
+    - ${NIDO_GRADLE_DIR:-${HOME}/dev/gradle-8.14.3}:/opt/gradle:ro,z
+    - ${NIDO_ANDROID_SDK_DIR:-${HOME}/Android/Sdk}:/opt/android-sdk:ro,z
+    - nido-gradle-cache:/home/node/.gradle
+    - nido-npm-cache:/home/node/.npm
+
+services:
+  build:
+    <<: *android
+    profiles: ["build"]
+    command: ["bash", "/work/docker/android-build/build-in-container.sh"]
+    environment:
+      HOME: /home/node
+      NIDO_BUILD_MODE: ${NIDO_BUILD_MODE:-debug}
+      # Variables PUBLICAS de compilacion (no secretas). Vacias por defecto.
+      ALLOW_LOCAL_BUILD: ${ALLOW_LOCAL_BUILD:-}
+      VITE_API_BASE: ${VITE_API_BASE:-}
+      VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
+      VITE_VAPID_PUBLIC_KEY: ${VITE_VAPID_PUBLIC_KEY:-}
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+  test:
+    <<: *android
+    profiles: ["test"]
+    command: ["bash", "/work/docker/android-build/test-in-container.sh"]
+  shell:
+    <<: *android
+    profiles: ["shell"]
+    stdin_open: true
+    tty: true
+    command: ["bash"]
+
+volumes:
+  nido-gradle-cache:
+  nido-npm-cache:

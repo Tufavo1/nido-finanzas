@@ -140,3 +140,29 @@ describe('sueldo', () => {
     expect(a.level).toBe('bad')
   })
 })
+
+describe('reparto acordado (no mitad y mitad)', () => {
+  const month = new Date(2026, 9, 1)
+  const now = new Date(2026, 9, 15)
+  const pair = (first: [string, number], second: [string, number]) =>
+    [first, second].map(([user_id, share_pct]) => ({ user_id, share_pct, display_name: user_id, color: 'blue', household_id: 'h', joined_at: '' })) as never[]
+
+  it('58 % y 42 % de $100 son exactamente $58 y $42, sin importar el orden de las personas', () => {
+    const m = computeMetrics([exp(100, 'a', true)], [], [], pair(['b', 42], ['a', 58]), month, now)
+    expect(m.people.find((p) => p.userId === 'a')?.fairShare).toBe(58)
+    expect(m.people.find((p) => p.userId === 'b')?.fairShare).toBe(42)
+  })
+
+  it('las partes siempre suman el total compartido', () => {
+    for (const total of [1, 99, 101, 12_345, 999_999]) {
+      const m = computeMetrics([exp(total, 'a', true)], [], [], pair(['a', 33], ['b', 67]), month, now)
+      expect(m.people[0]!.fairShare + m.people[1]!.fairShare, String(total)).toBe(total)
+    }
+  })
+
+  it('el peso que sobra va a quien le faltaba más para completar su parte', () => {
+    // 33 % de $101 = 33,33 y 67 % = 67,67: el peso suelto es de quien tiene 67 %
+    const m = computeMetrics([exp(101, 'a', true)], [], [], pair(['a', 33], ['b', 67]), month, now)
+    expect(m.people.map((p) => p.fairShare)).toEqual([33, 68])
+  })
+})

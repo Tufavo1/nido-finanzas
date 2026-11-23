@@ -1,0 +1,68 @@
+# Copyright (c) 2026 Dinovance
+# Politica de seguridad del APK de Contigo (fuente UNICA de verdad).
+# La leen: web/android/app/src/test/kotlin/cl/dinovance/contigo/ManifestSecurityTest.kt (manifiesto FUSIONADO,
+# en cada `gradle :app:testDebugUnitTest`) y scripts/verify-apk-security.sh (APK ya compilado, con aapt2/apksigner).
+# Agregar una linea aqui es una decision de seguridad: justificala en docs/mobile/seguridad.md (Ronda 5).
+# Formato: <clave> <valor> [<valor2>]   (# = comentario; "-" = sin valor)
+
+package cl.dinovance.contigo
+label Contigo
+min_target_sdk 35
+
+# Permisos permitidos, EXACTOS (ni uno mas ni uno menos). ${pkg} = package.
+permission android.permission.INTERNET                         # hablar con el servidor propio (HTTPS)
+permission android.permission.POST_NOTIFICATIONS               # avisos propios: gasto detectado, recordatorios (Android 13+)
+permission android.permission.REQUEST_INSTALL_PACKAGES         # actualizador interno verificado (decision del dueno)
+permission android.permission.VIBRATE                          # @capacitor/haptics (vibracion al tocar, se puede apagar)
+permission android.permission.ACCESS_NETWORK_STATE             # WorkManager (enviar solo con red); @capacitor/network tambien, pero no se usa (R5-16)
+permission android.permission.WAKE_LOCK                        # WorkManager (terminar un envio en segundo plano)
+permission android.permission.RECEIVE_BOOT_COMPLETED           # WorkManager (reprogramar el envio pendiente tras reiniciar)
+permission com.google.android.c2dm.permission.RECEIVE          # FCM: avisos de la pareja (@capacitor/push-notifications)
+permission ${pkg}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION     # androidx.core, nivel signature (receptores no exportados)
+
+# Permisos que JAMAS deben aparecer (señales de troyano bancario / sobrepermiso). Redundante con la lista exacta,
+# pero da un mensaje claro si alguien los agrega.
+forbidden_permission android.permission.READ_SMS
+forbidden_permission android.permission.RECEIVE_SMS
+forbidden_permission android.permission.SEND_SMS
+forbidden_permission android.permission.RECEIVE_MMS
+forbidden_permission android.permission.READ_CALL_LOG
+forbidden_permission android.permission.READ_PHONE_STATE
+forbidden_permission android.permission.READ_PHONE_NUMBERS
+forbidden_permission android.permission.CALL_PHONE
+forbidden_permission android.permission.READ_CONTACTS
+forbidden_permission android.permission.GET_ACCOUNTS
+forbidden_permission android.permission.SYSTEM_ALERT_WINDOW
+forbidden_permission android.permission.BIND_ACCESSIBILITY_SERVICE
+forbidden_permission android.permission.BIND_DEVICE_ADMIN
+forbidden_permission android.permission.QUERY_ALL_PACKAGES
+forbidden_permission android.permission.REQUEST_DELETE_PACKAGES
+forbidden_permission android.permission.PACKAGE_USAGE_STATS
+forbidden_permission android.permission.MANAGE_EXTERNAL_STORAGE
+forbidden_permission android.permission.READ_EXTERNAL_STORAGE
+forbidden_permission android.permission.WRITE_EXTERNAL_STORAGE
+forbidden_permission android.permission.CAMERA
+forbidden_permission android.permission.RECORD_AUDIO
+forbidden_permission android.permission.ACCESS_FINE_LOCATION
+forbidden_permission android.permission.ACCESS_COARSE_LOCATION
+forbidden_permission android.permission.ACCESS_BACKGROUND_LOCATION
+forbidden_permission android.permission.FOREGROUND_SERVICE
+forbidden_permission android.permission.SCHEDULE_EXACT_ALARM
+forbidden_permission android.permission.USE_EXACT_ALARM
+forbidden_permission android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+forbidden_permission com.google.android.gms.permission.AD_ID
+
+# Componentes exportados permitidos: <clase> <permiso que protege la entrada o "-" si es publico a proposito>.
+exported cl.dinovance.contigo.MainActivity -                                                   # lanzador + nido://gasto (validado en DeepLinkGuard y deepLink.ts)
+exported cl.dinovance.contigo.capture.NotificationCaptureService android.permission.BIND_NOTIFICATION_LISTENER_SERVICE
+exported androidx.work.impl.background.systemjob.SystemJobService android.permission.BIND_JOB_SERVICE
+exported androidx.work.impl.diagnostics.DiagnosticsReceiver android.permission.DUMP
+exported androidx.profileinstaller.ProfileInstallReceiver android.permission.DUMP
+exported com.google.android.gms.auth.api.signin.RevocationBoundService com.google.android.gms.auth.api.signin.permission.REVOCATION_NOTIFICATION
+exported com.google.firebase.iid.FirebaseInstanceIdReceiver com.google.android.c2dm.permission.SEND
+
+# Enlaces que abre la app (VIEW + BROWSABLE). Un esquema https exige autoVerify (App Link verificado).
+deeplink nido://gasto
+
+# El listener de notificaciones declara su proposito (Android 12+).
+listener_service cl.dinovance.contigo.capture.NotificationCaptureService

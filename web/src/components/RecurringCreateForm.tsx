@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase'
 import { digitsOnly, dots } from '../lib/ui'
 import type { Notify } from './Toast'
 import Spin from './Spin'
+import { logError } from '../lib/safeLog'
 
 /** Gastos típicos: al elegirlos se llena el nombre, se sugiere la categoría y se muestra un ejemplo de monto */
 const IDEAS = [
@@ -71,7 +72,7 @@ export default function RecurringCreateForm({ hh, data, onToast, onSaved }: { hh
       day_of_month: d,
     })
     if (err) {
-      console.error(err)
+      logError(err, 'RecurringCreateForm')
       setBusy(false)
       setError('No se pudo guardar. Intenta de nuevo.')
       return

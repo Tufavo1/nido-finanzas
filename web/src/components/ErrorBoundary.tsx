@@ -1,29 +1,38 @@
-import Logo from './Logo'
 import { Component } from 'react'
 import type { ReactNode } from 'react'
+import StatePage from './StatePage'
+import { errorScreen } from '../lib/screenState'
+import { logError } from '../lib/safeLog'
 
-export default class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false }
+/** Cuántas veces se deja «Reintentar» sin recargar: si el error vuelve, es mejor empezar de cero */
+export const MAX_SOFT_RETRIES = 2
+
+interface State {
+  failed: boolean
+  retries: number
+}
+
+export default class ErrorBoundary extends Component<{ children: ReactNode }, State> {
+  state: State = { failed: false, retries: 0 }
 
   static getDerivedStateFromError() {
     return { failed: true }
   }
 
   componentDidCatch(error: unknown) {
-    console.error(error)
+    logError(error, 'ErrorBoundary')
+  }
+
+  private retry = () => {
+    if (this.state.retries >= MAX_SOFT_RETRIES) {
+      location.reload()
+      return
+    }
+    this.setState((s) => ({ failed: false, retries: s.retries + 1 }))
   }
 
   render() {
     if (!this.state.failed) return this.props.children
-    return (
-      <div className="splash">
-        <Logo size={48} />
-        <h1 className="title">Algo se rompió</h1>
-        <p className="muted">Tus datos están a salvo. Recarga para continuar.</p>
-        <button className="btn" type="button" onClick={() => location.reload()}>
-          Recargar
-        </button>
-      </div>
-    )
+    return <StatePage spec={errorScreen({ kind: 'UNKNOWN' })} onPrimary={this.retry} secondary={{ label: 'Recargar la app', onClick: () => location.reload() }} />
   }
 }

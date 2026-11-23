@@ -244,13 +244,23 @@ export function summarizeDebts(debts: Debt[], payments: DebtPayment[], now: Date
   return { views, remaining, monthly, interest, focus, freeInMonths, findings }
 }
 
-/** Cuánto de las cuotas me toca: lo mío completo y mi parte de lo compartido */
-export function myDebtShare(debts: Debt[], payments: DebtPayment[], meId: string, split: Split): number {
+/**
+ * Cuánto de las cuotas me toca: lo mío completo y mi parte de lo compartido.
+ * Cada deuda cuenta su cuota o, si este mes se pagó más (o no tiene cuota anotada), lo realmente pagado este mes:
+ * así un pago nunca se pierde ni se cuenta dos veces. Una deuda saldada este mes sigue contando lo que se pagó.
+ */
+export function myDebtShare(debts: Debt[], payments: DebtPayment[], meId: string, split: Split, now: Date = new Date()): number {
+  const prefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   return Math.round(
-    sumBy(
-      debts.filter((d) => debtView(d, payments).remaining > 0),
-      (d) => (d.owner_id === meId ? d.monthly_payment : d.owner_id === null ? portion(d.monthly_payment, split, meId) : 0),
-    ),
+    sumBy(debts, (d) => {
+      const paidNow = sumBy(
+        payments.filter((p) => p.debt_id === d.id && p.paid_on.startsWith(prefix)),
+        (p) => p.amount,
+      )
+      if (debtView(d, payments, now).remaining <= 0 && paidNow <= 0) return 0
+      const fee = Math.max(d.monthly_payment, paidNow)
+      return d.owner_id === meId ? fee : d.owner_id === null ? portion(fee, split, meId) : 0
+    }),
   )
 }
 

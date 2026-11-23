@@ -1,0 +1,9 @@
+// Copyright (c) 2026 Dinovance
+include ':app'
+include ':capacitor-cordova-android-plugins'
+project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
+
+// Nucleo Kotlin Multiplatform (native/core, DEC-06) como build incluido: se compila con su propio Kotlin y se usa como cl.nido:core (destino jvm).
+includeBuild('../../native/core')
+
+apply from: 'capacitor.settings.gradle'
