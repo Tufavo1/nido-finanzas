@@ -1,6 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 import { markTermsAccepted } from './google'
 import { PLACEHOLDER_KEY, PROXY_PREFIX, supabase } from './supabase'
+import { logError } from './safeLog'
+import { isNativeApp } from './nativeBridge'
+import { signInWithGoogleNative } from './nativeGoogle'
 
 /**
  * Entrar con Google. El cliente principal usa el flujo con tokens en la dirección (necesario para los correos de
@@ -15,6 +18,8 @@ const oauth = createClient(`${globalThis.location?.origin ?? 'http://localhost'}
 
 /** Manda a la persona a Google. Si algo falla antes de salir, devuelve el mensaje. */
 export async function signInWithGoogle(): Promise<string | null> {
+  // En la app nativa NUNCA se abre el flujo OAuth web (Google lo bloquea en WebView): se usa el selector de cuentas del sistema
+  if (isNativeApp()) return signInWithGoogleNative()
   const { error } = await oauth.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo: window.location.origin, queryParams: { prompt: 'select_account' } },
@@ -69,7 +74,7 @@ export async function consumeOAuthCallback(): Promise<OAuthResult> {
     await markTermsAccepted(data.session.user.user_metadata)
     return 'ready'
   } catch (e) {
-    console.error(e)
+    logError(e, 'oauth')
     return 'failed'
   } finally {
     clean()

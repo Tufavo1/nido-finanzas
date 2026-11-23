@@ -1,5 +1,5 @@
-import { wipeSessionData } from './lib/wipe'
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
+import { wipeForAccountSwitch, wipeSessionData } from './lib/wipe'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import type { Tables } from './lib/database.types'
@@ -77,11 +77,19 @@ export default function App() {
   // Entró desde el correo de recuperación: debe elegir su contraseña nueva antes de usar la app
   const [recovering, setRecovering] = useState(false)
   const [authNotice, setAuthNotice] = useState<string | null>(null)
+  // Última persona que usó esta app: si entra otra, lo capturado por la anterior se borra
+  const lastUser = useRef<string | null>(null)
 
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === 'PASSWORD_RECOVERY') setRecovering(true)
-      if (event === 'SIGNED_OUT') wipeSessionData()
+      if (event === 'SIGNED_OUT') {
+        wipeSessionData()
+        lastUser.current = null
+      }
+      const id = s?.user.id ?? null
+      if (id && lastUser.current && id !== lastUser.current) wipeForAccountSwitch()
+      if (id) lastUser.current = id
       setSession(s)
     })
     void (async () => {

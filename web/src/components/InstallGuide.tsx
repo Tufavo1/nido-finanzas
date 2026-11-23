@@ -2,6 +2,7 @@ import type { Notify } from './Toast'
 import { useState } from 'react'
 import { detectPlatform, promptInstall, useInstallState } from '../lib/install'
 import type { Platform } from '../lib/install'
+import { isNativeApp } from '../lib/nativeBridge'
 
 interface Guide {
   label: string
@@ -47,6 +48,8 @@ export default function InstallGuide({ onToast }: { onToast?: Notify }) {
   const state = useInstallState()
   const [platform, setPlatform] = useState<Platform>(detectPlatform)
   const guide = GUIDES[platform]
+
+  if (isNativeApp()) return null
 
   if (state === 'installed') {
     return (

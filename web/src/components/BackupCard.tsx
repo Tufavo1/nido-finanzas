@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { buildBackup, download, expensesCsv, stamp } from '../lib/backup'
 import { useToastError } from '../lib/useToastError'
 import type { Notify } from './Toast'
+import { logError } from '../lib/safeLog'
 
 /** Descarga de una copia de los datos del hogar. Se arma en este dispositivo: nada se envía a terceros. */
 export default function BackupCard({ onToast }: { onToast: Notify }) {
@@ -22,7 +23,7 @@ export default function BackupCard({ onToast }: { onToast: Notify }) {
         onToast(`Gastos exportados\nSe descargaron **${b.tables.expenses.length} gastos** listos para Excel.`)
       }
     } catch (e) {
-      console.error(e)
+      logError(e, 'BackupCard')
       setError('No se pudo armar el respaldo. Revisa tu conexión e intenta de nuevo.')
     }
     setBusy(null)

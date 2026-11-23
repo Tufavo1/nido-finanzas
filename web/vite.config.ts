@@ -125,6 +125,8 @@ export default defineConfig(({ command, mode }) => {
           navigateFallbackDenylist: [/^\/auth\//, /^\/supabase\//, /\.[a-z0-9]+$/i],
           importScripts: ['push-sw.js'],
           cleanupOutdatedCaches: true,
+          // La lista de licencias (~300 kB) se pide solo al abrirla: no se descarga por adelantado en cada instalación
+          globIgnores: ['**/package-lock-*.js'],
           clientsClaim: true,
           // Datos financieros: el proxy de Supabase y el captcha JAMÁS se guardan en la caché del service worker
           runtimeCaching: [

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { currentPushState, disablePush, enablePush, sendTest } from '../lib/push'
 import type { PushState } from '../lib/push'
 import { setSmartNotify, smartNotifyEnabled } from '../lib/smartNotify'
+import { isNativeApp } from '../lib/nativeBridge'
+import NativePushToggle from './NativePushToggle'
 import Spin from './Spin'
 import type { Notify } from './Toast'
 
@@ -20,7 +22,7 @@ function Row({ label, hint, on, disabled, busy, onToggle }: { label: string; hin
 }
 
 /** Dos interruptores: los avisos de tu pareja y los de la app. «Enviar prueba» solo lo ve el administrador. */
-export default function PushToggle({ isAdmin = false, onToast }: { isAdmin?: boolean; onToast: Notify }) {
+function WebPushToggle({ isAdmin = false, onToast }: { isAdmin?: boolean; onToast: Notify }) {
   const [state, setState] = useState<PushState | null>(null)
   const [smart, setSmart] = useState(smartNotifyEnabled)
   const [perm, setPerm] = useState(permission)
@@ -100,4 +102,8 @@ export default function PushToggle({ isAdmin = false, onToast }: { isAdmin?: boo
       )}
     </section>
   )
+}
+
+export default function PushToggle(props: { isAdmin?: boolean; onToast: Notify }) {
+  return isNativeApp() ? <NativePushToggle onToast={props.onToast} /> : <WebPushToggle {...props} />
 }
