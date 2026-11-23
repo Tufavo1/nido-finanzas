@@ -19,7 +19,7 @@ import Venn from '../components/Venn'
 import { MonthCurveCard, SixMonthsCard, WeekdayCard } from '../components/HomeCharts'
 import { compact, monthGrid } from '../lib/calendar'
 import { daysLeftInMonth, money } from '../lib/format'
-import { analyzeSalary, myDebtShare } from '../lib/finance'
+import { analyzeSalary, monthIncome, myDebtShare } from '../lib/finance'
 import { monthKey as monthKeyOf, myShare } from '../lib/analysis'
 import { dayExpenses, deltaText, latestExpenses, monthStatus, topCategories } from '../lib/homeSummary'
 import { pendingFixedThisMonth } from '../lib/upcoming'
@@ -96,7 +96,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
   const salaryCheck =
     data.salary && mine && (view === 'all' || view === hh.me.user_id)
       ? analyzeSalary({
-          income: data.salary.amount,
+          income: monthIncome(data.salary, data.incomes),
           spent: mine.trueCost,
           commitments: myDebtShare(data.debts, data.debtPayments, hh.me.user_id, split),
           month,

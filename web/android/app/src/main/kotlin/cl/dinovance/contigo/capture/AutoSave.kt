@@ -34,6 +34,8 @@ data class AutoProfile(
     val paidBy: String,
     val shared: Boolean,
     val categories: Map<String, String>,
+    /** Categoria general («Otros») para un comercio NUEVO: con ella el gasto se guarda solo igual. null = el comercio nuevo pregunta. */
+    val defaultCategoryId: String? = null,
 ) {
     fun categoryFor(merchant: String?): String? {
         val key = MerchantKey.of(merchant.orEmpty())
@@ -46,6 +48,7 @@ data class AutoProfile(
     fun toJson(): String = JSONObject()
         .put("ownerKey", ownerKey).put("userId", userId).put("householdId", householdId).put("paidBy", paidBy).put("shared", shared)
         .put("categories", JSONObject(categories as Map<*, *>))
+        .put("defaultCategoryId", defaultCategoryId ?: JSONObject.NULL)
         .toString()
 
     companion object {
@@ -63,20 +66,22 @@ data class AutoProfile(
                 if (k.length > 80 || !ID.matches(v)) return null
                 map[k] = v
             }
-            val p = AutoProfile(o.getString("ownerKey"), o.getString("userId"), o.getString("householdId"), o.getString("paidBy"), o.getBoolean("shared"), map)
+            // Opcional y tolerante: un perfil antiguo no lo trae; un valor que no sea UUID se ignora (sin perder el perfil).
+            val fallback = if (o.isNull("defaultCategoryId")) null else o.optString("defaultCategoryId").takeIf { ID.matches(it) }
+            val p = AutoProfile(o.getString("ownerKey"), o.getString("userId"), o.getString("householdId"), o.getString("paidBy"), o.getBoolean("shared"), map, fallback)
             if (map.size > MAX_CATEGORIES || !ID.matches(p.userId) || !ID.matches(p.householdId) || !ID.matches(p.paidBy)) null else p
             } catch (e: Exception) {
                 null
             }
         }
 
-        fun fromJs(ownerKey: String, userId: String, householdId: String, paidBy: String, shared: Boolean, entries: JSONArray): AutoProfile? {
+        fun fromJs(ownerKey: String, userId: String, householdId: String, paidBy: String, shared: Boolean, entries: JSONArray, defaultCategoryId: String? = null): AutoProfile? {
             val map = LinkedHashMap<String, String>()
             for (i in 0 until entries.length()) {
                 val e = entries.optJSONObject(i) ?: return null
                 map[e.optString("key")] = e.optString("categoryId")
             }
-            return parse(AutoProfile(ownerKey, userId, householdId, paidBy, shared, map).toJson())
+            return parse(AutoProfile(ownerKey, userId, householdId, paidBy, shared, map, defaultCategoryId).toJson())
         }
     }
 }

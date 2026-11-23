@@ -73,24 +73,27 @@ class QaRonda4Test {
     }
 
     @Test
-    fun `r4-1 ingresos y pagos de deuda quedan PENDING sin categoria, sin registro y sin agendar envio`() {
+    fun `r4-1 el ingreso se guarda solo como ingreso extra y el pago de deuda queda PENDING`() {
+        // Migrado (pedido del dueño, 2026-11-22): antes el ingreso tambien quedaba PENDING; ahora se guarda solo (sin categoria).
         val p = processor()
         assertEquals(Outcome.STORED, p.process(bank, null, ingreso, now)); now += 200_000
         assertEquals(Outcome.STORED, p.process(bank, null, pago, now))
         val l = repo.list()
         assertEquals(listOf(Kind.INCOME, Kind.DEBT_PAYMENT), l.map { it.candidate.kind })
-        assertTrue(l.all { it.status == DraftStatus.PENDING && !it.autoSaved && it.categoryId == null })
-        assertEquals(0, scheduled); assertTrue(log.list().isEmpty())
+        assertTrue(l[0].status == DraftStatus.CONFIRMED && l[0].autoSaved && l[0].categoryId == null)
+        assertTrue(l[1].status == DraftStatus.PENDING && !l[1].autoSaved && l[1].categoryId == null)
+        assertEquals(1, scheduled); assertEquals(listOf(Kind.INCOME), log.list().map { it.kind })
     }
 
     @Test
-    fun `r4-1 ni con el tope enorme ni con banco activado un ingreso o pago se guarda solo`() {
+    fun `r4-1 ni con el tope enorme ni con banco activado un pago se guarda solo`() {
         val big = object : AutoConfig by cfg { override fun maxClp() = 9_999_999_999L }
         val p = CaptureProcessor({ setOf(bank) }, repo, RecordingNotifier(), RecordingHealth(), { now }, { "id-${ids++}" },
             ownerProvider = { activeOwner }, requireOwner = true, auto = big, profile = { profile }, onAutoSaved = { scheduled++ }, autoLog = log)
         p.process(bank, null, "Recibiste \$1.000 a tu Cuenta Banco Falabella 2236", now); now += 200_000
         p.process(bank, null, "Pagaste \$1.000 a tu CMR Mastercard Premium", now)
-        assertEquals(0, repo.list().count { it.autoSaved }); assertEquals(0, scheduled)
+        // Migrado: el ingreso ahora se guarda solo; el pago de deuda nunca.
+        assertEquals(listOf(Kind.INCOME), repo.list().filter { it.autoSaved }.map { it.candidate.kind }); assertEquals(1, scheduled)
     }
 
     // ---- repeticion
@@ -137,23 +140,30 @@ class QaRonda4Test {
 
     @Test
     fun `r4-3 un ingreso o pago CONFIRMED jamas se envia como gasto y el borrador se conserva`() {
+        // Migrado: el ingreso confirmado ahora se envia, pero como fila de incomes (sin categoria ni pareja); el pago se conserva.
         repo.add(draft(Kind.INCOME, "a1111111-1111-4111-8111-111111111111")); repo.add(draft(Kind.DEBT_PAYMENT, "b2222222-2222-4222-8222-222222222222"))
         val net = Net(); syncer(net).syncOnce()
-        assertTrue("se envio como gasto: ${net.sent}", net.sent.isEmpty())
-        assertEquals(2, repo.list().size)
+        assertEquals(1, net.sent.size)
+        assertTrue("se envio como gasto: ${net.sent}", net.sent.none { it.contains("category_id") || it.contains("paid_by") || it.contains("\"kind\"") })
+        assertEquals(listOf(Kind.DEBT_PAYMENT), repo.list().map { it.candidate.kind })
     }
 
     @Test
     fun `r4-3 ROJO rowOf como segunda barrera no arma fila de expenses para un ingreso o un pago`() {
         val s = syncer(Net())
-        assertNull(s.rowOf(draft(Kind.INCOME, "a1111111-1111-4111-8111-111111111111"), profile!!))
+        // Migrado: un ingreso arma fila de incomes (no de expenses).
+        val inc = s.rowOf(draft(Kind.INCOME, "a1111111-1111-4111-8111-111111111111"), profile!!)!!
+        assertFalse(inc.has("category_id")); assertEquals("Ingreso extra", inc.getString("source"))
         assertNull(s.rowOf(draft(Kind.DEBT_PAYMENT, "b2222222-2222-4222-8222-222222222222"), profile!!))
     }
 
     @Test
-    fun `r4-3 ROJO un ingreso CONFIRMED no cuenta como gasto por enviar `() {
-        repo.add(draft(Kind.INCOME, "a1111111-1111-4111-8111-111111111111"))
+    fun `r4-3 un pago de deuda CONFIRMED no cuenta por enviar, un ingreso si`() {
+        // Migrado: el telefono ahora SI envia el ingreso confirmado (incomes), asi que cuenta; el pago de deuda jamas.
+        repo.add(draft(Kind.DEBT_PAYMENT, "b2222222-2222-4222-8222-222222222222"))
         assertEquals("«Tienes 1 gasto por enviar» para algo que el telefono jamas enviara", 0, ReminderPolicy.pendingToSend(repo.list(), owner))
+        repo.add(draft(Kind.INCOME, "a1111111-1111-4111-8111-111111111111"))
+        assertEquals(1, ReminderPolicy.pendingToSend(repo.list(), owner))
     }
 
     // ---- cambio de cuenta con borradores de ingreso pendientes
@@ -202,8 +212,12 @@ class QaRonda4Test {
     }
 
     @Test
-    fun `r4-5 el registro de guardados y la salud no reciben ingresos ni pagos`() {
-        processor().process(bank, null, ingreso, now)
-        assertTrue(logStore.v.isNullOrEmpty() || !logStore.v!!.contains("10000"))
+    fun `r4-5 el registro de guardados recibe el ingreso con su tipo y nunca un pago`() {
+        // Migrado: el ingreso guardado solo entra al registro (para Deshacer) rotulado «Ingreso extra»; el pago de deuda no.
+        processor().process(bank, null, ingreso, now); now += 200_000
+        processor().process(bank, null, pago, now)
+        val e = log.list().single()
+        assertEquals(Kind.INCOME, e.kind); assertEquals("Ingreso extra", e.note); assertEquals(10_000L, e.amountClp)
+        assertFalse(logStore.v!!.contains("Te tr") || logStore.v!!.contains("Cuenta"))
     }
 }

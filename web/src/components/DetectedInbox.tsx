@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Dinovance
 import { Fragment, useState } from 'react'
 import CategoryPicker from './CategoryPicker'
+import RoutedMovement from './RoutedMovement'
+import type { MonthEffect } from '../lib/monthLeft'
 import EmptyState from './EmptyState'
 import ScanButton from './ScanButton'
 import { isNativeApp } from '../lib/nativeBridge'
@@ -10,7 +12,6 @@ import { money } from '../lib/format'
 import { suggestCategory } from '../lib/categorize'
 import type { AutoSavedItem, NativeDraft } from '../lib/nativeBridge'
 import { logError } from '../lib/safeLog'
-import { chosenId, matchDebt, moveChoice } from '../lib/debtMatch'
 import type { DebtLite } from '../lib/debtMatch'
 
 interface Props {
@@ -39,25 +40,26 @@ interface Props {
   onSaveIncome?: (d: NativeDraft) => Promise<void>
   /** Registra el pago en la deuda elegida; si falla lanza el error (el borrador queda) */
   onPayDebt?: (d: NativeDraft, debtId: string) => Promise<void>
-  /** Lleva a Dinero para crear la deuda */
-  onGoMoney?: () => void
+  /** Crea la deuda (nombre y saldo) y registra el pago contra ella; si falla lanza (el borrador queda) */
+  onPayNewDebt?: (d: NativeDraft, name: string, balance: number) => Promise<void>
+  /** Lo que queda del mes si se guarda así (null = sin dato de sueldo) */
+  monthLeft?: (d: NativeDraft, effect: MonthEffect, debtId?: string) => number | null
 }
 
 const GROUPS = [
   { kind: 'EXPENSE', title: 'Gastos', cls: 'kind-expense' },
   { kind: 'INCOME', title: 'Ingresos', cls: 'kind-income' },
   { kind: 'DEBT_PAYMENT', title: 'Pagos de tarjeta', cls: 'kind-debt' },
+  { kind: 'TRANSFER_OUT', title: 'Transferencias', cls: 'kind-debt' },
 ] as const
 
 const dayFmt = new Intl.DateTimeFormat('es-CL', { day: 'numeric', month: 'short' })
 
 /** «Movimientos detectados»: lo que el teléfono encontró en tus avisos del banco, para que tú lo apruebes. */
-export default function DetectedInbox({ drafts, failed, categories, history, onReview, onSaveWith, onIgnore, onRetry, onSettings, kept, onKeepBoth, appNames = new Map(), autoSaved = [], onUndoAuto, debts = [], onSaveIncome, onPayDebt, onGoMoney }: Props) {
+export default function DetectedInbox({ drafts, failed, categories, history, onReview, onSaveWith, onIgnore, onRetry, onSettings, kept, onKeepBoth, appNames = new Map(), autoSaved = [], onUndoAuto, debts = [], onSaveIncome, onPayDebt, onPayNewDebt, monthLeft }: Props) {
   const [picking, setPicking] = useState<NativeDraft | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
-  /** Deuda elegida por borrador (si no hay, la más probable) */
-  const [choice, setChoice] = useState<Record<string, string>>({})
   const marks = duplicateMarks(drafts ?? [])
   const groups = GROUPS.map((g) => ({ ...g, items: (drafts ?? []).filter((d) => d.kind === g.kind) })).filter((g) => g.items.length > 0)
   const headed = groups.length > 1
@@ -112,104 +114,52 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
         <Fragment key={g.kind}>
           {headed && <h2 className={`mov-title ${g.cls}`}>{g.title}</h2>}
           {g.items.map((d) => {
-        if (d.kind === 'INCOME' || d.kind === 'DEBT_PAYMENT') {
-          const income = d.kind === 'INCOME'
-          const title = income ? `Ingreso de ${money(d.amountClp)}` : `Pago de tarjeta ${money(d.amountClp)}`
-          const match = income ? null : matchDebt(d.account, debts)
+        if (d.kind === 'INCOME') {
+          const title = `Ingreso extra de ${money(d.amountClp)}`
           const off = busy !== null
+          const left = monthLeft?.(d, 'income') ?? null
           return (
-            <section className={`card detected ${income ? "kind-income" : "kind-debt"}`} key={d.id} aria-label={title}>
+            <section className="card detected kind-income" key={d.id} aria-label={title}>
               <div className="row between">
                 <strong className="num">{title}</strong>
                 <span className="muted small-text">{dayFmt.format(d.postedAtMillis)}</span>
               </div>
               {d.account && <span className="muted small-text">{d.account}</span>}
-              {income ? (
-                <>
-                  <span>¿Es plata tuya que entró?</span>
-                  <span className="muted small-text">Si es un movimiento entre tus cuentas, no es un ingreso.</span>
-                  <div className="row detected-actions">
-                    <button type="button" className="btn" disabled={off} onClick={() => void run(d, onSaveIncome && (() => onSaveIncome(d)))}>
-                      Sí, es un ingreso
-                    </button>
-                    <button type="button" className="btn ghost small" disabled={off} onClick={() => onIgnore(d)}>
-                      No, es entre mis cuentas
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <span className="muted small-text">Los pagos de tu tarjeta no cuentan como gasto: tus compras ya están registradas.</span>
-                  {match?.kind === 'one' && (
-                    <div className="row detected-actions">
-                      <button type="button" className="btn" disabled={off} onClick={() => void run(d, onPayDebt && (() => onPayDebt(d, match.debt.id)))}>
-                        Registrar pago en «{match.debt.name}»
-                      </button>
-                      <button type="button" className="btn ghost small" disabled={off} onClick={() => onIgnore(d)}>
-                        Ignorar
-                      </button>
-                    </div>
-                  )}
-                  {match?.kind === 'choose' && (
-                    <div className="stack">
-                      <strong className="small-text" id={`pick-${d.id}`}>
-                        Elige a qué deuda va
-                      </strong>
-                      <div className="radio-list" role="radiogroup" aria-labelledby={`pick-${d.id}`}>
-                        {match.debts.map((x, i) => {
-                          const sel = chosenId(choice[d.id], match.debts) === x.id
-                          return (
-                            <button
-                              type="button"
-                              role="radio"
-                              key={x.id}
-                              className="radio-opt"
-                              aria-checked={sel}
-                              tabIndex={sel ? 0 : -1}
-                              disabled={off}
-                              onClick={() => setChoice((c) => ({ ...c, [d.id]: x.id }))}
-                              onKeyDown={(e) => {
-                                const n = moveChoice(i, e.key, match.debts.length)
-                                if (n === null) return
-                                e.preventDefault()
-                                setChoice((c) => ({ ...c, [d.id]: match.debts[n]!.id }))
-                                ;(e.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role=radio]')[n])?.focus()
-                              }}
-                            >
-                              <span className="radio-dot" aria-hidden="true" />
-                              {x.name}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      <div className="row detected-actions">
-                        <button type="button" className="btn" disabled={off} onClick={() => void run(d, onPayDebt && (() => onPayDebt(d, chosenId(choice[d.id], match.debts) ?? '')))}>
-                          Registrar pago
-                        </button>
-                        <button type="button" className="btn ghost small" disabled={off} onClick={() => onIgnore(d)}>
-                          No es de mis deudas
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {match?.kind === 'none' && (
-                    <>
-                      <span>No tienes una deuda parecida. Puedes crearla en Dinero.</span>
-                      <div className="row detected-actions">
-                        {onGoMoney && (
-                          <button type="button" className="btn" onClick={onGoMoney}>
-                            Ir a Dinero
-                          </button>
-                        )}
-                        <button type="button" className="btn ghost small" onClick={() => onIgnore(d)}>
-                          Ignorar
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </>
+              <span>Se guarda en «Ingresos extra» y suma a tu mes.</span>
+              <span className="muted small-text">Si es un movimiento entre tus cuentas, no es un ingreso.</span>
+              {left !== null && (
+                <span className="muted small-text" role="status">
+                  Después de guardar te quedan {money(left)} este mes.
+                </span>
               )}
+              <div className="row detected-actions">
+                <button type="button" className="btn" disabled={off} onClick={() => void run(d, onSaveIncome && (() => onSaveIncome(d)))}>
+                  Guardar en Ingresos extra
+                </button>
+                <button type="button" className="btn ghost small" disabled={off} onClick={() => onIgnore(d)}>
+                  Es entre mis cuentas
+                </button>
+              </div>
             </section>
+          )
+        }
+        if (d.kind === 'DEBT_PAYMENT' || d.kind === 'TRANSFER_OUT') {
+          return (
+            <RoutedMovement
+              key={d.id}
+              d={d}
+              dayLabel={dayFmt.format(d.postedAtMillis)}
+              debts={debts}
+              categories={categories}
+              history={history}
+              off={busy !== null}
+              run={(job) => void run(d, job)}
+              onPayDebt={onPayDebt}
+              onPayNewDebt={onPayNewDebt}
+              onSaveAsExpense={onSaveWith}
+              onIgnore={onIgnore}
+              monthLeft={monthLeft}
+            />
           )
         }
         const suggested = d.merchant ? suggestCategory(d.merchant, categories, history) : null
@@ -281,9 +231,9 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
             <div className="card detected" key={a.id}>
               <div className="row between">
                 <strong className="num">{money(a.amount)}</strong>
-                <span className="sev sev-info">Guardado automático</span>
+                <span className="sev sev-info">{a.kind === 'income' ? 'Ingreso extra' : 'Guardado automático'}</span>
               </div>
-              <span>{a.note || 'Sin detalle'}</span>
+              <span>{a.kind === 'income' ? 'Ingreso extra' : a.note || 'Sin detalle'}</span>
               <span className="muted small-text">{a.synced ? 'Ya está en tu cuenta.' : 'Está en tu teléfono y se enviará solo.'}</span>
               {onUndoAuto && (
                 <button type="button" className="btn ghost small" onClick={() => onUndoAuto(a.id)}>

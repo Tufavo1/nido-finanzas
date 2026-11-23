@@ -39,6 +39,9 @@ class RecordingNotifier : DraftNotifier {
     val cancelled = mutableListOf<String>()
     override fun show(draft: Draft) { shown += draft }
     override fun cancel(draftId: String) { cancelled += draftId }
+    /** Guardados solos; como antes, tambien quedan en [shown] (comportamiento por defecto de DraftNotifier). */
+    val autoSaved = mutableListOf<Draft>()
+    override fun autoSaved(draft: Draft) { autoSaved += draft; show(draft) }
 }
 
 class RecordingHealth : HealthRecorder {

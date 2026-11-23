@@ -14,7 +14,7 @@ describe('filas', () => {
   it('ingreso: monto, nombre por defecto y fecha del aviso en Chile', () => {
     // 2026-01-01 02:30 UTC = 31 dic 23:30 en Santiago (verano, UTC-3)
     const r = incomeRow('h1', mk({ kind: 'INCOME', amountClp: 90_000, postedAtMillis: Date.UTC(2026, 0, 1, 2, 30) }), Date.UTC(2026, 5, 1))
-    expect(r).toMatchObject({ household_id: 'h1', amount: 90_000, source: 'Transferencia recibida', received_on: '2025-12-31' })
+    expect(r).toMatchObject({ household_id: 'h1', amount: 90_000, source: 'Ingreso extra', received_on: '2025-12-31' })
     expect(r.id).toBe('3f1c2d4e-5a6b-4c7d-8e9f-0a1b2c3d4e5f')
   })
   it('pago de deuda: quién paga es la persona y mismo id por borrador', () => {

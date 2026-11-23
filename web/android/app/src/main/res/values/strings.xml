@@ -14,6 +14,9 @@
     <string name="capture_income_body">Entraron %1$s · ¿es un ingreso tuyo?</string>
     <string name="capture_debt_title">Pago de deuda detectado</string>
     <string name="capture_debt_body">Pagaste %1$s a tu tarjeta · ¿a qué deuda va?</string>
+    <string name="capture_transfer_title">Transferencia detectada</string>
+    <string name="capture_transfer_body">Transferiste %1$s a %2$s: ¿gasto o pago de deuda?</string>
+    <string name="capture_transfer_body_no_name">Transferiste %1$s: ¿gasto o pago de deuda?</string>
     <string name="capture_action_review">Revisar</string>
     <string name="capture_action_save">Guardar</string>
     <string name="capture_action_category">Cambiar categoría</string>
@@ -55,5 +58,7 @@
     <string name="capture_reminder_title">Gastos pendientes</string>
     <string name="capture_queue_full">No pude guardar un gasto: la bandeja está llena. Abre Contigo y revísala.</string>
     <string name="capture_auto_saved_title">Gasto guardado automáticamente</string>
+    <string name="capture_auto_saved_income_title">Ingreso extra guardado</string>
+    <string name="capture_auto_saved_income_body">Guardé %1$s en Ingresos extra</string>
     <string name="capture_auto_saved_public">Desbloquea el teléfono para verlo</string>
 </resources>

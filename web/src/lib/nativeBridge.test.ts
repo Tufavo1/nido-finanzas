@@ -119,7 +119,7 @@ describe('registro automático: contratos', () => {
   it('parseAutoSaved descarta lo que no tenga la forma exacta', () => {
     const ok = { id: 'a', amount: 6500, note: 'Cafe Demo', at: 1, synced: false }
     expect(parseAutoSaved({ items: [{ ...ok, status: 'rejected' }] })[0]?.status).toBe('rejected')
-    expect(parseAutoSaved({ items: [ok, { ...ok, id: '' }, { ...ok, amount: 0 }, { ...ok, synced: 'si' }, null, 3] })).toEqual([{ ...ok, status: 'pending' }])
+    expect(parseAutoSaved({ items: [ok, { ...ok, id: '' }, { ...ok, amount: 0 }, { ...ok, synced: 'si' }, null, 3] })).toEqual([{ ...ok, status: 'pending', kind: 'expense' }])
     expect(parseAutoSaved(undefined)).toEqual([])
   })
   it('buildAutoCategories usa la más usada y la clave de primera palabra, sin tildes', () => {

@@ -1,8 +1,12 @@
 // Copyright (c) 2026 Dinovance
 package cl.nido.parser
 
-/** DEBT_PAYMENT: «Pagaste $X a tu tarjeta»: es plata que se mueve a una deuda, no un gasto nuevo. */
-enum class Kind { EXPENSE, INCOME, DEBT_PAYMENT }
+/**
+ * DEBT_PAYMENT: «Pagaste $X a tu tarjeta»: es plata que se mueve a una deuda, no un gasto nuevo.
+ * TRANSFER_OUT: «Transferiste $X a NOMBRE»: puede ser un gasto o un pago de deuda; lo decide la persona, nunca se guarda solo.
+ * El nombre del valor ([name]) es el `kind` del JSON de borradores que lee el front: no se renombra.
+ */
+enum class Kind { EXPENSE, INCOME, DEBT_PAYMENT, TRANSFER_OUT }
 
 enum class Confidence { HIGH, MEDIUM, LOW }
 

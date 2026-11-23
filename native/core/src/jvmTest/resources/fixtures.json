@@ -126,11 +126,11 @@
    "expected": {
     "amountClp": 20000,
     "merchant": "Juana Ejemplo",
-    "kind": "EXPENSE",
+    "kind": "TRANSFER_OUT",
     "confidence": "HIGH",
     "installment": null
    },
-   "nota": ""
+   "nota": "transferencia que sale: TRANSFER_OUT (antes EXPENSE+isTransfer); la persona decide si es gasto o pago de deuda"
   },
   {
    "id": "F09",

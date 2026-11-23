@@ -78,6 +78,9 @@ class CoreCommonTest {
         assertEquals(CaptureDecision.ASK, AutoCaptureRules.decide(cand(conf = Confidence.MEDIUM), auto, true))
         assertEquals(CaptureDecision.ASK, AutoCaptureRules.decide(cand(), auto, false))
         assertEquals(CaptureDecision.ASK, AutoCaptureRules.decide(cand(merchant = null), auto, true))
-        assertEquals(CaptureDecision.ASK, AutoCaptureRules.decide(cand(kind = Kind.INCOME), auto, true))
+        // Cambio pedido por el dueño: un ingreso de confianza alta dentro del tope se guarda solo (ingreso extra).
+        assertEquals(CaptureDecision.AUTO_SAVE, AutoCaptureRules.decide(cand(kind = Kind.INCOME), auto, true))
+        assertEquals(CaptureDecision.ASK, AutoCaptureRules.decide(cand(kind = Kind.DEBT_PAYMENT), auto, true))
+        assertEquals(CaptureDecision.ASK, AutoCaptureRules.decide(cand(kind = Kind.TRANSFER_OUT), auto, true))
     }
 }

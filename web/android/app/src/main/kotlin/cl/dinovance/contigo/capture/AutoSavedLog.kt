@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Dinovance
 package cl.dinovance.contigo.capture
 
+import cl.nido.parser.Kind
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Un gasto guardado automaticamente (para la lista «Guardados automaticamente» con Deshacer). Sin texto del aviso. */
+/** Un gasto o ingreso extra guardado automaticamente (lista «Guardados automaticamente» con Deshacer). Sin texto del aviso. */
 data class AutoSavedEntry(
     val id: String,
     val amountClp: Long,
@@ -17,6 +18,8 @@ data class AutoSavedEntry(
     val rejected: Boolean = false,
     /** Ya se aviso a la pareja (notify); false mientras se reintenta (R3-01). */
     val notified: Boolean = false,
+    /** EXPENSE (fila de expenses) o INCOME (fila de incomes, «Ingreso extra»). Un registro antiguo sin tipo es un gasto. */
+    val kind: Kind = Kind.EXPENSE,
 )
 
 /** Almacen minimo de texto (SecureKeyValueStore en produccion). */
@@ -54,16 +57,18 @@ class AutoSavedLog(private val store: TextStore, private val clock: () -> Long) 
 
     private fun load(): List<AutoSavedEntry> = try {
         val a = JSONArray(store.read() ?: "[]")
-        (0 until a.length()).map { val o = a.getJSONObject(it); AutoSavedEntry(o.getString("id"), o.getLong("amount"), o.getString("note"), o.getLong("at"), o.getBoolean("synced"), if (o.isNull("owner")) null else o.optString("owner"), o.optBoolean("rejected", false), o.optBoolean("notified", false)) }
+        (0 until a.length()).map { val o = a.getJSONObject(it); AutoSavedEntry(o.getString("id"), o.getLong("amount"), o.getString("note"), o.getLong("at"), o.getBoolean("synced"), if (o.isNull("owner")) null else o.optString("owner"), o.optBoolean("rejected", false), o.optBoolean("notified", false), kindOf(o.optString("kind"))) }
     } catch (e: Exception) {
         emptyList()
     }
 
     private fun save(items: List<AutoSavedEntry>) {
         val a = JSONArray()
-        items.filter { clock() - it.at < MAX_AGE_MILLIS }.forEach { a.put(JSONObject().put("id", it.id).put("amount", it.amountClp).put("note", it.note).put("at", it.at).put("synced", it.synced).put("owner", it.ownerKey ?: JSONObject.NULL).put("rejected", it.rejected).put("notified", it.notified)) }
+        items.filter { clock() - it.at < MAX_AGE_MILLIS }.forEach { a.put(JSONObject().put("id", it.id).put("amount", it.amountClp).put("note", it.note).put("at", it.at).put("synced", it.synced).put("owner", it.ownerKey ?: JSONObject.NULL).put("rejected", it.rejected).put("notified", it.notified).put("kind", it.kind.name)) }
         store.write(a.toString())
     }
+
+    private fun kindOf(name: String): Kind = if (name == Kind.INCOME.name) Kind.INCOME else Kind.EXPENSE
 
     private companion object {
         const val MAX = 50

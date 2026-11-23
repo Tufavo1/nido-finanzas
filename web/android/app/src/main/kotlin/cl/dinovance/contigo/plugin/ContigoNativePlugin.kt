@@ -331,6 +331,8 @@ class ContigoNativePlugin : Plugin() {
         val profile = AutoProfile.fromJs(
             call.getString("ownerKey").orEmpty(), call.getString("userId").orEmpty(), call.getString("householdId").orEmpty(),
             call.getString("paidBy").orEmpty(), call.getBoolean("shared") ?: false, call.getArray("categories") ?: JSArray(),
+            // Opcional: categoria general para comercios nuevos; si falta o no es un UUID, el comercio nuevo pregunta como antes.
+            call.getString("defaultCategoryId"),
         ) ?: return call.reject("Perfil no válido", "INVALID_ARGUMENT")
         // Solo el perfil del dueño activo: una respuesta tardía de otra persona no puede dejar su perfil guardado (R3-04)
         if (profile.ownerKey != graph.prefs.activeOwner()) return call.reject("El perfil no es del dueño activo", "OWNER_MISMATCH")
@@ -371,13 +373,16 @@ class ContigoNativePlugin : Plugin() {
         call.resolve()
     }
 
-    /** Gastos guardados solos de la persona activa (otra persona del mismo telefono no ve los ajenos). status: pending | synced | rejected. */
+    /**
+     * Gastos e ingresos extra guardados solos de la persona activa (otra persona del mismo telefono no ve los ajenos).
+     * status: pending | synced | rejected. kind: EXPENSE (expenses) | INCOME (incomes, «Ingreso extra»).
+     */
     @PluginMethod
     fun listAutoSaved(call: PluginCall) {
         val items = JSArray()
         graph.autoLog.listFor(graph.prefs.activeOwner()).forEach {
             val status = if (it.rejected) "rejected" else if (it.synced) "synced" else "pending"
-            items.put(JSObject().put("id", it.id).put("amount", it.amountClp).put("note", it.note).put("at", it.at).put("synced", it.synced).put("status", status))
+            items.put(JSObject().put("id", it.id).put("amount", it.amountClp).put("note", it.note).put("at", it.at).put("synced", it.synced).put("status", status).put("kind", it.kind.name))
         }
         call.resolve(JSObject().put("items", items))
     }

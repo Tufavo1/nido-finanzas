@@ -15,13 +15,18 @@ enum class CaptureDecision { AUTO_SAVE, ASK }
 /** Reglas puras del modo automatico (RF-09); la categoria aprendida la resuelve quien tiene el historial. */
 object AutoCaptureRules {
     /**
-     * Guardar solo es posible en modo AUTO, para un gasto de confianza alta, dentro del tope (inclusivo), con comercio
-     * y una categoria que la persona ya uso. Abonos, retiros y dudas piden confirmacion.
+     * Guardar solo es posible en modo AUTO, con confianza alta y dentro del tope (inclusivo):
+     * - un GASTO ademas necesita comercio y una categoria ([hasLearnedCategory]: aprendida o la general por defecto del perfil);
+     * - un INGRESO («Recibiste») se guarda como ingreso extra, sin comercio ni categoria;
+     * - un pago de deuda o una transferencia que sale jamas: la persona decide a que corresponde.
      */
     fun decide(candidate: ParsedCandidate, settings: CaptureSettings, hasLearnedCategory: Boolean): CaptureDecision {
-        if (settings.mode != CaptureMode.AUTO || candidate.kind != Kind.EXPENSE || candidate.confidence != Confidence.HIGH) return CaptureDecision.ASK
+        if (settings.mode != CaptureMode.AUTO || candidate.confidence != Confidence.HIGH) return CaptureDecision.ASK
         if (candidate.amountClp <= 0 || candidate.amountClp > settings.maxClp) return CaptureDecision.ASK
-        if (candidate.merchant.isNullOrBlank() || !hasLearnedCategory) return CaptureDecision.ASK
-        return CaptureDecision.AUTO_SAVE
+        return when (candidate.kind) {
+            Kind.INCOME -> CaptureDecision.AUTO_SAVE
+            Kind.EXPENSE -> if (candidate.merchant.isNullOrBlank() || !hasLearnedCategory) CaptureDecision.ASK else CaptureDecision.AUTO_SAVE
+            Kind.DEBT_PAYMENT, Kind.TRANSFER_OUT -> CaptureDecision.ASK
+        }
     }
 }

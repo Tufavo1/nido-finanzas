@@ -20,7 +20,8 @@ class NotificationParser(private val allowedPackages: Set<String>) {
         if (tokens.isEmpty()) return ParseResult(null, ParseRejection.NO_AMOUNT)
         val candidate = extract(packageName, body, postedAtMillis, tokens)
         val ambiguous = tokens.map { it.amountClp }.distinct().size > 1 && InstallmentExtractor.find(body) == null
-        return ParseResult(candidate, if (candidate == null) ParseRejection.NO_AMOUNT else null, ambiguous)
+        val extraIncome = candidate?.kind == Kind.INCOME && MovementClassifier.classify(body).extraIncome
+        return ParseResult(candidate, if (candidate == null) ParseRejection.NO_AMOUNT else null, ambiguous, extraIncome)
     }
 
     /**
@@ -43,7 +44,9 @@ class NotificationParser(private val allowedPackages: Set<String>) {
         val installmentInfo = InstallmentExtractor.find(body)
         val charged = installmentInfo?.let { info -> tokens.firstOrNull { it.start >= info.markerEnd } } ?: first
         val kind = MovementClassifier.classify(body)
-        val merchant = if (kind.type != Kind.EXPENSE || kind.isWithdrawal) null else
+        // En una transferencia que sale, el «comercio» es el destinatario.
+        val named = kind.type == Kind.EXPENSE || kind.type == Kind.TRANSFER_OUT
+        val merchant = if (!named || kind.isWithdrawal) null else
             MerchantExtractor.find(body.substring(0, first.start), body.substring(first.end), kind.isTransfer)
         return ParsedCandidate(
             amountClp = charged.amountClp,
@@ -57,6 +60,7 @@ class NotificationParser(private val allowedPackages: Set<String>) {
     }
 
     private fun confidenceOf(kind: Movement, merchant: String?): Confidence = when {
+        kind.type == Kind.TRANSFER_OUT -> if (merchant == null) Confidence.MEDIUM else Confidence.HIGH
         kind.type != Kind.EXPENSE -> Confidence.HIGH
         kind.isWithdrawal -> Confidence.LOW
         merchant == null -> Confidence.MEDIUM
@@ -66,5 +70,9 @@ class NotificationParser(private val allowedPackages: Set<String>) {
 
 enum class ParseRejection { NOT_ALLOWED, NO_TEXT, DISCARDED, NO_AMOUNT }
 
-/** [ambiguousAmount]: el aviso trae varios montos distintos y sin cuotas; se toma el primero y conviene confirmar. */
-data class ParseResult(val candidate: ParsedCandidate?, val rejection: ParseRejection?, val ambiguousAmount: Boolean = false)
+/**
+ * [ambiguousAmount]: el aviso trae varios montos distintos y sin cuotas; se toma el primero y conviene confirmar.
+ * [extraIncome]: INCOME que es plata que te mandan («Recibiste», «Te transfirieron»): el unico ingreso que puede guardarse solo
+ * como «Ingreso extra». Un abono, devolucion o reversa es INCOME pero false. No se guarda en el borrador (no es parte del JSON).
+ */
+data class ParseResult(val candidate: ParsedCandidate?, val rejection: ParseRejection?, val ambiguousAmount: Boolean = false, val extraIncome: Boolean = false)
