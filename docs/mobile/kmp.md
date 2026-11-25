@@ -5,7 +5,7 @@ La interfaz sigue siendo el React con Capacitor. Solo la lógica pura compartida
 
 ## Contenido (paquete `cl.nido.parser`, sin cambio de nombre)
 `commonMain`, sin ningún `java.*`: `NotificationParser`, `DiscardRules`, `MoneyExtractor`, `ClpAmount` (parseo, límite y formato de pesos), `InstallmentExtractor`, `MovementClassifier`, `MerchantExtractor`, `Fingerprint` + `Sha256` (SHA-256 en Kotlin puro), `TextNormalizer` (tildes a mano, sin `java.text.Normalizer`), `ParsedCandidate`, `ExpenseLinkParser` (validación de `nido://gasto`) y `AutoCaptureRules` (modo automático, el que decide si hay categoría aprendida pasa como booleano).
-`jvmTest`: las 65 pruebas de QA y de robustez, sin tocar aserciones (leen `fixtures.json`). `commonTest` (`kotlin.test`): SHA-256 con vectores conocidos, `ClpAmount`, normalización, enlace profundo y reglas del modo automático (7 pruebas).
+`jvmTest`: pruebas de QA y de robustez, sin tocar aserciones (leen `fixtures.json`). `commonTest` (`kotlin.test`): SHA-256 con vectores conocidos, `ClpAmount`, normalización, enlace profundo y reglas del modo automático. Total hoy: **233 pruebas** (núcleo). Desglose entre `jvmTest` y `commonTest`: por verificar (la cifra anterior de 65 + 7 ya no coincide con el total).
 
 ## Objetivos y toolchain
 - `jvm` (JVM 17, compilado con JDK 21): lo consume Android como build incluido `cl.nido:core` (`web/android/settings.gradle`).

@@ -1,5 +1,7 @@
 import type { Debt, DebtPayment, Expense } from './data'
+import { money, pctText, toISO } from './format'
 import { portion } from './split'
+import { digitsOnly } from './ui'
 import type { Split } from './split'
 
 export type Level = 'ok' | 'warn' | 'bad'
@@ -162,7 +164,7 @@ export function debtView(debt: Debt, payments: DebtPayment[], now: Date = new Da
     paid,
     remaining,
     accrued,
-    progressPct: Math.min(100, Math.round((paid * 100) / (debt.original_amount + accrued))),
+    progressPct: debt.original_amount + accrued > 0 ? Math.min(100, Math.round((paid * 100) / (debt.original_amount + accrued))) : 0,
     monthlyInterest,
     months,
     stuck: remaining > 0 && months === null,
@@ -212,7 +214,7 @@ export function summarizeDebts(debts: Debt[], payments: DebtPayment[], now: Date
       detail:
         v.debt.monthly_payment === 0
           ? 'No tiene cuota definida. Fija un monto mensual para que avance.'
-          : `La cuota no cubre ni los intereses (~${Math.round(v.monthlyInterest).toLocaleString('es-CL')} al mes). Paga más que la cuota para que baje.`,
+          : `La cuota no cubre ni los intereses (~${money(v.monthlyInterest)} al mes). Paga más que la cuota para que baje.`,
     })
   }
   for (const v of active) {
@@ -228,14 +230,14 @@ export function summarizeDebts(debts: Debt[], payments: DebtPayment[], now: Date
     findings.push({
       level: 'warn',
       title: `Paguen primero **${focus.debt.name}**`,
-      detail: `Es la que más interés cobra (${focus.debt.monthly_rate} % mensual). Cualquier plata extra rinde más si la usan ahí.`,
+      detail: `Es la que más interés cobra (${pctText(focus.debt.monthly_rate)} mensual). Cualquier plata extra rinde más si la usan ahí.`,
     })
   }
   if (interest > 0) {
     findings.push({
       level: interest > monthly * 0.4 ? 'bad' : 'warn',
       title: 'Parte de lo que pagan se va en intereses',
-      detail: `Unos ${Math.round(interest).toLocaleString('es-CL')} al mes, el ${monthly > 0 ? Math.round((interest * 100) / monthly) : 0} % de sus cuotas.`,
+      detail: `Unos ${money(interest)} al mes, el ${monthly > 0 ? Math.round((interest * 100) / monthly) : 0} % de sus cuotas.`,
     })
   }
   const best = [...active].sort((a, b) => b.progressPct - a.progressPct)[0]
@@ -261,7 +263,7 @@ export function summarizeDebts(debts: Debt[], payments: DebtPayment[], now: Date
  * Cada deuda cuenta su cuota o, si este mes se pagó más (o no tiene cuota anotada), lo realmente pagado este mes:
  * así un pago nunca se pierde ni se cuenta dos veces. Una deuda saldada este mes sigue contando lo que se pagó.
  */
-export function myDebtShare(debts: Debt[], payments: DebtPayment[], meId: string, split: Split, now: Date = new Date()): number {
+export function myDebtShare(debts: Debt[], payments: DebtPayment[], meId: string, split: Split, now: Date, expenses: PaidExpense[]): number {
   const prefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   return Math.round(
     sumBy(debts, (d) => {
@@ -269,7 +271,7 @@ export function myDebtShare(debts: Debt[], payments: DebtPayment[], meId: string
         payments.filter((p) => p.debt_id === d.id && p.paid_on.startsWith(prefix)),
         (p) => p.amount,
       )
-      if (debtView(d, payments, now).remaining <= 0 && paidNow <= 0) return 0
+      if (debtView(d, payments, now, expenses, debts).remaining <= 0 && paidNow <= 0) return 0
       const fee = Math.max(d.monthly_payment, paidNow)
       return d.owner_id === meId ? fee : d.owner_id === null ? portion(fee, split, meId) : 0
     }),
@@ -399,7 +401,7 @@ export function analyzeSalary(opts: {
     findings.push({
       level: 'warn',
       title: 'Tu ahorro supera lo que te sobraba',
-      detail: `Entre gastos, cuotas y los ${Math.round(saved).toLocaleString('es-CL')} que apartaste ya pasaste tu sueldo en ${Math.round(-free).toLocaleString('es-CL')}. Esa diferencia salió de ahorros anteriores o hay que ajustar el mes.`,
+      detail: `Entre gastos, cuotas y los ${money(saved)} que apartaste ya pasaste tu sueldo en ${money(-free)}. Esa diferencia salió de ahorros anteriores o hay que ajustar el mes.`,
     })
   } else if (free < 0) {
     level = 'bad'
@@ -407,7 +409,7 @@ export function analyzeSalary(opts: {
     findings.push({
       level: 'bad',
       title: 'Estás sobre tu sueldo',
-      detail: `Gastos${saved > 0 ? ', ahorro' : ''} y cuotas superan tu sueldo en ${Math.round(-free).toLocaleString('es-CL')}.`,
+      detail: `Gastos${saved > 0 ? ', ahorro' : ''} y cuotas superan tu sueldo en ${money(-free)}.`,
     })
   } else if (realFree < 0) {
     level = 'bad'
@@ -415,7 +417,7 @@ export function analyzeSalary(opts: {
     findings.push({
       level: 'bad',
       title: 'Te faltará para tus fijos',
-      detail: `Te quedan ${Math.round(free).toLocaleString('es-CL')} pero aún vencen ${Math.round(pendingFixed).toLocaleString('es-CL')} en gastos fijos: faltarían ${Math.round(-realFree).toLocaleString('es-CL')}. No gastes en otra cosa.`,
+      detail: `Te quedan ${money(free)} pero aún vencen ${money(pendingFixed)} en gastos fijos: faltarían ${money(-realFree)}. No gastes en otra cosa.`,
     })
   } else if (projectedFree !== null && projectedFree < 0) {
     level = 'bad'
@@ -423,7 +425,7 @@ export function analyzeSalary(opts: {
     findings.push({
       level: 'bad',
       title: 'Vas a pasarte de tu sueldo',
-      detail: `Al cierre te faltarían ~${Math.round(-projectedFree).toLocaleString('es-CL')}. Baja el ritmo${safeDaily !== null ? ` a ${safeDaily.toLocaleString('es-CL')} al día` : ''}.`,
+      detail: `Al cierre te faltarían ~${money(-projectedFree)}. Baja el ritmo${safeDaily !== null ? ` a ${money(safeDaily)} al día` : ''}.`,
     })
   } else if (outlookPct < 10) {
     level = 'warn'
@@ -439,8 +441,8 @@ export function analyzeSalary(opts: {
       title: `Puedes ahorrar ~${outlookPct} % del sueldo`,
       detail:
         saved > 0
-          ? `Ya apartaste ${Math.round(saved).toLocaleString('es-CL')} y te quedarían ~${Math.round(outlook).toLocaleString('es-CL')} más a fin de mes.`
-          : `Te quedarían ~${Math.round(outlook).toLocaleString('es-CL')} a fin de mes.`,
+          ? `Ya apartaste ${money(saved)} y te quedarían ~${money(outlook)} más a fin de mes.`
+          : `Te quedarían ~${money(outlook)} a fin de mes.`,
     })
   }
 
@@ -471,7 +473,7 @@ export function analyzeSalary(opts: {
 /* ---------- Modelo de dos cuentas: débito y tarjeta de crédito ---------- */
 
 /** Lo mínimo de un gasto que usan estas cuentas: sirve el gasto completo (Expense) o el del historial */
-type PaidExpense = Pick<Expense, 'amount' | 'shared' | 'paid_by' | 'spent_on'> & { payment_method?: string | null; card_debt_id?: string | null }
+export type PaidExpense = Pick<Expense, 'amount' | 'shared' | 'paid_by' | 'spent_on'> & { payment_method?: string | null; card_debt_id?: string | null }
 
 /** Un gasto con tarjeta de crédito no baja la débito: sube lo usado de la tarjeta */
 export function isCardExpense(e: { payment_method?: string | null }): boolean {
@@ -496,7 +498,7 @@ export function myDebtPaidThisMonth(debts: Debt[], payments: DebtPayment[], meId
 }
 
 /** Cuota que falta pagar este mes (me corresponde): cuota − pagado, sin pasar del saldo; solo deudas con saldo */
-export function myDebtDue(debts: Debt[], payments: DebtPayment[], meId: string, split: Split, now: Date = new Date(), expenses: PaidExpense[] = []): number {
+export function myDebtDue(debts: Debt[], payments: DebtPayment[], meId: string, split: Split, now: Date, expenses: PaidExpense[]): number {
   return Math.round(
     sumBy(debts, (d) => {
       const v = debtView(d, payments, now, expenses, debts)
@@ -506,11 +508,54 @@ export function myDebtDue(debts: Debt[], payments: DebtPayment[], meId: string, 
   )
 }
 
-/** Compras con tarjeta cargadas a esta tarjeta; sin tarjeta asignada, van a la única tarjeta del hogar (con varias, a ninguna) */
+/**
+ * Compras con tarjeta cargadas a esta tarjeta; sin tarjeta asignada, van a la única tarjeta del hogar (con varias, a ninguna).
+ * Si esa única tarjeta es de una persona, no se le cargan compras que pagó otra.
+ */
 export function cardCharges<E extends PaidExpense = Expense>(debt: Debt, expenses: E[], allDebts: Debt[]): E[] {
   if (!isCard(debt)) return []
   const cards = allDebts.filter((d) => isCard(d) && d.id !== debt.id).length + 1
-  return expenses.filter((e) => isCardExpense(e) && (e.card_debt_id ? e.card_debt_id === debt.id : cards === 1))
+  const soleOwner = debt.owner_id
+  return expenses.filter((e) => {
+    if (!isCardExpense(e)) return false
+    if (e.card_debt_id) return e.card_debt_id === debt.id
+    return cards === 1 && (soleOwner == null || e.paid_by === soleOwner)
+  })
+}
+
+/** Compras con tarjeta que ninguna tarjeta registrada se lleva (sin tarjetas, con varias sin elegir o de otro dueño); con `month`, solo ese mes */
+export function unassignedCardExpenses<E extends PaidExpense = Expense>(expenses: E[], debts: Debt[], month?: Date): E[] {
+  const prefix = month ? monthPrefixOf(month) : ''
+  const cards = debts.filter(isCard)
+  return expenses.filter((e) => isCardExpense(e) && e.spent_on.startsWith(prefix) && !cards.some((c) => cardCharges(c, [e], debts).length > 0))
+}
+
+/** Compras con tarjeta que sí quedan cargadas a alguna tarjeta registrada */
+function assignedCardExpenses<E extends PaidExpense>(expenses: E[], debts: Debt[]): E[] {
+  const cards = debts.filter(isCard)
+  return expenses.filter((e) => isCardExpense(e) && cards.some((c) => cardCharges(c, [e], debts).length > 0))
+}
+
+/**
+ * Desde cuándo hay que traer las compras con tarjeta para calcular el saldo de las tarjetas: la fecha más antigua entre el saldo informado
+ * (o el alta, si no tiene) de cada una. No depende del mes que se mira. null si no hay tarjetas.
+ */
+export function cardsSince(debts: Debt[]): string | null {
+  const dates = debts.filter(isCard).map((d) => cardBalanceStart(d))
+  return dates.length === 0 ? null : dates.reduce((a, b) => (a < b ? a : b))
+}
+
+/** Fecha (AAAA-MM-DD) desde la que cuentan las compras de esta tarjeta: el saldo informado o, sin él, el alta (en fecha local) */
+function cardBalanceStart(debt: Debt): string {
+  if (debt.reported_balance != null && debt.reported_at) return debt.reported_at.slice(0, 10)
+  // created_at viene en UTC: se compara con la fecha local en que se anotaron las compras
+  const created = new Date(debt.created_at)
+  return Number.isNaN(created.getTime()) ? debt.created_at.slice(0, 10) : toISO(created)
+}
+
+/** Montos que se ofrecen al pagar una deuda: la cuota (sin pasar del saldo; null si no hay cuota) y el saldo completo */
+export function debtPayChips(monthlyPayment: number, remaining: number): { fee: number | null; all: number } {
+  return { fee: monthlyPayment > 0 ? Math.min(monthlyPayment, remaining) : null, all: remaining }
 }
 
 export interface CardBalance {
@@ -530,15 +575,103 @@ export interface CardBalance {
 export function cardBalance(debt: Debt, payments: DebtPayment[], expenses: PaidExpense[], allDebts: Debt[]): CardBalance {
   const charges = cardCharges(debt, expenses, allDebts)
   const mine = payments.filter((p) => p.debt_id === debt.id)
-  const at = debt.reported_balance != null && debt.reported_at ? debt.reported_at.slice(0, 10) : null
-  if (at !== null) {
-    const since = sumBy(charges.filter((e) => e.spent_on > at), (e) => e.amount)
-    const paidAfter = sumBy(mine.filter((p) => p.paid_on >= at), (p) => p.amount)
-    return { used: Math.max(0, (debt.reported_balance ?? 0) + since - paidAfter), informed: true, informedAt: at, sinceInformed: since }
+  const informed = debt.reported_balance != null && !!debt.reported_at
+  const from = cardBalanceStart(debt)
+  if (informed) {
+    const since = sumBy(charges.filter((e) => e.spent_on > from), (e) => e.amount)
+    const paidAfter = sumBy(mine.filter((p) => p.paid_on >= from), (p) => p.amount)
+    return { used: Math.max(0, (debt.reported_balance ?? 0) + since - paidAfter), informed: true, informedAt: from, sinceInformed: since }
   }
-  const from = debt.created_at.slice(0, 10)
   const spent = sumBy(charges.filter((e) => e.spent_on >= from), (e) => e.amount)
   return { used: Math.max(0, debt.original_amount + spent - sumBy(mine, (p) => p.amount)), informed: false, informedAt: null, sinceInformed: 0 }
+}
+
+export interface CardLimitStatus {
+  limit: number
+  used: number
+  /** Lo que queda de cupo (0 si se pasó) */
+  free: number
+  /** Cuánto se pasó del cupo (0 si no se pasó) */
+  over: number
+  /** % usado del cupo, redondeado */
+  pct: number
+}
+
+/** Cupo total de una tarjeta frente a lo usado. El usado puede superar el cupo. Sin cupo (o 0) no hay nada que mostrar. Solo informativo. */
+export function cardLimitStatus(debt: Debt, used: number): CardLimitStatus | null {
+  const limit = debt.credit_limit
+  if (!isCard(debt) || limit == null || !(limit > 0)) return null
+  return { limit, used, free: Math.max(0, limit - used), over: Math.max(0, used - limit), pct: Math.round((used * 100) / limit) }
+}
+
+/** Máximo de dígitos del cupo total (la base lo acota igual; así se avisa antes de enviar) */
+export const CREDIT_LIMIT_MAX_DIGITS = 10
+
+/** Lo que deja escribir el campo de cupo: un dígito más del máximo, para poder avisar en vez de cortar en silencio */
+export const creditLimitInput = (raw: string): string => digitsOnly(raw, CREDIT_LIMIT_MAX_DIGITS + 1)
+
+/** Aviso en español si el cupo escrito no cabe; null si está bien o vacío */
+export function creditLimitProblem(raw: string): string | null {
+  return raw.replace(/\D/g, '').length > CREDIT_LIMIT_MAX_DIGITS ? `El cupo no es válido. Escribe hasta ${CREDIT_LIMIT_MAX_DIGITS} dígitos.` : null
+}
+
+/** La clave credit_limit solo viaja si el usuario la escribió o la cambió, para no romper contra una base sin la columna. Un cupo de más de 10 dígitos no viaja (el formulario ya lo avisó con creditLimitProblem) */
+export function creditLimitPatch(raw: string, existing?: Pick<Debt, 'credit_limit'>): { credit_limit?: number | null } {
+  if (creditLimitProblem(raw)) return {}
+  const n = Number(raw.replace(/\D/g, ''))
+  const before = existing?.credit_limit ?? null
+  if (raw.trim() === '' || n <= 0) return before != null ? { credit_limit: null } : {}
+  return n === before ? {} : { credit_limit: n }
+}
+
+type DbError = { code?: string; message?: string } | null | undefined
+
+/** El servidor aún no tiene (o no deja escribir) la columna credit_limit. Un check fallido (23514) NO cuenta: el cupo era inválido */
+export function isMissingCreditLimitColumn(err: DbError): boolean {
+  if (!err) return false
+  if (err.code === 'PGRST204' || err.code === '42703') return true
+  return err.code === '42501' && /column/i.test(err.message ?? '')
+}
+
+/** La base rechazó el cupo por fuera de rango (check debts_credit_limit_rango) */
+export function isInvalidCreditLimit(err: DbError): boolean {
+  return !!err && err.code === '23514' && /credit_limit/i.test(err.message ?? '')
+}
+
+/** Texto para la persona cuando falla guardar una deuda */
+export function debtSaveMessage(err: DbError): string {
+  return isInvalidCreditLimit(err) ? 'El cupo no es válido. Revisa el monto e intenta de nuevo.' : 'No se pudo guardar la deuda. Revisa tu conexión e intenta de nuevo.'
+}
+
+/** Guarda una deuda; si el servidor no conoce credit_limit, reintenta una vez sin esa clave para no perder la deuda. Un cupo inválido (23514) devuelve el error: nunca se guarda en silencio sin cupo */
+export async function saveDebtKeepingData<E extends { code?: string; message?: string }>(
+  run: (fields: Record<string, unknown>) => PromiseLike<{ error: E | null }>,
+  fields: Record<string, unknown>,
+): Promise<{ error: E | null; droppedLimit: boolean }> {
+  const first = await run(fields)
+  if (!first.error || !('credit_limit' in fields) || !isMissingCreditLimitColumn(first.error)) return { error: first.error, droppedLimit: false }
+  const { credit_limit: _omit, ...rest } = fields
+  void _omit
+  const second = await run(rest)
+  return { error: second.error, droppedLimit: !second.error }
+}
+
+/**
+ * Al editar una deuda: en una tarjeta «Lo que falta pagar» es el cupo utilizado que dice el banco hoy, así que queda
+ * como saldo informado de hoy (si cambió respecto de lo que se mostraba, o si la tarjeta aún no tenía uno).
+ * Si no, el monto anotado sumaría otra vez las compras desde el alta, que el banco ya incluye. Sin cambios: no se toca.
+ */
+export function cardEditReport(existing: Debt | undefined, kind: string, total: number, shown: number | null, today: string): { reported_balance?: number; reported_at?: string } {
+  if (kind !== 'tarjeta') return {}
+  const informed = existing != null && isCard(existing) && existing.reported_balance != null && !!existing.reported_at
+  if (informed && total === shown) return {}
+  return { reported_balance: total, reported_at: today }
+}
+
+/** Una tarjeta activa con ese mismo nombre (sin distinguir mayúsculas ni espacios), para no anotarla dos veces */
+export function sameNameCard(debts: Debt[], name: string): Debt | null {
+  const key = name.trim().toLocaleLowerCase('es-CL')
+  return debts.find((d) => isCard(d) && !d.archived && d.name.trim().toLocaleLowerCase('es-CL') === key) ?? null
 }
 
 /** Comisión mensual de administración por plan, en UF (informativa: el banco la cobra solo si el ciclo tiene movimientos ≥ $10.000) */
@@ -549,14 +682,14 @@ export function cardMonthlyFee(kind: keyof typeof CMR_ADMIN_UF, ufValue: number)
 }
 
 /**
- * Lo que entra en «te queda del sueldo» (igual en todas las pantallas): gasto sin las compras con tarjeta,
+ * Lo que entra en «te queda del sueldo» (igual en todas las pantallas): gasto sin las compras con tarjeta que sí se cargan a una tarjeta (las demás cuentan como gasto normal),
  * lo realmente pagado a deudas en el mes y la cuota que falta (por pagar, solo en el mes en curso).
  */
-export function salaryFlows(o: { expenses: PaidExpense[]; debts: Debt[]; debtPayments: DebtPayment[]; meId: string; split: Split; month: Date; now?: Date; trueCost: number }): { spent: number; commitments: number; pendingDebt: number } {
+export function salaryFlows(o: { expenses: PaidExpense[]; /** Compras con tarjeta desde el saldo informado (no solo las del mes): de ahí sale lo que falta de cada cuota */ cardExpenses: PaidExpense[]; debts: Debt[]; debtPayments: DebtPayment[]; meId: string; split: Split; month: Date; now?: Date; trueCost: number }): { spent: number; commitments: number; pendingDebt: number } {
   const now = o.now ?? new Date()
   return {
-    spent: Math.max(0, Math.round(o.trueCost - myCardSpent(o.expenses, o.meId, o.split, o.month))),
+    spent: Math.max(0, Math.round(o.trueCost - myCardSpent(assignedCardExpenses(o.expenses, o.debts), o.meId, o.split, o.month))),
     commitments: myDebtPaidThisMonth(o.debts, o.debtPayments, o.meId, o.split, o.month),
-    pendingDebt: isCurrentMonth(o.month, now) ? myDebtDue(o.debts, o.debtPayments, o.meId, o.split, now, o.expenses) : 0,
+    pendingDebt: isCurrentMonth(o.month, now) ? myDebtDue(o.debts, o.debtPayments, o.meId, o.split, now, o.cardExpenses) : 0,
   }
 }

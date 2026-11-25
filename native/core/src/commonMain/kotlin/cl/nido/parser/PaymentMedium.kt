@@ -10,8 +10,10 @@ package cl.nido.parser
 enum class PaymentMedium { DEBIT, CREDIT, UNKNOWN }
 
 object PaymentMediumClassifier {
-    private val CREDIT = Regex("\\bcmr\\b|\\bcredito\\b|\\bvisa\\b|\\bmastercard\\b|\\bamex\\b")
-    private val DEBIT = Regex("\\bdebito\\b|\\bcuenta\\b|\\bcta\\b|\\bvista\\b|\\brut\\b|\\bcorriente\\b")
+    // Solo lo explicito: «credito» o la CMR. Visa, Mastercard o Amex a secas tambien existen en debito: no dicen el medio (M2).
+    private val CREDIT = Regex("\\bcmr\\b|\\bcredito\\b")
+    // Redcompra es la red de debito chilena; «CuentaRUT» (BancoEstado) puede venir pegada.
+    private val DEBIT = Regex("\\bdebito\\b|\\bcuenta\\b|\\bcta\\b|\\bvista\\b|\\brut\\b|\\bcuentarut\\b|\\bcorriente\\b|\\bredcompra\\b")
 
     /** [account] es el medio que nombra el aviso («CMR Mastercard Premium ·5766», «Débito Banco Falabella»). */
     fun of(account: String?): PaymentMedium {

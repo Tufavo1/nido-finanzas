@@ -18,14 +18,14 @@ Notificación de otra app ──► NotificationCaptureService (solo paquetes de
 WebView (React) ◄── ContigoNativePlugin (Capacitor, "ContigoNative") ──► web/src/lib/nativeBridge.ts
    candidates.ts  → borrador de gasto, decideCapture (modo CONFIRM por defecto)
    offlineQueue.ts → envío con id idempotente (newId + 23505) y retroceso exponencial con tope
-   nativeApi.ts   → HTTP nativo sin cabecera Origin, VITE_API_BASE, x-request-id, tiempos de espera
+   nativeApi.ts   → HTTP nativo con cabecera Origin exacta del Worker (sin Sec-Fetch-Site), VITE_API_BASE, x-request-id, tiempos de espera
    secureSession.ts → sesión de supabase-js en Keystore (sin localStorage)
 ```
 
 El texto bruto del aviso vive solo dentro de `CaptureProcessor.process` y del parser: no se guarda, no se registra, no está en `ParsedCandidate` ni en el borrador (hay pruebas: el archivo cifrado no contiene monto ni texto, y `ParsedCandidate` solo expone 6 campos).
 
 ### Parser (`native/core`)
-Módulo JVM puro. Orden: lista blanca exacta por paquete → descarte (clave, código, contraseña, oferta, descuento, cupón, saldo, rechazada, pago de cuota, moneda extranjera) → montos (`$`, `CLP`, `pesos`; centavos ignorados; 0 y ≥ 10.000.000.000 descartados) → tipo (abono/devolución = INCOME, retiro = EXPENSE con confianza LOW) → comercio (`en X`, `a X`, o `a X por` en transferencias; MAYÚSCULAS pasan a Título; sin comercio = MEDIUM) → cuota (`Cuota N de M`, `Primera cuota` + `M cuotas`; se registra el valor de la cuota) → huella SHA-256 (paquete + texto normalizado + monto + minuto). Una clase por regla: `DiscardRules`, `MoneyExtractor`, `InstallmentExtractor`, `MovementClassifier`, `MerchantExtractor`, `Fingerprint`. El módulo se incluye en la app Android como build incluido (`includeBuild('../../native/core')`, coordenadas `cl.nido:parser`).
+Módulo JVM puro. Orden: lista blanca exacta por paquete → descarte (clave, código, contraseña, oferta, descuento, cupón, saldo, rechazada, pago de cuota, moneda extranjera) → montos (`$`, `CLP`, `pesos`; centavos ignorados; 0 y ≥ 10.000.000.000 descartados) → tipo (abono/devolución = INCOME, retiro = EXPENSE con confianza LOW) → comercio (`en X`, `a X`, o `a X por` en transferencias; MAYÚSCULAS pasan a Título; sin comercio = MEDIUM) → cuota (`Cuota N de M`, `Primera cuota` + `M cuotas`, `N cuotas de $X`; una compra en cuotas se registra por el TOTAL desde el 2026-11-24, ver «Falabella/CMR y Billetera Google») → huella SHA-256 (paquete + texto normalizado + monto + minuto). Una clase por regla: `DiscardRules`, `MoneyExtractor`, `InstallmentExtractor`, `MovementClassifier`, `MerchantExtractor`, `Fingerprint`. El módulo se incluye en la app Android como build incluido (`includeBuild('../../native/core')`, coordenadas `cl.nido:parser`).
 
 ### App Android (`web/android`)
 - `capture/NotificationCaptureService`: lista blanca decidida por paquete ANTES de leer los extras; cualquier excepción al leer extras se cuenta (nombre de clase) y el servicio sigue; `onListenerDisconnected` pide reconectar.
@@ -62,9 +62,9 @@ Módulo JVM puro. Orden: lista blanca exacta por paquete → descarte (clave, c�
 ## Cómo probar
 ```bash
 source ~/.config/mobile-env.sh
-gradle -p native/core jvmTest                       # nucleo KMP (72 pruebas, ver kmp.md)
-cd web/android && gradle :app:testDebugUnitTest       # núcleo de captura, cola cifrada, registro de cierres (17 pruebas)
-npm --prefix web test                                 # todo vitest
+gradle -p native/core jvmTest                       # nucleo KMP (233 pruebas, ver kmp.md)
+cd web/android && gradle :app:testDebugUnitTest       # Android: núcleo de captura, cola cifrada, registro de cierres (263 pruebas)
+npm --prefix web test                                 # todo vitest (front: 1232 pruebas)
 npm --prefix web run lint && npm --prefix web exec -- tsc -b web
 # Base (SOLO staging local):
 docker exec -i nido-selfhost-db-1 psql -U postgres -d postgres -v ON_ERROR_STOP=1 < supabase/tests/observabilidad.sql
@@ -97,7 +97,7 @@ Decisiones de diseño y qué cambió. Los tests de QA no se tocaron.
 |---|---|
 | H-04 | La ventana de 2 min solo recuerda lo GUARDADO; descartar no la renueva. Misma huella, o mismo monto y comercio a menos de 45 s (el sistema reenvía el aviso al cambiar de minuto), se descarta (`DUPLICATE`). Entre 45 s y 2 min se guarda y se marca `possibleDuplicate` (el aviso lo anota); no se pierde una compra real. Un aviso sin comercio seguido (30 s) de uno con comercio y mismo monto completa el borrador (H-14). |
 | H-05 | `list()` ya no caduca los `CONFIRMED`; solo salen al enviarse. «Guardar» agenda un recordatorio local (`ReminderScheduler`, alarma inexacta, 2 h y luego cada 24 h; se reagenda al conectar el servicio): «Tienes N gastos por enviar». |
-| H-06 | `Draft.ownerKey` (clave opaca `usuario:hogar`). El plugin guarda el dueño activo (`setActiveOwner`); sin dueño no se captura (`NO_SESSION`); `listDrafts` solo devuelve los del dueño activo. |
+| H-06 | `Draft.ownerKey` (clave opaca `usuario:hogar`). El plugin guarda el dueño activo (`setActiveOwner`); sin dueño no se captura (`NO_SESSION`); `listDrafts` solo devuelve los del dueño activo. Control de dueño (2026-11-24): `removeDraft`, «Guardar»/«Ignorar» de la notificación y `consumePendingOpen` solo actúan sobre un borrador del dueño activo (`DraftActions.removeOwned`/`saveFromNotification`, `OwnerFilter.owns`/`openable`, comprobado dentro de la escritura); un id ajeno, sin dueño o inexistente es no-op y da el mismo resultado (`removeDraft` → `{ removed: 0 }`, sin rechazo; `{ removed: 1 }` si lo quitó). |
 | H-07 | `EncryptedDraftRepository`: todas las operaciones `@Synchronized` (más `update`). |
 | H-08 | `CaptureProcessor.accepts` excluye el paquete propio; `setAllowedPackages` lo filtra. |
 | H-09/H-10 | Parser: palabras de descarte nuevas (PIN, token, cupo, preaprobado, pago mínimo, rechazada, sospechosa, intento...), «$12 990» = 12990, «$12,990» ambiguo = sin gasto. `UnsafeChars` (control, formato, separadores) en comercio y en `nido://gasto`; igual en `bankNotice.ts` y `deepLink.ts`. |
@@ -136,7 +136,9 @@ Bancos (ids que ya usa `bankAuto.ts`): `santander`, `banco-estado`, `banco-falab
 
 Un aviso se guarda solo (estado CONFIRMED, sin pulsar «Guardar») únicamente si: el paquete está asociado a un banco con guardado automático activo, hay sesión y el dueño del perfil coincide, es gasto (abonos nunca) con confianza ALTA, monto <= tope (inclusivo, default 50.000), hay categoría aprendida para el comercio y no es posible duplicado. Todo lo demás pide confirmación como antes.
 
-Envío con la app cerrada: `ExpenseSyncWorker` (WorkManager, requiere red, retroceso exponencial desde 30 s) lee la sesión del Keystore (`contigo-auth`), hace `POST {apiBase}/rest/v1/expenses` sin cabecera Origin, con el id del borrador (mismo en cada reintento; 23505 = éxito), fecha en America/Santiago. 401 renueva la sesión una vez (solo con la app cerrada, para no chocar con supabase-js); 5xx/429/red reintenta; otro 4xx queda como rechazado y el gasto sigue en la cola cifrada con el recordatorio «Tienes N gastos por enviar».
+Envío con la app cerrada: `ExpenseSyncWorker` (WorkManager, requiere red, retroceso exponencial desde 30 s) lee la sesión del Keystore (`contigo-auth`), hace `POST {apiBase}/rest/v1/expenses` con la cabecera Origin del Worker (DEC-01 revisada; sin Sec-Fetch-Site), con el id del borrador (mismo en cada reintento; 23505 = éxito), fecha en America/Santiago. 401 renueva la sesión una vez (solo con la app cerrada, para no chocar con supabase-js); 5xx/429/red reintenta; otro 4xx queda como rechazado y el gasto sigue en la cola cifrada con el recordatorio «Tienes N gastos por enviar».
+
+Reintento acotado (QA 2026-11-24, autoguardado sin red): el trabajo exige red (WorkManager lo lanza apenas vuelve), un gasto nuevo/«Enviar ahora»/perfil agenda con `REPLACE` (ya no queda en fila detrás de un reintento largo) y un fallo pasajero agenda el siguiente según `SyncRetryPolicy` (30 s duplicando, máx. 15 min, tope 48 intentos; REJECTED, NEEDS_PERSON y NO_SESSION no reintentan), no con el retroceso de WorkManager (hasta 5 h). Si la app abierta toma un guardado automático y llama `removeDraft`, `DraftActions.removeTakenByApp` lo marca enviado/avisado en el registro: antes quedaba «se enviará solo» 14 días aunque la app ya lo hubiera guardado o encolado.
 
 Contratos en `nativeBridge.ts` (`ContigoNative.*`):
 - `getBankPresets() -> { banks: [{ id, name, packageName|null, autoSave, candidatePackages }], maxClp }`
@@ -145,10 +147,13 @@ Contratos en `nativeBridge.ts` (`ContigoNative.*`):
 - `setAutoCap({ maxClp })` (1 a 9.999.999.999)
 - `configureSync({ apiBase })` con `VITE_API_BASE` (solo https): llamar al arrancar la app nativa
 - `setAutoProfile({ ownerKey, userId, householdId, paidBy, shared, categories: [{ key, categoryId }] })`: llamar al iniciar sesión y cuando cambie el historial. `buildAutoCategories(history, validIds)` genera `categories` (clave exacta y `w:primera palabra`, igual que `learnedCategory`). Sin perfil vigente del dueño activo NADA se guarda solo ni se envía.
-- `getSyncState() -> { state: 'idle'|'error', pending, lastSyncAt|null, lastError }`; `syncNow()`
+- `getSyncState() -> { state: 'idle'|'error', pending, lastSyncAt|null, lastError }`
 - `listAutoSaved() -> { items: [{ id, amount, note, at, synced }] }` (14 días, tope 50) para «Guardados automáticamente»; `parseAutoSaved` valida.
 - `undoAutoSaved({ id }) -> { undone, needsDelete }`: si aún no se envió lo borra del teléfono (`undone: true`); si ya se envió `needsDelete: true` y la app debe llamar `deleteExpense(id)` (el id es el del gasto) y luego `dismissAutoSaved({ id })`.
 `wipe`, `wipeForAccountSwitch` y `clearCaptured` borran perfil y registro de guardados.
+- `syncNow() -> { sent, failed, needsPerson, result }` (2026-11-24, aditivo; antes `void`): envía en un hilo propio con el mismo cerrojo que el trabajo en segundo plano y responde solo cuentas. `result` = `ALL_SENT`, `NOTHING_TO_SEND`, `NEEDS_PERSON`, `REJECTED`, `NO_SESSION`, `RETRY`, `FAILED` (el envío lanzó) o `IN_PROGRESS` (pasaron 20 s y sigue en curso); con `RETRY`, `FAILED` o `IN_PROGRESS` queda agendado `ExpenseSyncWorker`. Nunca rechaza.
+- `clearPending() -> { removed }` (2026-11-24, nuevo): «Vaciar movimientos pendientes». Borra SOLO los PENDING del dueño activo (jamás un CONFIRMED) en una escritura, bajo el cerrojo del envío, y cancela solo sus notificaciones; sin dueño activo `removed: 0`. Keystore ocupado → rechaza `STORE_UNAVAILABLE` sin borrar nada (se puede reintentar).
+- `clearCaptured() -> { unsentRemoved }` (2026-11-24, aditivo): «Borrar lo capturado» de Seguridad SIGUE siendo total (también lo guardado sin enviar y lo de otros dueños). `unsentRemoved` = confirmados sin enviar del dueño activo que se perdieron (contados bajo el cerrojo, antes de borrar); para avisar ANTES de llamar, contar los `CONFIRMED` de `listDrafts`. Si el Keystore no deja leer la cola, borra igual y `unsentRemoved` sale 0.
 
 ### B) Aviso «Tu pareja hizo un gasto mayor»
 - Migración `supabase/migrations/20261122100000_alerta_gasto_mayor.sql`: tabla `big_spend_alert_prefs (user_id, enabled=false, threshold_clp=50000)` con RLS (solo la fila propia, sin escritura directa) y RPC `set_big_spend_alert(p_enabled, p_threshold_clp)` (rango 1 a 9.999.999.999, solo `authenticated`). Test: `supabase/tests/alerta_gasto_mayor.sql` (en staging, ROLLBACK).
@@ -291,6 +296,7 @@ La misma compra puede avisar por la app del banco y por Wallet, con comercios di
 ### Contrato del plugin (solo aditivo)
 - `getBankPresets` / `getDetectedBanks` / `setAutoSaveAll`: una fuente más, id `billetera-google`.
 - `getCaptureDiagnostics`: motivo nuevo `STALE_DATE` (la UI lo muestra tal cual hasta que el front le ponga texto: «El aviso era de otro día»). Los diagnósticos de Wallet usan una máscara estricta (cada palabra queda con su inicial y `*` salvo palabras de formato como CLP, meses, Visa; dígitos `#`), porque el comercio va al inicio sin «en».
+- **`clearDiagnostics({ atMillis? }) -> { removed }`** (2026-11-24): «Borrar» / «Borrar todos» de «Avisos que no pude leer». Con `atMillis` (entero ≥ 0) borra las entradas de esa hora; con `{}` borra todas (bloque cifrado y su `.bad`). Solo el diagnóstico local: no toca borradores, colas, perfil, registro de guardados ni anti duplicados (a diferencia de `clearCaptured`). `atMillis` inválido → `INVALID_ARGUMENT` (nunca «todas»); fallo de lectura/escritura (p. ej. Keystore ocupado) → `FAILED` sin borrar nada, se puede reintentar.
 - Borradores: sin campos nuevos. `kind` sigue en MAYÚSCULAS (`EXPENSE`; `INCOME` para reembolsos). `account` puede ser `Visa ·1234`. `sourcePackage` = paquete de Wallet.
 
 ### Pruebas
@@ -328,3 +334,18 @@ Van **juntos o ninguno** (`23514` si llega uno solo). Para borrar el saldo infor
 - **Kotlin (`ExpenseSyncer.rowOf`)**: sin cambios obligatorios; la fila actual sigue válida y queda `'debito'`. Para un aviso de compra con tarjeta de crédito: agregar `"payment_method": "tarjeta"` y, si la app conoce la tarjeta, `"card_debt_id": "<uuid>"`. Nunca mandar `card_debt_id` sin `"payment_method": "tarjeta"`.
 - **Front**: `insert` de `expenses` acepta ambas columnas; `update` por columnas también. Al **deshacer** una conversión o restaurar un respaldo, reinsertar el gasto con su `payment_method` y `card_debt_id` (si la tarjeta ya no existe, mandar `card_debt_id: null`). Al restaurar, las deudas van antes que los gastos.
 - Pruebas: `bash docs/mobile/qa/e2e-ronda6.sh` (incluye la ronda 5 completa como regresión).
+
+## Falabella/CMR y Billetera Google: casos chilenos (2026-11-24)
+
+Pruebas: `native/core/.../FalabellaWalletCasosTest.kt` (20) y `web/android/.../FalabellaWalletFlujoTest.kt` (11). Textos SINTÉTICOS con el formato real de Falabella; Wallet sigue sin avisos reales verificados.
+
+- **Moneda extranjera**: `ParseRejection.FOREIGN_CURRENCY` (antes `DISCARDED`) y `DiagReason.FOREIGN_CURRENCY` en el diagnóstico. Se evalúa DESPUÉS de las palabras de descarte (una clave con «USD» sigue siendo clave). Suma «9,99 dólares». Nunca crea borrador: no hay monto en pesos que mostrar (el front descarta `amountClp < 1`). Para el front: `adaptDiagnostics` deja pasar el motivo tal cual; falta su texto («Compra en moneda extranjera: anótala a mano en pesos»).
+- **Cuotas** (REEMPLAZADO el 2026-11-24, ver línea siguiente): «N cuotas de $X» = cuota 1 de N por $X (decisión 2, igual que «Primera cuota»). «en N cuotas» (N ≥ 2) sin valor de cuota: el monto es el total y queda `ambiguousAmount` (pendiente), también en Wallet.
+- **Compra en cuotas por el TOTAL, siempre pendiente** (decisión del dueño 2026-11-24, reemplaza la decisión 2): «$30.000 en 3 cuotas de $10.000» → `amountClp` 30.000, `installment` null, `installmentRole` `PURCHASE`, `installmentCount` 3, `installmentValueClp` 10.000 (null si el aviso no lo dice); nunca se guarda solo (`AutoCaptureRules.decide` → ASK) y el diagnóstico dice `INSTALLMENT_PURCHASE`. Sin total («12 cuotas de $9.990») no se inventa: `amountClp` = la cuota, `installment` 1/12, `ambiguousAmount`, motivo `INSTALLMENT_TOTAL_UNKNOWN`. «Cuota 2 de 6 por $15.000» sin frase de compra = `PRIOR_CHARGE` (cobro de una cuota anterior, no gasto nuevo), motivo `INSTALLMENT_CHARGE`; ni este ni el sin total ofrecen «Guardar» en la notificación. Banco (total) + Billetera (mismo total) a < 10 min ya se deduplican y el borrador pendiente adopta las cuotas del espejo; si el banco solo da la cuota y Billetera el total, siguen siendo dos borradores. Nota al enviar: «Comercio (3 cuotas de $10.000)» (`ExpenseNote`).
+- **Clasificación**: «Se anuló / Anulamos / Reversamos / fue devuelta» = `INCOME` que no se guarda solo. «Recibimos tu pago», «Pago recibido», «Pago de tu CMR» = `DEBT_PAYMENT`. «Avance»/«Súper Avance» = retiro (confianza BAJA, sin comercio).
+- **Aviso viejo en bancos**: `staleDate` ahora también para avisos de banco (antes solo Wallet), con fechas «10 nov», «10/11/2026», «10-11-2026» y «el 10/11» (sin «el» no: «cuota 1/3» no es fecha).
+- **Comercio**: «COMUNA CL» o «COMUNA CHILE» al final se quita solo si es una comuna conocida («COPEC LAS CONDES SANTIAGO CL» → «Copec Las Condes»). Ojo: una categoría aprendida con el nombre antiguo («Copec Las Condes Santiago Cl») no se reconoce con el nuevo.
+- **Medio**: «Redcompra» y «CuentaRUT» = débito. Marca sola (Visa/Mastercard/Amex) sigue `UNKNOWN`.
+- **Wallet en inglés**: «Tap to pay», «You paid … at COMERCIO» ya no quedan como comercio.
+- **Detección de Billetera**: además del nombre visible, el paquete público `com.google.android.apps.walletnfcrel` se reconoce como Billetera Google aunque se llame «Google Pay» o «Wallet». `com.google.android.gms` NO se vigila nunca solo. `candidatePackages` sigue vacío (contrato del front sin cambios).
+- ~~Pendiente conocido: compra CMR en cuotas avisada por el banco (cuota $10.000) y por Wallet (total $30.000) NO se deduplican~~ Resuelto el 2026-11-24 cuando el banco informa el total (ahora ambos son $30.000); sigue pendiente si el banco solo informa la cuota.

@@ -31,6 +31,16 @@ object BankMatcher {
         // esas se asocian a mano («Si no aparece tu banco»).
         Rule(BankPresets.WALLET_ID, setOf("billeteragoogle", "billeteradegoogle", "googlewallet"), setOf("app")),
     )
+    /**
+     * Paquetes PUBLICOS y estables que identifican la app sin importar su nombre visible (la misma app se llamo «Google Pay» y hoy
+     * «Google Wallet»/«Billetera de Google», segun pais y version). Solo la app de Billetera; Servicios de Google Play
+     * (com.google.android.gms) NO: avisa de todo y leer sus avisos no es necesario. No se exponen al front (candidatePackages sigue vacio).
+     */
+    private val KNOWN_PACKAGES = mapOf("com.google.android.apps.walletnfcrel" to BankPresets.WALLET_ID)
+
+    /** Banco o billetera de una app instalada: primero por su paquete conocido, si no por su nombre visible. */
+    fun bankOf(app: InstalledApp): String? = KNOWN_PACKAGES[app.packageName] ?: bankOf(app.label)
+
     private val MARKS = Regex("\\p{M}")
     private val NON_ALNUM = Regex("[^a-z0-9]+")
 
@@ -49,7 +59,7 @@ object BankDetector {
         val out = ArrayList<DetectedBank>()
         val used = HashSet<String>()
         BankPresets.ALL.forEach { bank ->
-            candidates.filter { BankMatcher.bankOf(it.label) == bank.id && used.add(it.packageName) }
+            candidates.filter { BankMatcher.bankOf(it) == bank.id && used.add(it.packageName) }
                 .forEach { out.add(DetectedBank(bank.id, it.label, it.packageName, DetectStatus.installed)) }
         }
         BankPresets.ALL.forEach { bank ->
@@ -76,13 +86,18 @@ interface BankStore {
 
 data class SetupResult(val enabled: List<String>, val disabled: List<String>, val withoutApp: List<String>)
 
-/** Activacion en un paso: captura + guardado automatico para los bancos con app (detectada o asociada). Los topes no se tocan. */
-class BankSetup(private val store: BankStore) {
+/**
+ * Activacion en un paso: captura + guardado automatico para los bancos con app (detectada o asociada). Los topes no se tocan.
+ * Encender toca SOLO fuentes verificadas ([verified]): una oculta no se enciende ni aparece en withoutApp, y su preferencia no se
+ * escribe. Apagar recorre TODAS: tambien apaga una oculta que la persona tenia encendida de antes.
+ */
+class BankSetup(private val store: BankStore, private val verified: Set<String> = BankPresets.VERIFIED) {
     fun setAll(enabled: Boolean): SetupResult {
         val on = ArrayList<String>(); val off = ArrayList<String>(); val none = ArrayList<String>()
         BankPresets.ALL.forEach { b ->
             val hasApp = store.detectedPackages(b.id).isNotEmpty() || store.manualPackage(b.id) != null
             if (enabled) {
+                if (!CaptureSources.isVerified(b.id, verified)) return@forEach
                 if (hasApp) { store.setAutoSave(b.id, true); on.add(b.id) } else none.add(b.id)
             } else if (store.autoSave(b.id)) {
                 store.setAutoSave(b.id, false); off.add(b.id)

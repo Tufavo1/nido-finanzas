@@ -55,7 +55,7 @@ export default function GoalCreateForm({ hh, data, onToast, onSaved }: { hh: Hou
       </div>
       <div className="field">
         <label htmlFor="g-target">¿Cuánto necesitan juntar? (CLP)</label>
-        <input id="g-target" className="input" inputMode="numeric" required placeholder="Ej. 500000" value={dots(target)} onChange={(e) => setTarget(digitsOnly(e.target.value))} aria-describedby="g-target-hint" />
+        <input id="g-target" className="input" inputMode="numeric" required placeholder="Ej. 500.000" value={dots(target)} onChange={(e) => setTarget(digitsOnly(e.target.value))} aria-describedby="g-target-hint" />
         <div className="chips" role="group" aria-label="Montos sugeridos">
           {[100000, 500000, 1000000, 2000000].map((v) => (
             <button key={v} type="button" className="chip" aria-pressed={target === String(v)} onClick={() => setTarget(String(v))}>

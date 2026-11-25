@@ -31,7 +31,10 @@ class MemoryStorage : BlobStorage {
     var bytes: ByteArray? = null
     override fun read() = bytes
     override fun write(bytes: ByteArray) { this.bytes = bytes }
-    override fun delete() { bytes = null }
+    override fun delete() { bytes = null; quarantined = null }
+    /** Lo que se aparto por ilegible (cuarentena), en vez de borrarlo. */
+    var quarantined: ByteArray? = null
+    override fun quarantine() { quarantined = bytes; bytes = null }
 }
 
 class RecordingNotifier : DraftNotifier {
@@ -55,5 +58,7 @@ class RecordingHealth : HealthRecorder {
 class FileStorage(private val file: java.io.File) : BlobStorage {
     override fun read(): ByteArray? = if (file.exists()) file.readBytes() else null
     override fun write(bytes: ByteArray) { file.parentFile?.mkdirs(); file.writeBytes(bytes) }
-    override fun delete() { file.delete() }
+    private val bad get() = java.io.File(file.path + ".bad")
+    override fun delete() { file.delete(); bad.delete() }
+    override fun quarantine() { bad.delete(); if (!file.renameTo(bad)) file.delete() }
 }

@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Dinovance
+import { money } from '../lib/format'
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import BankCard from './BankCard'
@@ -6,7 +7,7 @@ import Modal from './Modal'
 import { SkeletonCard } from './Skeleton'
 import SyncStatus from './SyncStatus'
 import type { Notify } from './Toast'
-import { parseBankPresets, parseSyncState, parseThreshold } from '../lib/bankAuto'
+import { CAPTURE_AVAILABLE_TEXT, parseBankPresets, parseSyncState, parseThreshold } from '../lib/bankAuto'
 import type { BankAutoApi, BankPreset, SyncState } from '../lib/bankAuto'
 import { MAX_CAP_CLP, MIN_CAP_CLP } from '../lib/captureConfig'
 import type { CaptureConfig } from '../lib/captureConfig'
@@ -78,7 +79,7 @@ export default function BankAutoSection({ config, onConfig, onToast, onSendNow }
     e.preventDefault()
     const r = parseThreshold(capText)
     if (!r.ok || r.value < MIN_CAP_CLP || r.value > MAX_CAP_CLP) {
-      setCapError(r.ok ? `El tope debe estar entre ${MIN_CAP_CLP.toLocaleString('es-CL')} y ${MAX_CAP_CLP.toLocaleString('es-CL')} pesos.` : r.error)
+      setCapError(r.ok ? `El tope debe estar entre ${money(MIN_CAP_CLP)} y ${money(MAX_CAP_CLP)}.` : r.error)
       return
     }
     setCapError(null)
@@ -93,13 +94,14 @@ export default function BankAutoSection({ config, onConfig, onToast, onSendNow }
     return (
       <section className="card" role="note">
         <strong>Guardado automático por banco</strong>
-        <span className="muted">Esta versión de la app todavía no incluye el guardado automático para Santander, Banco Estado, Banco Falabella y Banco de Chile. Actualiza Contigo para usarlo.</span>
+        <span className="muted">Esta versión de la app todavía no incluye el guardado automático por banco. Actualiza Contigo para usarlo.</span>
       </section>
     )
   }
   return (
     <div className="stack">
       <h3 className="perm-title">Guardado automático por banco</h3>
+      <p className="muted small-text">{CAPTURE_AVAILABLE_TEXT}</p>
       {load.banks.map((b) => (
         <BankCard key={b.id} bank={b} cap={config.maxClp} busy={busy} onToggle={(enabled) => void run(() => api.setBankAutoSave({ bankId: b.id, enabled }))} onAssociate={() => void openPicker(b)} onDissociate={() => void run(() => api.setBankPackage({ bankId: b.id, packageName: null }))} />
       ))}

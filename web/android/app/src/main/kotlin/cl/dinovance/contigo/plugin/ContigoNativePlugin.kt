@@ -11,6 +11,7 @@ import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import cl.dinovance.contigo.capture.CaptureGraph
 import cl.dinovance.contigo.capture.Draft
+import cl.dinovance.contigo.capture.DiagClearRequest
 import androidx.core.content.ContextCompat
 import androidx.credentials.CredentialManager
 import androidx.credentials.CredentialManagerCallback
@@ -21,6 +22,7 @@ import androidx.credentials.exceptions.GetCredentialException
 import java.io.File
 import cl.dinovance.contigo.auth.GoogleSignInLogic
 import cl.dinovance.contigo.capture.BankSetup
+import cl.dinovance.contigo.capture.CaptureSources
 import cl.dinovance.contigo.capture.ScanReport
 import cl.dinovance.contigo.capture.ScanResult
 import cl.dinovance.contigo.capture.NotificationCaptureService
@@ -42,6 +44,9 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingExcept
 import cl.dinovance.contigo.capture.BankPresets
 import cl.dinovance.contigo.capture.OwnerFilter
 import cl.dinovance.contigo.sync.SyncScheduler
+import cl.dinovance.contigo.sync.SendNowRunner
+import cl.dinovance.contigo.capture.DraftActions
+import cl.dinovance.contigo.capture.DraftCleanup
 import org.json.JSONObject
 import cl.dinovance.contigo.capture.ReminderPolicy
 import cl.dinovance.contigo.capture.CaptureNotifier
@@ -177,23 +182,42 @@ class ContigoNativePlugin : Plugin() {
         val array = JSArray()
         // Solo los del usuario/hogar activo: los de otro dueño no se muestran ni se envían (H-06).
         OwnerFilter.visible(graph.drafts.list(), graph.prefs.activeOwner()).forEach { array.put(it.toJs()) }
-        call.resolve(JSObject().put("drafts", array).put("pendingToSend", ReminderPolicy.pendingToSend(graph.drafts.list(), graph.prefs.activeOwner())))
+        // pendingToSend = lo que la persona guardo con «Guardar» (contrato de nativeBridge.ts): lo guardado solo no dispara el aviso
+        // «Los guardaste desde la notificacion» de la app; su estado esta en getSyncState y en el recordatorio nativo.
+        call.resolve(JSObject().put("drafts", array).put("pendingToSend", ReminderPolicy.savedByPerson(graph.drafts.list(), graph.prefs.activeOwner())))
     }
 
+    /**
+     * Quita un borrador SOLO si es del dueño activo. Responde `{ removed: 1 }` si lo quitó y `{ removed: 0 }` si no existe, ya salió,
+     * es de otra persona, no tiene dueño o no hay sesión: el mismo resultado en todos esos casos (no revela si el id es de otro dueño)
+     * y sin rechazo, porque la app lo llama también después de guardar (idempotente). Keystore ocupado: STORE_UNAVAILABLE sin borrar.
+     * Si era un guardado automatico pendiente, la app ya lo tomo: el registro deja de decir «se enviara solo» (QA 2026-11-24).
+     */
     @PluginMethod
     fun removeDraft(call: PluginCall) {
         val id = call.getString("id") ?: return call.reject("Falta el id", "INVALID_ARGUMENT")
-        graph.drafts.remove(id)
-        graph.notifier.cancel(id)
-        call.resolve()
+        // Mismo cerrojo que el envio (B8): no se cruza con un syncOnce que esta leyendo o reescribiendo la cola
+        val removed = try {
+            graph.syncer.coordinated { DraftActions.removeTakenByApp(graph.drafts, graph.autoLog, id, graph.prefs.activeOwner()) }
+        } catch (e: Exception) {
+            // Keystore ocupado: la cola queda intacta (A1) y la app puede reintentar
+            graph.prefs.recordFailure(e.javaClass.simpleName, System.currentTimeMillis())
+            return call.reject("No se pudo quitar el borrador, intenta de nuevo", "STORE_UNAVAILABLE")
+        }
+        // La notificacion se cancela solo si el borrador era de la persona activa y se quito
+        if (removed) graph.notifier.cancel(id)
+        call.resolve(JSObject().put("removed", if (removed) 1 else 0))
     }
 
-    /** Id del borrador que la persona abrió desde «Cambiar categoría» o tocando la notificación (se entrega una vez). */
+    /**
+     * Id del borrador que la persona abrió desde «Cambiar categoría» o tocando la notificación (se entrega una vez). Solo si es de un
+     * borrador del dueño activo; si no (otra cuenta, ya no está, sin sesión), `{ id: null }`.
+     */
     @PluginMethod
     fun consumePendingOpen(call: PluginCall) {
         val id = pendingOpenDraftId
         pendingOpenDraftId = null
-        call.resolve(JSObject().put("id", id))
+        call.resolve(JSObject().put("id", OwnerFilter.openable(graph.drafts.list(), graph.prefs.activeOwner(), id)))
     }
 
     // ---- Almacén seguro (sesión de Supabase) ----
@@ -205,7 +229,14 @@ class ContigoNativePlugin : Plugin() {
     fun secureGet(call: PluginCall) {
         val key = call.getString("key") ?: return call.reject("Falta la clave", "INVALID_ARGUMENT")
         if (CaptureGraph.isReservedKey(key)) return call.reject("Clave reservada", "RESERVED_KEY")
-        call.resolve(JSObject().put("value", graph.session.get(key)))
+        val value = try {
+            graph.session.get(key)
+        } catch (e: Exception) {
+            // Fallo pasajero del Keystore: se rechaza en vez de responder «no hay valor», que haria a la app pisar la sesion o la cola (A1)
+            graph.prefs.recordFailure(e.javaClass.simpleName, System.currentTimeMillis())
+            return call.reject("No se pudo leer de forma segura", "STORE_UNAVAILABLE")
+        }
+        call.resolve(JSObject().put("value", value))
     }
 
     @PluginMethod
@@ -226,16 +257,35 @@ class ContigoNativePlugin : Plugin() {
         call.resolve()
     }
 
-    /** «Borrar todo lo capturado»: borradores, notificaciones propias y la lista de apps recientes. Deja la sesión. */
+    /**
+     * «Borrar todo lo capturado» de Seguridad: borrado TOTAL por privacidad (borradores de todos, también los guardados sin enviar,
+     * notificaciones propias, apps recientes, registro, diagnóstico y perfil). Deja la sesión. Responde `{ unsentRemoved }`: cuántos
+     * gastos o ingresos guardados del dueño activo se perdieron sin enviar. Para vaciar solo lo pendiente está `clearPending`.
+     */
     @PluginMethod
     fun clearCaptured(call: PluginCall) {
-        graph.drafts.list().forEach { graph.notifier.cancel(it.id) }
-        graph.drafts.clear()
+        val unsentRemoved = DraftCleanup.clearAllNow(graph.syncer, graph.drafts, graph.prefs.activeOwner(), graph.notifier)
         graph.recent.clear()
         graph.autoLog.clear()
         graph.diagnostics.clear()
         graph.clearProfile()
-        call.resolve()
+        call.resolve(JSObject().put("unsentRemoved", unsentRemoved))
+    }
+
+    /**
+     * «Vaciar movimientos pendientes»: borra SOLO los PENDIENTES del dueño activo, bajo el cerrojo del envío, y cancela solo sus
+     * notificaciones. Un guardado (CONFIRMED) jamás se borra aquí. Responde `{ removed }`. Keystore ocupado: STORE_UNAVAILABLE sin
+     * haber borrado nada.
+     */
+    @PluginMethod
+    fun clearPending(call: PluginCall) {
+        val removed = try {
+            DraftCleanup.clearPendingNow(graph.syncer, graph.drafts, graph.prefs.activeOwner(), graph.notifier)
+        } catch (e: Exception) {
+            graph.prefs.recordFailure(e.javaClass.simpleName, System.currentTimeMillis())
+            return call.reject("No se pudo vaciar, intenta de nuevo", "STORE_UNAVAILABLE")
+        }
+        call.resolve(JSObject().put("removed", removed))
     }
 
     /** La app avisa quién inició sesión (ownerKey = usuario:hogar, opaco). null = sin sesión. */
@@ -330,6 +380,8 @@ class ContigoNativePlugin : Plugin() {
     fun setBankAutoSave(call: PluginCall) {
         val bank = call.getString("bankId")?.let(BankPresets::byId) ?: return call.reject("Banco no válido", "INVALID_ARGUMENT")
         val enabled = call.getBoolean("enabled") ?: return call.reject("Falta enabled", "INVALID_ARGUMENT")
+        // Una fuente no verificada (oculta en el front) solo se puede apagar; su preferencia guardada no se toca al rechazar
+        if (!CaptureSources.canSetAutoSave(bank.id, enabled)) return call.reject("Banco no disponible por ahora", "UNAVAILABLE")
         if (enabled) graph.refreshBanks(context)
         if (enabled && !graph.prefs.hasBankApp(bank.id)) return call.reject("Asocia primero la app del banco", "NO_PACKAGE")
         graph.prefs.setBankAutoSave(bank.id, enabled)
@@ -386,10 +438,18 @@ class ContigoNativePlugin : Plugin() {
         )
     }
 
+    /**
+     * «Enviar ahora»: envia en un hilo propio y responde `{ sent, failed, needsPerson, result }` (solo cuentas; result = SyncResult,
+     * FAILED o IN_PROGRESS si pasan 20 s). Si fallo o hay que reintentar, queda agendado en segundo plano. Jamas un exito mudo.
+     */
     @PluginMethod
     fun syncNow(call: PluginCall) {
-        SyncScheduler.enqueue(context)
-        call.resolve()
+        sendNowRunner.start(
+            sync = { graph.syncer.syncWithReport() },
+            schedule = { SyncScheduler.enqueue(context) },
+            onError = { graph.prefs.recordFailure(it, System.currentTimeMillis()) },
+            reply = { r -> call.resolve(JSObject().put("sent", r.sent).put("failed", r.failed).put("needsPerson", r.needsPerson).put("result", r.result)) },
+        )
     }
 
     /**
@@ -503,12 +563,18 @@ class ContigoNativePlugin : Plugin() {
 
     // ---- Deteccion automatica de bancos, activacion en un paso y diagnostico ----
 
-    /** Apps de banco encontradas por NOMBRE VISIBLE entre las apps con icono (sin QUERY_ALL_PACKAGES). Incluye not_found. */
+    /**
+     * Apps de banco encontradas por NOMBRE VISIBLE entre las apps con icono (sin QUERY_ALL_PACKAGES). Incluye not_found. Solo fuentes
+     * verificadas, mas las ocultas que la persona ya tenia encendidas (`available: false`, para que el front ofrezca apagarlas).
+     */
     @PluginMethod
     fun getDetectedBanks(call: PluginCall) {
         val list = JSArray()
-        graph.refreshBanks(context).forEach {
-            list.put(JSObject().put("bankId", it.bankId).put("appLabel", it.appLabel ?: JSONObject.NULL).put("packageName", it.packageName ?: JSONObject.NULL).put("status", it.status.name))
+        CaptureSources.visibleDetected(graph.refreshBanks(context), graph.prefs::autoEnabled).forEach {
+            list.put(
+                JSObject().put("bankId", it.bankId).put("appLabel", it.appLabel ?: JSONObject.NULL).put("packageName", it.packageName ?: JSONObject.NULL).put("status", it.status.name)
+                    .put("available", CaptureSources.isVerified(it.bankId)),
+            )
         }
         call.resolve(JSObject().put("detected", list))
     }
@@ -519,7 +585,10 @@ class ContigoNativePlugin : Plugin() {
         call.resolve(JSObject().put("enabled", JSONArray(r.enabled)).put("disabled", JSONArray(r.disabled)).put("withoutApp", JSONArray(r.withoutApp)))
     }
 
-    /** Activa captura + guardado automatico en todos los bancos con app, con el tope por defecto. Sin apps no hace nada y lo informa (withoutApp). */
+    /**
+     * Activa captura + guardado automatico en todos los bancos VERIFICADOS con app, con el tope por defecto (nunca una fuente oculta).
+     * Sin apps no hace nada y lo informa (withoutApp, solo verificadas).
+     */
     @PluginMethod
     fun enableAllDetected(call: PluginCall) = resolveSetup(call, true)
 
@@ -542,6 +611,27 @@ class ContigoNativePlugin : Plugin() {
             )
         }
         call.resolve(JSObject().put("items", items))
+    }
+
+    /**
+     * «Borrar» / «Borrar todos» de «Avisos que no pude leer»: `{ atMillis }` borra las entradas de esa hora; `{}` las borra todas.
+     * Responde `{ removed }`. SOLO el diagnostico local: no toca borradores, colas, perfil ni el registro anti duplicados.
+     * Rechaza INVALID_ARGUMENT si `atMillis` no es un entero valido (nunca lo toma como «todas») y FAILED si no se pudo (p. ej. Keystore
+     * ocupado: no se borra nada y se puede reintentar). Solo el nombre de la clase va al registro de fallos.
+     */
+    @PluginMethod
+    fun clearDiagnostics(call: PluginCall) {
+        val request = DiagClearRequest.parse(call.data) ?: return call.reject("Hora no valida", "INVALID_ARGUMENT")
+        try {
+            val removed = when (request) {
+                is DiagClearRequest.At -> graph.diagnostics.removeAt(request.atMillis)
+                DiagClearRequest.All -> graph.diagnostics.clearAll()
+            }
+            call.resolve(JSObject().put("removed", removed))
+        } catch (e: Exception) {
+            graph.prefs.recordFailure(e.javaClass.simpleName, System.currentTimeMillis())
+            call.reject("No se pudo borrar", "FAILED")
+        }
     }
 
     /**
@@ -729,6 +819,13 @@ class ContigoNativePlugin : Plugin() {
     }
 
     private companion object {
+        /**
+         * «Enviar ahora»: hilo propio (la red puede tardar; no bloquea el hilo del puente ni el principal) y un temporizador para el
+         * tope de respuesta. Uno por proceso: si Android recrea la actividad (y el plugin) no se acumulan hilos.
+         */
+        val sendNowRunner by lazy {
+            SendNowRunner(java.util.concurrent.Executors.newSingleThreadExecutor(), java.util.concurrent.Executors.newSingleThreadScheduledExecutor())
+        }
         const val EVENT_DRAFTS_CHANGED = "draftsChanged"
         const val EVENT_DRAFT_OPEN = "draftOpen"
         const val REQUEST_POST_NOTIFICATIONS = 4101

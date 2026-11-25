@@ -26,7 +26,7 @@
 | 5.18 | Derechos de acceso | Sí | Implementado | Roles por hogar; admin con aal2; revisión trimestral (01 §5) |
 | 5.19 | Seguridad con proveedores | Sí | Documentado | 06-proveedores.md |
 | 5.20 | Seguridad en acuerdos con proveedores | Sí | Documentado | 06 (términos y DPA a archivar) |
-| 5.21 | Cadena de suministro TIC | Sí | Implementado | `package-lock`, `npm audit signatures`, Dependabot |
+| 5.21 | Cadena de suministro TIC | Sí | Implementado | `package-lock`, `npm audit --omit=dev --audit-level=high` en CI, Dependabot (sin verificación de firmas) |
 | 5.22 | Seguimiento de servicios de proveedores | Sí | Documentado | 06 (revisión anual) |
 | 5.23 | Seguridad en servicios en la nube | Sí | Documentado | 06; Worker como capa propia |
 | 5.24 | Planificación de gestión de incidentes | Sí | Documentado | 04-incidentes.md |

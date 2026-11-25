@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { authLabel, beginRead, beginWait, beginWrite, getActivity, loaderText } from './activity'
+import { authLabel, beginRead, beginWait, beginWrite, getActivity, loaderText, loaderView } from './activity'
 
 describe('activity', () => {
   it('cuenta las escrituras en curso y recuerda el método más reciente', () => {
@@ -67,5 +67,23 @@ describe('authLabel', () => {
 
   it('el título propio reemplaza al genérico del cargador', () => {
     expect(loaderText('POST', false, false, 'Iniciando sesión…').title).toBe('Iniciando sesión…')
+  })
+})
+
+describe('loaderView: sin internet no se bloquea la pantalla', () => {
+  it('con internet y guardando: cargador que bloquea', () => {
+    expect(loaderView(true, true, false)).toBe('blocking')
+  })
+  it('sin internet y esperando: solo un aviso discreto', () => {
+    expect(loaderView(true, true, true)).toBe('banner')
+  })
+  it('sin escritura o antes del retraso: nada', () => {
+    expect(loaderView(false, true, true)).toBe('none')
+    expect(loaderView(true, false, false)).toBe('none')
+  })
+  it('el aviso de espera no dice «no cierres la app» ni tapa nada', () => {
+    const t = loaderText('POST', false, true)
+    expect(t.detail).not.toMatch(/no cierres/i)
+    expect(t.detail).toContain('cuando vuelva')
   })
 })

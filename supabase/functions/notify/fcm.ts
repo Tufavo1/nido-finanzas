@@ -57,8 +57,17 @@ export async function sendFcm(account: FcmAccount, accessToken: string, deviceTo
   const res = await fetch(SEND_URL(account.project_id), {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    // Prioridad alta solo para gastos y aportes, para que lleguen en Doze (NFR-04)
-    body: JSON.stringify({ message: { token: deviceToken, notification: { title, body }, android: { priority: 'HIGH' } } }),
+    // Prioridad alta solo para gastos y aportes, para que lleguen en Doze (NFR-04).
+    // visibility PRIVATE: en la pantalla de bloqueo Android oculta el contenido (con el monto) cuando el teléfono está
+    // en «ocultar contenido sensible» (decisión 5). FCM HTTP v1 no permite enviar un cuerpo público alternativo; eso
+    // lo tiene que armar la app (setPublicVersion) si el mensaje llega como datos.
+    body: JSON.stringify({
+      message: {
+        token: deviceToken,
+        notification: { title, body },
+        android: { priority: 'HIGH', notification: { visibility: 'PRIVATE' } },
+      },
+    }),
     signal: AbortSignal.timeout(10_000),
   })
   if (res.ok) return 'sent'

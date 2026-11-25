@@ -1,38 +1,44 @@
 import { describe, expect, it } from 'vitest'
-import { BANKS, DEFAULT_PARTNER_THRESHOLD, bankStatus, parseBankPresets, parseSyncState, parseThreshold, syncSummary } from './bankAuto'
+import { BANKS, CAPTURE_AVAILABLE, CAPTURE_AVAILABLE_TEXT, DEFAULT_PARTNER_THRESHOLD, bankStatus, parseBankPresets, parseSyncState, parseThreshold, syncNeedsSignIn, syncSummary } from './bankAuto'
 
 describe('BANKS', () => {
-  it('son los cuatro bancos y Billetera Google, en este orden', () => {
-    expect(BANKS.map((b) => b.name)).toEqual(['Santander', 'Banco Estado', 'Banco Falabella', 'Banco de Chile', 'Billetera Google'])
+  it('siguen definidos los cuatro bancos y Billetera de Google (no se borran: el dueño los reactiva uno a uno)', () => {
+    expect(BANKS.map((b) => b.name)).toEqual(['Santander', 'Banco Estado', 'Banco Falabella', 'Banco de Chile', 'Billetera de Google'])
     expect(BANKS.map((b) => b.id)).toContain('billetera-google')
+  })
+  it('solo Banco Falabella y Billetera de Google están disponibles para captura', () => {
+    expect(CAPTURE_AVAILABLE.map((b) => b.id)).toEqual(['banco-falabella', 'billetera-google'])
+    expect(BANKS.filter((b) => !b.available).map((b) => b.id)).toEqual(['santander', 'banco-estado', 'banco-chile'])
+  })
+  it('el texto sale de la misma lista', () => {
+    expect(CAPTURE_AVAILABLE_TEXT).toBe('Por ahora funciona con Banco Falabella y Billetera de Google. Pronto sumaremos más bancos.')
   })
 })
 
 describe('parseBankPresets', () => {
-  it('siempre devuelve todas las fuentes, apagadas y sin app asociada si el teléfono no dice nada', () => {
+  it('sin preferencias solo devuelve las disponibles, apagadas y sin app asociada', () => {
     const r = parseBankPresets(null)
-    expect(r).toHaveLength(5)
-    expect(r.every((b) => !b.autoSave && b.packageName === null)).toBe(true)
+    expect(r.map((b) => b.id)).toEqual(['banco-falabella', 'billetera-google'])
+    expect(r.every((b) => b.available && !b.autoSave && b.packageName === null)).toBe(true)
   })
-  it('lee el estado de cada banco y descarta lo inválido', () => {
-    const r = parseBankPresets({ banks: [{ id: 'santander', packageName: 'cl.santander.app', autoSave: true }, { id: 'banco-chile', packageName: '../mal', autoSave: 'si' }, { id: 'otro', autoSave: true }] })
-    expect(r.find((b) => b.id === 'santander')).toMatchObject({ packageName: 'cl.santander.app', autoSave: true })
-    expect(r.find((b) => b.id === 'banco-chile')).toMatchObject({ packageName: null, autoSave: false })
-    expect(r).toHaveLength(5)
+  it('un banco oculto con preferencia guardada encendida se conserva para poder apagarlo', () => {
+    const r = parseBankPresets({ banks: [{ id: 'santander', packageName: 'cl.santander.app', autoSave: true }, { id: 'banco-chile', packageName: '../mal', autoSave: 'si' }, { id: 'banco-estado', packageName: 'cl.be.app', autoSave: false }, { id: 'otro', autoSave: true }] })
+    expect(r.map((b) => b.id)).toEqual(['santander', 'banco-falabella', 'billetera-google'])
+    expect(r[0]).toMatchObject({ available: false, packageName: 'cl.santander.app', autoSave: true })
   })
-  it('lee Billetera Google como una fuente más', () => {
+  it('lee Billetera de Google como una fuente más', () => {
     const r = parseBankPresets({ banks: [{ id: 'billetera-google', packageName: 'com.google.android.apps.walletnfcrel', autoSave: true }] })
-    expect(r.find((b) => b.id === 'billetera-google')).toMatchObject({ name: 'Billetera Google', packageName: 'com.google.android.apps.walletnfcrel', autoSave: true })
+    expect(r.find((b) => b.id === 'billetera-google')).toMatchObject({ name: 'Billetera de Google', packageName: 'com.google.android.apps.walletnfcrel', autoSave: true })
   })
   it('sin app asociada no puede quedar encendido', () => {
-    expect(parseBankPresets({ banks: [{ id: 'santander', autoSave: true }] })[0]!.autoSave).toBe(false)
+    expect(parseBankPresets({ banks: [{ id: 'banco-falabella', autoSave: true }] })[0]!.autoSave).toBe(false)
   })
 })
 
 describe('bankStatus', () => {
   it('dice si falta asociar la app', () => {
-    expect(bankStatus({ id: 'santander', name: 'Santander', packageName: null, autoSave: false })).toBe('Sin app asociada')
-    expect(bankStatus({ id: 'santander', name: 'Santander', packageName: 'cl.s.app', autoSave: false })).toBe('App asociada: cl.s.app')
+    expect(bankStatus({ id: 'santander', name: 'Santander', available: false, packageName: null, autoSave: false })).toBe('Sin app asociada')
+    expect(bankStatus({ id: 'santander', name: 'Santander', available: false, packageName: 'cl.s.app', autoSave: false })).toBe('App asociada: cl.s.app')
   })
 })
 
@@ -60,5 +66,17 @@ describe('parseThreshold (aviso de gastos de mi pareja)', () => {
   })
   it('rechaza vacío, cero, decimales, letras y montos absurdos con un mensaje', () => {
     for (const t of ['', '0', '12,5', 'abc', '99999999999', '-5']) expect(parseThreshold(t)).toEqual({ ok: false, error: expect.any(String) })
+  })
+})
+
+describe('syncNeedsSignIn', () => {
+  it('true si el último error del envío es de sesión o de perfil', () => {
+    expect(syncNeedsSignIn({ lastError: 'OWNER' })).toBe(true)
+    expect(syncNeedsSignIn({ lastError: 'NO_PROFILE' })).toBe(true)
+  })
+  it('false con otros errores, sin error o con basura', () => {
+    expect(syncNeedsSignIn({ lastError: 'NETWORK' })).toBe(false)
+    expect(syncNeedsSignIn({ lastError: null })).toBe(false)
+    expect(syncNeedsSignIn('x')).toBe(false)
   })
 })

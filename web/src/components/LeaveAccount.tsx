@@ -1,3 +1,4 @@
+import { toAppError, userMessage, UserError } from '../lib/appError'
 import { useToastError } from '../lib/useToastError'
 import type { Notify } from './Toast'
 import { useState } from 'react'
@@ -37,7 +38,7 @@ export default function LeaveAccount({ hh, reload, onToast }: { hh: Household; r
     try {
       await confirmPassword(pw)
       const { error: err } = await supabase.rpc(action === 'leave' ? 'leave_household' : 'delete_account')
-      if (err) throw new Error(err.message)
+      if (err) throw new UserError(toAppError(err).message)
       if (action === 'delete') {
         // La cuenta ya no existe: solo queda limpiar este dispositivo
         await supabase.auth.signOut({ scope: 'local' })
@@ -46,7 +47,7 @@ export default function LeaveAccount({ hh, reload, onToast }: { hh: Household; r
         await reload()
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Algo salió mal. Inténtalo de nuevo.')
+      setError(userMessage(err))
       setBusy(false)
     } finally {
       setPw('')

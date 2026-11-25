@@ -68,6 +68,16 @@ describe('nativePush', () => {
     expect(h.removed).toBe(2)
     expect(await getPushStatus()).toEqual({ permission: 'granted', tokenRegistered: true })
   })
+  it('M1 la clave local del token empieza con contigo- (la limpia el cierre de sesión) y se lee la clave vieja', async () => {
+    await enablePush()
+    expect([...store.keys()].length).toBeGreaterThan(0)
+    expect([...store.keys()].every((k) => k.startsWith('contigo-'))).toBe(true)
+    store.clear()
+    store.set('contigo.push.token.u1', 'tok-1')
+    expect(await getPushStatus()).toEqual({ permission: 'granted', tokenRegistered: true })
+    await disablePush()
+    expect(store.size).toBe(0)
+  })
   it('23505 (el token ya existía) cuenta como éxito', async () => {
     h.insert.mockResolvedValue({ error: { code: '23505', message: 'duplicate key' }, status: 409 })
     await expect(enablePush()).resolves.toMatchObject({ tokenRegistered: true })

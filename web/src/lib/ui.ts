@@ -10,6 +10,9 @@ const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 's
 
 export const monthName = (d: Date = new Date()): string => MONTHS[d.getMonth()] ?? ''
 
+/** 'noviembre de 2026' (mes en minúscula, como pide el estándar) */
+export const monthYear = (d: Date = new Date()): string => `${monthName(d)} de ${d.getFullYear()}`
+
 export const monthShort = (d: Date = new Date()): string => MONTHS_SHORT[d.getMonth()] ?? ''
 
 /** '2026-10-17' -> '17 oct' */
@@ -18,8 +21,13 @@ export function shortDate(iso: string): string {
   return `${Number(d)} ${MONTHS_SHORT[Number(m) - 1] ?? ''}`
 }
 
-/** Deja solo dígitos, máximo 9 (los montos son CLP enteros) */
-export const digitsOnly = (s: string): string => s.replace(/\D/g, '').slice(0, 9)
+/** Largo máximo de un monto en CLP entero (hasta 999.999.999) */
+export const MAX_AMOUNT_DIGITS = 9
+/** Los saldos y cupos de un banco pueden ser más grandes: hasta 9.999.999.999 */
+export const MAX_BALANCE_DIGITS = 10
+
+/** Deja solo dígitos, máximo `max` (por defecto un monto normal) */
+export const digitsOnly = (s: string, max: number = MAX_AMOUNT_DIGITS): string => s.replace(/\D/g, '').slice(0, max)
 
 const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
 

@@ -12,11 +12,16 @@ interface BlobStorage {
     fun write(bytes: ByteArray)
 
     fun delete()
+
+    /** Datos ilegibles para siempre (clave perdida, archivo dañado): se apartan en vez de borrarse. */
+    fun quarantine() = delete()
 }
 
 /** Archivo con escritura atómica: un corte de luz a medio guardar no deja el archivo a medias. */
 class AtomicFileStorage(file: File) : BlobStorage {
     private val atomic = AtomicFile(file)
+    // Copia apartada de un bloque ilegible (A1): una sola por archivo; cerrar sesion o borrar la clave tambien la borra.
+    private val bad = File(file.path + ".bad")
 
     override fun read(): ByteArray? = try {
         atomic.readFully()
@@ -35,5 +40,15 @@ class AtomicFileStorage(file: File) : BlobStorage {
         }
     }
 
-    override fun delete() = atomic.delete()
+    override fun delete() {
+        atomic.delete()
+        bad.delete()
+    }
+
+    override fun quarantine() {
+        bad.delete()
+        // Si no se puede renombrar se borra como antes: un bloque ilegible no debe hacer fallar cada lectura para siempre.
+        if (!atomic.baseFile.renameTo(bad)) bad.delete()
+        atomic.delete()
+    }
 }

@@ -3,6 +3,7 @@ package cl.dinovance.contigo
 
 import cl.dinovance.contigo.capture.BankDetector
 import cl.dinovance.contigo.capture.BankMatcher
+import cl.dinovance.contigo.capture.BankPresets
 import cl.dinovance.contigo.capture.BankSetup
 import cl.dinovance.contigo.capture.BankStore
 import cl.dinovance.contigo.capture.DetectStatus
@@ -82,13 +83,14 @@ class BankDetectionTest {
     fun `activar todo prende solo los bancos con app y lo informa, sin apps no hace nada`() {
         val s = Store()
         val none = BankSetup(s).setAll(true)
-        // Migrado (2026-11-23, Billetera Google es una fuente mas): 5 fuentes sin app, antes 4.
-        assertTrue(none.enabled.isEmpty()); assertEquals(5, none.withoutApp.size); assertTrue(s.auto.values.none { it })
-        s.det["santander"] = setOf("x.s"); s.man["banco-chile"] = "x.c"
+        // Migrado (2026-11-24, decision del dueno): solo se ofrecen y encienden las fuentes VERIFICADAS (Banco Falabella y Billetera
+        // Google); antes eran las 5. Santander/Banco Estado/Banco de Chile: ver FuentesVerificadasTest.
+        assertTrue(none.enabled.isEmpty()); assertEquals(2, none.withoutApp.size); assertTrue(s.auto.values.none { it })
+        s.det["banco-falabella"] = setOf("x.f"); s.man[BankPresets.WALLET_ID] = "x.w"; s.det["santander"] = setOf("x.s")
         val r = BankSetup(s).setAll(true)
-        assertEquals(setOf("santander", "banco-chile"), r.enabled.toSet()); assertEquals(setOf("banco-estado", "banco-falabella", "billetera-google"), r.withoutApp.toSet())
-        assertTrue(s.auto["santander"] == true && s.auto["banco-chile"] == true && s.auto["banco-estado"] != true)
+        assertEquals(setOf("banco-falabella", "billetera-google"), r.enabled.toSet()); assertTrue(r.withoutApp.isEmpty())
+        assertTrue(s.auto["banco-falabella"] == true && s.auto[BankPresets.WALLET_ID] == true && s.auto["santander"] != true)
         val off = BankSetup(s).setAll(false)
-        assertTrue(s.auto.values.none { it }); assertEquals(setOf("santander", "banco-chile"), off.disabled.toSet())
+        assertTrue(s.auto.values.none { it }); assertEquals(setOf("banco-falabella", "billetera-google"), off.disabled.toSet())
     }
 }

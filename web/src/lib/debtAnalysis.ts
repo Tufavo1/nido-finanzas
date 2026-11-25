@@ -1,7 +1,8 @@
+import { plural } from './plural'
 import type { Debt, DebtPayment } from './data'
 import { debtView, payoffPlan } from './finance'
-import type { Finding } from './finance'
-import { money } from './format'
+import type { Finding, PaidExpense } from './finance'
+import { money, pctText } from './format'
 import { monthName, monthShort } from './ui'
 
 /** Análisis inteligente de deudas: qué estrategia ahorra más interés, qué tan al día van los pagos y qué deuda pesa más. */
@@ -138,8 +139,8 @@ function simulate(debts: Sim[], budget: number, order: string[], rollover: boole
 
 const byMonthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 
-export function analyzeDebts(debts: Debt[], payments: DebtPayment[], now: Date = new Date()): DebtInsights {
-  const views = debts.map((d) => debtView(d, payments, now))
+export function analyzeDebts(debts: Debt[], payments: DebtPayment[], now: Date, expenses: PaidExpense[]): DebtInsights {
+  const views = debts.map((d) => debtView(d, payments, now, expenses, debts))
   const active = views.filter((v) => v.remaining > 0)
 
   // ---------- Costo de cada deuda ----------
@@ -261,7 +262,7 @@ export function analyzeDebts(debts: Debt[], payments: DebtPayment[], now: Date =
     findings.push({
       level: 'warn',
       title: `**${costly.name}** es la más cara de mantener`,
-      detail: `Cobra ${costly.rate.toString().replace('.', ',')} % al mes: ~${money(costly.monthlyInterest)} de interés mensual${costly.totalInterest !== null ? ` y ${money(costly.totalInterest)} en total hasta terminarla` : ''}. Conviene refinanciarla o abonar extra.`,
+      detail: `Cobra ${pctText(costly.rate)} al mes: ~${money(costly.monthlyInterest)} de interés mensual${costly.totalInterest !== null ? ` y ${money(costly.totalInterest)} en total hasta terminarla` : ''}. Conviene refinanciarla o abonar extra.`,
     })
   }
   const best = extras.find((e) => e.interestSaved > 0 && e.monthsSaved >= 2) ?? extras[0]
@@ -273,7 +274,7 @@ export function analyzeDebts(debts: Debt[], payments: DebtPayment[], now: Date =
   }
   if (streak >= 3) findings.push({ level: 'ok', title: `${streak} meses seguidos pagando`, detail: 'La constancia es lo que más rápido saca de las deudas.' })
   if (report.lastPaidDays !== null && report.lastPaidDays > 45 && active.length > 0) {
-    findings.push({ level: 'warn', title: `Hace ${report.lastPaidDays} días que no anotan un pago`, detail: 'Si ya pagaron, anótalo para que el saldo y los plazos sean reales.' })
+    findings.push({ level: 'warn', title: `Hace ${plural(report.lastPaidDays, 'día', 'días')} que no anotan un pago`, detail: 'Si ya pagaron, anótalo para que el saldo y los plazos sean reales.' })
   }
   const rank = { bad: 0, warn: 1, ok: 2 } as const
   findings.sort((a, b) => rank[a.level] - rank[b.level])
@@ -293,10 +294,10 @@ export interface ExtraEffect {
 }
 
 /** Qué pasa si cada mes se paga `extra` más, aplicado a la deuda que más interés cobra. null si no hay deudas o no terminan. */
-export function extraEffect(debts: Debt[], payments: DebtPayment[], extra: number, now: Date = new Date()): ExtraEffect | null {
+export function extraEffect(debts: Debt[], payments: DebtPayment[], extra: number, now: Date, expenses: PaidExpense[]): ExtraEffect | null {
   if (extra <= 0) return null
   const sims: Sim[] = debts
-    .map((d) => debtView(d, payments, now))
+    .map((d) => debtView(d, payments, now, expenses, debts))
     .filter((v) => v.remaining > 0)
     .map((v) => ({ name: v.debt.name, balance: v.remaining, rate: v.debt.monthly_rate, payment: v.debt.monthly_payment }))
   const budget = sims.reduce((s, d) => s + d.payment, 0)

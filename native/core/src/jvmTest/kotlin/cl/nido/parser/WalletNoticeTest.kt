@@ -55,7 +55,8 @@ class WalletNoticeTest {
         listOf("USD 12.50", "US\$ 12.50", "EUR 30", "COP 20,000", "ARS 15,000", "PEN 40", "12.50 USD", "20,000 COP", "MXN 300", "€ 12", "BRL 50").forEach {
             val r = wallet("Tienda Demo  23 nov", it)
             assertNull(r.candidate, it)
-            assertEquals(ParseRejection.DISCARDED, r.rejection, it)
+            // 2026-11-24: motivo propio (antes DISCARDED) para que el diagnostico diga «moneda extranjera»; sigue sin candidato
+            assertEquals(ParseRejection.FOREIGN_CURRENCY, r.rejection, it)
         }
     }
 

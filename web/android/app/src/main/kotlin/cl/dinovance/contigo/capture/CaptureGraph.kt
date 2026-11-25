@@ -29,19 +29,20 @@ class CaptureGraph private constructor(context: Context) {
     val drafts: DraftRepository = EncryptedDraftRepository(
         storage = AtomicFileStorage(File(context.noBackupFilesDir, "drafts.bin")),
         cipher = KeystoreAesGcm(DRAFTS_KEY_ALIAS),
+        onFailure = { prefs.recordFailure(it, System.currentTimeMillis()) },
         clock = System::currentTimeMillis,
     )
     val recent = RecentApps(prefs)
     val notifier = CaptureNotifier(context.applicationContext, prefs)
     private val fail: (String) -> Unit = { prefs.recordFailure(it, System.currentTimeMillis()) }
-    val autoLog = AutoSavedLog(secureText(session, LOG_KEY, fail), System::currentTimeMillis)
-    val diagnostics = DiagnosticsLog(secureText(session, DIAG_KEY, fail), System::currentTimeMillis)
+    val autoLog = AutoSavedLog(secureText(session, LOG_KEY, fail), fail, System::currentTimeMillis)
+    val diagnostics = DiagnosticsLog(secureText(session, DIAG_KEY, fail), fail, System::currentTimeMillis)
     // Avisos ya vistos y ya convertidos en borrador (solo hashes): almacen aparte, NO se borra con el cierre de sesion para que un
     // gasto ya enviado no renazca desde la barra ni por un reenvio del sistema
     private val seenStore = SecureKeyValueStore(File(context.noBackupFilesDir, "seen"), KeystoreAesGcm(SESSION_KEY_ALIAS))
-    val ledger = NoticeLedger(secureText(seenStore, LEDGER_KEY, fail))
+    val ledger = NoticeLedger(secureText(seenStore, LEDGER_KEY, fail), onFailure = fail)
     // Compras ya convertidas en borrador (solo hashes): regla cross-fuente banco + Billetera Google, mismo almacen que el registro
-    val purchases = PurchaseMemory(secureText(seenStore, PURCHASES_KEY, fail))
+    val purchases = PurchaseMemory(secureText(seenStore, PURCHASES_KEY, fail), onFailure = fail)
     val processor = CaptureProcessor(
         whitelist = prefs::effectiveWhitelist,
         repository = drafts,
@@ -61,7 +62,7 @@ class CaptureGraph private constructor(context: Context) {
         ledger = ledger,
         purchases = purchases,
     )
-    val seen = SeenNotices(secureText(seenStore, SEEN_KEY, fail))
+    val seen = SeenNotices(secureText(seenStore, SEEN_KEY, fail), onFailure = fail)
     val rescanner = NotificationRescanner(
         accepts = { processor.accepts(it) },
         process = { p, t, x, at -> processor.process(p, t, x, at) },

@@ -1,6 +1,8 @@
+import { plural } from './plural'
 import type { Finding } from './finance'
 import { money } from './format'
 import { monthKey } from './analysis'
+import { REMOVED_CATEGORY_NAME } from './monthFigures'
 import { monthName } from './ui'
 
 /** Análisis de gastos: detecta lo que se sale de lo normal (gastos inusuales, posibles duplicados, suscripciones sin marcar) y cómo va cada presupuesto. */
@@ -132,7 +134,7 @@ export function analyzeExpenses(input: ExpenseInput): ExpenseInsights {
   const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
   const elapsed = isCurrent ? now.getDate() : days
   const catName = new Map(categories.map((c) => [c.id, c.name] as const))
-  const nameOf = (id: string) => catName.get(id) ?? 'Otra categoría'
+  const nameOf = (id: string) => catName.get(id) ?? REMOVED_CATEGORY_NAME
 
   // Quien llama ya trae solo lo que le corresponde a la persona elegida
   const all = input.history
@@ -267,7 +269,7 @@ export function analyzeExpenses(input: ExpenseInput): ExpenseInsights {
     findings.push({ level: 'warn', title: `El ${rhythm.earlyPct} % se gastó en los primeros 10 días`, detail: 'Gastar casi todo apenas llega la plata deja el resto del mes muy ajustado.' })
   }
   if (rhythm && rhythm.quietStreak >= 3) {
-    findings.push({ level: 'ok', title: `Llevan ${rhythm.quietStreak} días sin gastar`, detail: 'Buen ritmo. Los días sin gasto son los que sostienen el presupuesto.' })
+    findings.push({ level: 'ok', title: `Llevan ${plural(rhythm.quietStreak, 'día', 'días')} sin gastar`, detail: 'Buen ritmo. Los días sin gasto son los que sostienen el presupuesto.' })
   }
   if (pace.length > 0 && pace.every((p) => p.status === 'ok')) {
     findings.push({ level: 'ok', title: 'Todos los presupuestos van bien', detail: 'Ninguna categoría con tope se pasaría a este ritmo.' })

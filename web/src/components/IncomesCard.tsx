@@ -180,7 +180,7 @@ export default function IncomesCard({ hh, data, month, onToast }: Props) {
               </div>
               <div className="field">
                 <label htmlFor="inc-amount">Monto</label>
-                <input id="inc-amount" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 50000" value={dots(amount)}
+                <input id="inc-amount" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 50.000" value={dots(amount)}
                   onChange={(e) => setAmount(digitsOnly(e.target.value))} />
               </div>
               <div className="field">

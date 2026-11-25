@@ -3,7 +3,6 @@ package cl.dinovance.contigo.security
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import java.security.GeneralSecurityException
 import java.security.InvalidKeyException
 import java.security.UnrecoverableKeyException
 import java.security.KeyStore
@@ -31,22 +30,24 @@ class KeystoreAesGcm(private val alias: String) : BlobCipher {
         return byteArrayOf(FORMAT_VERSION) + cipher.iv + cipher.doFinal(plain)
     }
 
-    private fun replaceKey(): SecretKey {
+    private fun replaceKey(): SecretKey = synchronized(lockFor(alias)) {
         KeyStore.getInstance(PROVIDER).apply { load(null) }.deleteEntry(alias)
-        return generate()
+        generate()
     }
 
     override fun decrypt(blob: ByteArray): ByteArray {
-        if (blob.size <= HEADER_SIZE || blob[0] != FORMAT_VERSION) throw GeneralSecurityException("bloque no reconocido")
+        if (blob.size <= HEADER_SIZE || blob[0] != FORMAT_VERSION) throw UnreadableBlobException("bloque no reconocido")
         val iv = blob.copyOfRange(1, HEADER_SIZE)
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_BITS, iv))
         return cipher.doFinal(blob, HEADER_SIZE, blob.size - HEADER_SIZE)
     }
 
-    private fun key(): SecretKey {
+    // Leer-o-crear bajo un cerrojo por alias (B4): dos instancias (sesion y «vistos» comparten alias) o dos hilos que arrancan a la
+    // vez no generan cada una su clave, con lo que lo cifrado con la primera quedaria ilegible.
+    private fun key(): SecretKey = synchronized(lockFor(alias)) {
         val store = KeyStore.getInstance(PROVIDER).apply { load(null) }
-        return (store.getKey(alias, null) as? SecretKey) ?: generate()
+        (store.getKey(alias, null) as? SecretKey) ?: generate()
     }
 
     private fun generate(): SecretKey {
@@ -62,6 +63,10 @@ class KeystoreAesGcm(private val alias: String) : BlobCipher {
     }
 
     private companion object {
+        private val locks = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
+        fun lockFor(alias: String): Any = locks.getOrPut(alias) { Any() }
+
         const val PROVIDER = "AndroidKeyStore"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val FORMAT_VERSION: Byte = 1

@@ -34,7 +34,8 @@ class DiagnosticsTest {
     private var profile: AutoProfile? = AutoProfile(owner, uid, hid, uid, true, mapOf(MerchantKey.of("Cafe Demo Norte") to cat))
     private var notifOk = true
     private val cfg = object : AutoConfig {
-        override fun bankOfPackage(packageName: String) = if (packageName == bank) "santander" else null
+        // Migrado (2026-11-24): banco sintetico VERIFICADO; Santander ya no se captura (BankPresets.VERIFIED)
+        override fun bankOfPackage(packageName: String) = if (packageName == bank) "banco-falabella" else null
         override fun autoEnabled(bank: String) = cfgAuto
         override fun maxClp() = cap
     }
@@ -55,7 +56,7 @@ class DiagnosticsTest {
     fun `un aviso con formato desconocido deja diagnostico NO_AMOUNT con el texto enmascarado`() {
         p().process(bank, "Banco", "Hola, revisa tu cuenta 12345", now)
         val e = diag.list().single()
-        assertEquals(DiagReason.NO_AMOUNT, e.reason); assertEquals("santander", e.bankId)
+        assertEquals(DiagReason.NO_AMOUNT, e.reason); assertEquals("banco-falabella", e.bankId)
         assertFalse(e.maskedText.any { it.isDigit() }); assertTrue(e.maskedText.contains("revisa tu cuenta"))
     }
 

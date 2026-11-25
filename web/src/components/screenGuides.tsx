@@ -152,8 +152,8 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
         art: plus,
       },
       {
-        title: 'Crear otra cosa',
-        text: 'Al final está **Crear otra cosa**: un **gasto fijo**, una **deuda**, una **meta** o una **categoría**.',
+        title: 'Crear',
+        text: 'Arriba está **Crear** (el botón con +): un **gasto fijo**, una **deuda**, una **meta** o una **categoría**.',
         art: plus,
       },
     ],
@@ -168,7 +168,7 @@ export const SCREEN_GUIDES: Record<GuideScreen, { label: string; slides: Slide[]
       },
       {
         title: 'Crear una meta',
-        text: 'Usa **Registrar > Crear otra cosa > Meta**, ponle un nombre, di cuánto quieren juntar y para cuándo. La app calcula **cuánto aportar al mes**.',
+        text: 'Usa **Registrar > Crear > Meta**, ponle un nombre, di cuánto quieren juntar y para cuándo. La app calcula **cuánto aportar al mes**.',
         art: plus,
       },
       {

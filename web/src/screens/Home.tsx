@@ -9,7 +9,7 @@ import ScopeBar from '../components/ScopeBar'
 import { scopeExpenses } from '../lib/scope'
 import type { Scope } from '../lib/scope'
 import type { Notify } from '../components/Toast'
-import { savedInMonth } from '../lib/goals'
+import { goalSaved, savedInMonth } from '../lib/goals'
 import { splitOf } from '../lib/split'
 import Avatar, { AvatarPair } from '../components/Avatar'
 import Icon from '../components/Icon'
@@ -19,13 +19,14 @@ import Venn from '../components/Venn'
 import { MonthCurveCard, SixMonthsCard, WeekdayCard } from '../components/HomeCharts'
 import { compact, monthGrid } from '../lib/calendar'
 import { daysLeftInMonth, money } from '../lib/format'
-import { analyzeSalary, monthIncome, salaryFlows } from '../lib/finance'
-import { monthKey as monthKeyOf, myShare } from '../lib/analysis'
-import { dayExpenses, deltaText, latestExpenses, monthStatus, topCategories } from '../lib/homeSummary'
-import { pendingFixedThisMonth } from '../lib/upcoming'
+import { monthIncome, unassignedCardExpenses } from '../lib/finance'
+import { monthKey as monthKeyOf, myMonthCost, salaryLeft, salaryPicture } from '../lib/monthFigures'
+import { compareMonths, dayExpenses, latestExpenses, monthStatus, otherCategories, topCategories } from '../lib/homeSummary'
 import { computeMetrics } from '../lib/metrics'
 import type { AlertTab, MoneySection } from '../lib/engine'
-import { monthName, shortDate } from '../lib/ui'
+import { monthName, monthYear, shortDate } from '../lib/ui'
+import { moreCount } from '../lib/plural'
+import { latestHint, otherName, totalOwnerText } from '../lib/scopeText'
 
 interface Props {
   hh: Household
@@ -89,27 +90,32 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
     if (view === 'all') return all
     return computeMetrics(viewExpenses, viewPrev, data.categories, members, month)
   }, [view, all, viewExpenses, viewPrev, data.categories, members, month])
+  const otherPerson = otherName(view, hh.me.user_id, hh.everyone)
   const person = view === 'all' ? null : (all.people.find((p) => p.userId === view) ?? null)
 
   // Sueldo: dato privado, solo se calcula para mí y nunca para la pareja
   const mine = all.people.find((p) => p.userId === hh.me.user_id)
-  // «Te queda»: sin las compras con tarjeta (suben la tarjeta, no bajan la débito), con lo REALMENTE pagado a deudas y la cuota que falta como por pagar
-  const flows =
-    mine && data.salary
-      ? salaryFlows({ expenses: data.expenses, debts: data.debts, debtPayments: data.debtPayments, meId: hh.me.user_id, split, month, trueCost: mine.trueCost })
-      : null
-  const salaryCheck =
-    data.salary && mine && flows && (view === 'all' || view === hh.me.user_id)
-      ? analyzeSalary({
-          income: monthIncome(data.salary, data.incomes),
-          spent: flows.spent,
-          commitments: flows.commitments,
+  // «Te queda»: la misma cuenta que Análisis (lib/monthFigures): sin compras con tarjeta, con lo pagado a deudas y la cuota que falta como por pagar
+  const myCost = useMemo(() => myMonthCost(data.expenses, hh.me.user_id, split), [data.expenses, hh.me.user_id, split])
+  const unassignedCard = useMemo(() => unassignedCardExpenses(data.expenses, data.debts, month).length, [data.expenses, data.debts, month])
+  const picture =
+    data.salary && mine && (view === 'all' || view === hh.me.user_id)
+      ? salaryPicture({
+          expenses: data.expenses,
+          cardExpenses: data.cardExpenses,
+          debts: data.debts,
+          debtPayments: data.debtPayments,
+          recurring: data.recurring,
+          meId: hh.me.user_id,
+          split,
           month,
-          pendingFixed: pendingFixedThisMonth(data.recurring, hh.me.user_id, split) + flows.pendingDebt,
-          fixedBooked: data.expenses.reduce((s, e) => (e.recurring_id ? s + myShare(e, hh.me.user_id, split) : s), 0),
+          income: monthIncome(data.salary, data.incomes),
+          cost: myCost,
           saved: savedInMonth(data.contributions, hh.me.user_id, monthKeyOf(month)),
         })
       : null
+  const salaryCheck = picture?.sal ?? null
+  const leftShown = salaryCheck ? salaryLeft(salaryCheck) : null
 
   const pair = members.map((m) => {
     const p = all.people.find((x) => x.userId === m.user_id)
@@ -120,7 +126,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
   const budget = data.categories.reduce((s, c) => s + c.monthly_budget, 0)
   const left = budget - all.total
 
-  const deltaLine = deltaText(sub.deltaPct, isCurrent)
+  const deltaLine = compareMonths(sub.total, sub.prevTotal, isCurrent).text
   const status = monthStatus({ budget, total: all.total, isCurrent, daysLeft: daysLeftInMonth() })
 
   let settleText = 'Aún no hay gastos compartidos'
@@ -131,7 +137,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
   }
 
   const goal = data.goals[0]
-  const saved = goal ? data.contributions.filter((c) => c.goal_id === goal.id).reduce((s, c) => s + c.amount, 0) : 0
+  const saved = goal ? goalSaved(data.contributions, goal.id) : 0
   const goalPct = goal && goal.target_amount > 0 ? Math.min(100, Math.round((saved * 100) / goal.target_amount)) : 0
 
   const cells = useMemo(() => monthGrid(month.getFullYear(), month.getMonth()), [month])
@@ -141,9 +147,12 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
   const cats = sub.byCategory.filter((c) => c.spent > 0 || (view === 'all' && c.budget > 0)).slice(0, 6)
   const latest = latestExpenses(viewExpenses)
   const top = topCategories(sub.byCategory, sub.total, view === 'all')
+  const others = otherCategories(sub.byCategory, top)
+  // Las cuotas de deudas no son gastos: se pagan aparte y no están en el total de arriba
+  const debtFees = picture?.flows.commitments ?? 0
   const myProfile = data.profiles.find((p) => p.user_id === hh.me.user_id)
   const dayList = dayExpenses(viewExpenses, day)
-  const heroLabel = view === 'all' ? 'Gastado en el mes' : view === hh.me.user_id ? 'Te corresponde en el mes' : `Le corresponde a ${byId.get(view)?.display_name ?? ''}`
+  const heroLabel = view === 'all' ? 'Gastado en el mes (hogar)' : view === hh.me.user_id ? 'Te corresponde en el mes' : `Le corresponde a ${byId.get(view)?.display_name ?? ''}`
 
   const steps = [
     { key: 'expense', label: 'Anotar tu primer gasto', done: data.expenses.length > 0 || data.prevExpenses.length > 0, go: () => onGo('add') },
@@ -207,7 +216,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
           <Icon name="chevL" />
         </button>
         <span className="month-title" aria-live="polite">
-          {monthName(month)} {month.getFullYear()}
+          {monthYear(month)}
         </span>
         <button type="button" className="icon-btn" aria-label="Mes siguiente" disabled={isCurrent} onClick={() => change(1)}>
           <Icon name="chevR" />
@@ -260,7 +269,19 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
                 {c.left !== null && <span className={c.over ? 'over small-text' : 'muted small-text'}>{c.left >= 0 ? `Quedan ${money(c.left)}` : `Se pasó por ${money(-c.left)}`}</span>}
               </button>
             ))}
+            {others && (
+              <span className="top-cat">
+                <span className="row between">
+                  <span className="ellipsis">{moreCount(others.count, 'categoría', 'categorías')}</span>
+                  <span className="num strong">{money(others.spent)}</span>
+                </span>
+              </span>
+            )}
           </div>
+          <span className="muted small-text">
+            Suman {money(sub.total)}, el total de {totalOwnerText(view, otherPerson)}.
+            {debtFees > 0 ? ` Las cuotas de deudas que pagaste este mes (${money(debtFees)}) van aparte: no son gastos.` : ''}
+          </span>
         </section>
       )}
 
@@ -307,15 +328,30 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
         <button type="button" className={salaryCheck.level === 'ok' ? 'fixed-card' : 'fixed-card soon'} onClick={() => onGo('money', 'salary')}>
           <span className="fixed-top">
             <span className="grow fixed-name">
-              <strong>{salaryCheck.headline}</strong>
-              <span className="muted small-text">{salaryCheck.pendingFixed > 0 ? 'Libre de verdad' : 'Te queda del sueldo'}</span>
+              <strong className="wrap">{salaryCheck.headline}</strong>
+              <span className="muted small-text">{leftShown?.label}</span>
             </span>
-            <span className={salaryCheck.realFree < 0 ? 'over num strong' : 'num strong'}>{money(salaryCheck.realFree)}</span>
+            <span className={salaryCheck.realFree < 0 ? 'over num strong' : 'num strong'}>{money(leftShown?.amount ?? 0)}</span>
           </span>
           <span className="card-cta" aria-hidden="true">
             <Icon name="lock" size={14} /> Solo tú · Toca para ver el detalle <Icon name="chevR" size={16} />
           </span>
         </button>
+      )}
+
+      {data.financeStale && (
+        <p className="notice" role="status">
+          No se pudo actualizar todo; ves los últimos datos cargados.{' '}
+          <button type="button" className="btn small" onClick={() => void data.refresh()}>
+            Reintentar
+          </button>
+        </p>
+      )}
+
+      {salaryCheck && unassignedCard > 0 && (
+        <p className="muted small-text" role="note">
+          {unassignedCard === 1 ? 'Hay 1 compra con tarjeta que no está en ninguna de tus tarjetas' : `Hay ${unassignedCard} compras con tarjeta que no están en ninguna de tus tarjetas`}. La contamos como gasto normal del mes para que «Te queda» no sobre.
+        </p>
       )}
 
       {data.salary && data.financeReady && (view === 'all' || view === hh.me.user_id) && (
@@ -416,7 +452,7 @@ export default function Home({ hh, data, month, isCurrent, onMonth, onGo, onSett
       )}
 
       {/* 5. Últimos gastos */}
-      <SectionHead title="Últimos gastos" hint={view === 'all' ? 'Lo último que anotaron' : 'Lo último que te corresponde'} />
+      <SectionHead title="Últimos gastos" hint={latestHint(view, otherPerson)} />
       <section className="card">
         {latest.length === 0 && <span className="muted">Todavía no hay gastos este mes.</span>}
         <div>{latest.map(renderExpense)}</div>

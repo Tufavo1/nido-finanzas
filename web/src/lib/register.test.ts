@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { finalAmount, initialDraft, resolveSpentOn, saveBlocker, saveLabel } from './register'
+import { defaultShared, finalAmount, initialDraft, resolveSpentOn, saveBlocker, saveLabel } from './register'
 import type { Draft } from './register'
 
 const TODAY = '2026-10-30'
@@ -146,5 +146,18 @@ describe('saveLabel: registrar con el monto primero', () => {
   })
   it('una fecha futura se avisa en el botón', () => {
     expect(saveLabel('date', 5000)).toBe('La fecha no puede ser futura')
+  })
+})
+
+describe('defaultShared: Compartido o Personal según el alcance activo', () => {
+  it('vista Yo o la pareja: Personal, aunque el historial sugiera compartido', () => {
+    expect(defaultShared('yo', true)).toBe(false)
+    expect(defaultShared('isi', true)).toBe(false)
+    expect(defaultShared('yo', null)).toBe(false)
+  })
+  it('vista Hogar: lo que sugiere el historial, y Compartido si no hay historial', () => {
+    expect(defaultShared('all', null)).toBe(true)
+    expect(defaultShared('all', true)).toBe(true)
+    expect(defaultShared('all', false)).toBe(false)
   })
 })

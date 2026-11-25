@@ -50,12 +50,21 @@ internal object WalletNotice {
     // Solo verbos y «en»/«con» al inicio: un comercio puede empezar con «El», «La», «A» o «De» («El Mesón», «La Fete»).
     private val LEADING = Regex(
         "^$PUNCT(?:(?:nueva\\s+)?compra(?:\\s+(?:realizada|aprobada|exitosa))?|compraste|pagaste|pagado|pago(?:\\s+(?:realizado|aprobado|exitoso|sin\\s+contacto))?" +
-            "|transaccion(?:\\s+(?:aprobada|realizada))?|cargo|en|con)\\b$PUNCT",
+            "|transaccion(?:\\s+(?:aprobada|realizada))?|cargo|en|con" +
+            // Telefono en ingles: «You paid CLP 12,990 at COPEC», «Tap to pay: ... at COPEC»
+            "|(?:you\\s+)?paid|payment|purchase)\\b$PUNCT",
     )
-    private val TRAILING = Regex("$PUNCT\\b(?:en|a|al|con|de|desde|por|el|la|las|tu|su|y)$PUNCT$")
+    // «... CLP 7,000 at COPEC», «... to COPEC»: solo JUSTO tras el monto (un comercio puede llamarse «At Home» o «To Go Sushi»).
+    private val AT_TO = Regex("^$PUNCT(?:at|to)\\b$PUNCT")
+    // Conectores sueltos al final del trozo, UNA vez («con tu», «en el», «a las») y solo si detras venia algo quitado (tarjeta, monto,
+    // fecha): «Pagaste $8.500 en PRUEBA-EMU con [Visa ••1234]». Sin eso «Ferretería Con Con» perdia su ultimo «Con».
+    private val TRAILING = Regex("$PUNCT\\b(?:(?:en|a|al|con|de|desde|por|y|with|using)(?:\\s+(?:tu|su|el|la|las|una?))?|el|la|las|tu|su)$PUNCT$")
+    // «en PRUEBA-EMU con CuentaRUT», «con Google Pay»: el medio de pago que no es una tarjeta con marca ([CARD]) igual se corta.
+    private val WITH_MEDIUM = Regex("\\s+(?:con|with|using)\\s+${MerchantExtractor.PAYMENT_MEDIUM}", RegexOption.IGNORE_CASE)
     private val FILLER = Regex(
         "^(?:google\\s+pay|g\\s?pay|billetera(?:\\s+de)?\\s+google|google\\s+wallet|wallet|billetera|compra|pago|listo|aprobad[oa]|realizad[oa]" +
-            "|sin\\s+contacto|tu\\s+compra|notificacion|transaccion|tu|su|con\\s+(?:google\\s+pay|billetera(?:\\s+de)?\\s+google|google\\s+wallet))$",
+            "|sin\\s+contacto|tu\\s+compra|notificacion|transaccion|tu|su|con\\s+(?:google\\s+pay|billetera(?:\\s+de)?\\s+google|google\\s+wallet)" +
+            "|tap\\s+to\\s+pay|contactless|you\\s+paid|paid|payment|purchase)$",
     )
 
     fun parse(packageName: String, title: String?, text: String?, postedAtMillis: Long, utcOffsetMillis: Long): ParseResult {
@@ -64,11 +73,14 @@ internal object WalletNotice {
         if (DiscardRules.shouldDiscard(body, null)) return ParseResult(null, ParseRejection.DISCARDED)
         val folded = TextNormalizer.fold(body)
         if (NOT_A_PURCHASE.containsMatchIn(folded)) return ParseResult(null, ParseRejection.DISCARDED)
+        if (DiscardRules.isForeignCurrency(body)) return ParseResult(null, ParseRejection.FOREIGN_CURRENCY)
         val tokens = MoneyExtractor.findAllWallet(body)
         if (tokens.isEmpty()) return ParseResult(null, if (PASS.containsMatchIn(folded)) ParseRejection.DISCARDED else ParseRejection.NO_AMOUNT)
-        val amount = tokens.first().amountClp
-        val ambiguous = tokens.map { it.amountClp }.distinct().size > 1
         val refund = REFUND.containsMatchIn(folded)
+        // Compra en cuotas: el TOTAL, nunca se guarda sola (decision del dueno 2026-11-24). Un reembolso no es en cuotas.
+        val installments = if (refund) null else InstallmentExtractor.read(body, tokens)
+        val amount = installments?.amount?.amountClp ?: tokens.first().amountClp
+        val ambiguous = installments?.ambiguous ?: (tokens.map { it.amountClp }.distinct().size > 1)
         val removed = ArrayList<IntRange>()
         tokens.forEach { removed.add(it.start until it.end) }
         val account = account(blank(folded, removed), removed)
@@ -83,9 +95,10 @@ internal object WalletNotice {
                 merchant == null || ambiguous -> Confidence.MEDIUM
                 else -> Confidence.HIGH
             },
-            installment = null,
+            installment = installments?.installment,
             fingerprint = Fingerprint.of(packageName, body, amount, postedAtMillis),
             account = account,
+            installmentPlan = installments?.plan,
         )
         return ParseResult(candidate, null, ambiguous, extraIncome = false, staleDate = ShortDate.isStale(folded, postedAtMillis, utcOffsetMillis))
     }
@@ -128,12 +141,14 @@ internal object WalletNotice {
                 if (m.range.isEmpty()) break
                 seg = seg.substring(m.range.last + 1); low = low.substring(m.range.last + 1)
             }
-            while (true) {
-                val m = TRAILING.find(low) ?: break
-                if (m.range.isEmpty()) break
+            if (removed.any { r.first - 1 in it }) AT_TO.find(low)?.takeIf { !it.range.isEmpty() }?.let { m ->
+                seg = seg.substring(m.range.last + 1); low = low.substring(m.range.last + 1)
+            }
+            WITH_MEDIUM.find(low)?.let { m -> seg = seg.substring(0, m.range.first); low = low.substring(0, m.range.first) }
+            if (removed.any { r.last + 1 in it }) TRAILING.find(low)?.takeIf { !it.range.isEmpty() }?.let { m ->
                 seg = seg.substring(0, m.range.first); low = low.substring(0, m.range.first)
             }
-            if (FILLER.matches(low.trim().replace(Regex("\\s+"), " "))) continue
+            if (FILLER.matches(low.trim().trim(':', ',', '.', '!', '-').trim().replace(Regex("\\s+"), " "))) continue
             if (seg.none { it.isLetter() }) continue
             val name = MerchantExtractor.clean(seg)
             if (name.any { it.isLetter() }) return name

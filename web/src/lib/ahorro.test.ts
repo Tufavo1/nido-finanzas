@@ -17,6 +17,7 @@ const input = (over: Partial<AnalysisInput> = {}): AnalysisInput => ({
   meId: 'a',
   memberCount: 2,
   month: OCT,
+  cardExpenses: [],
   now: NOW,
   history: [exp(200_000, '2026-10-05')],
   categories: [{ id: 'c1', name: 'Súper', monthly_budget: 0 }],
@@ -145,8 +146,8 @@ describe('Reparto de lo compartido', () => {
     const a = buildAnalysis(input({ memberCount: s, history: [exp(100_000, '2026-10-05', { shared: true })] }))
     expect(a.cost).toBe(70_000)
     const debt = { id: 'd', household_id: 'h', name: 'Casa', kind: 'credito', owner_id: null, original_amount: 1_000_000, monthly_payment: 100_000, monthly_rate: 0, due_day: 5, archived: false, created_at: '' } as Debt
-    expect(myDebtShare([debt], [], 'a', s)).toBe(70_000)
-    expect(myDebtShare([debt], [], 'b', s)).toBe(30_000)
+    expect(myDebtShare([debt], [], 'a', s, new Date(), [])).toBe(70_000)
+    expect(myDebtShare([debt], [], 'b', s, new Date(), [])).toBe(30_000)
   })
 
   it('la cuenta entre ustedes cuadra con el reparto acordado', () => {

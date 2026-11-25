@@ -2,7 +2,6 @@
 package cl.dinovance.contigo.security
 
 import java.io.File
-import java.security.GeneralSecurityException
 import java.security.MessageDigest
 
 /**
@@ -15,18 +14,19 @@ class SecureKeyValueStore(
     /** Donde se escribe cada bloque cifrado; en produccion AtomicFile (las pruebas JVM usan un archivo simple). */
     private val storageOf: (File) -> BlobStorage = ::AtomicFileStorage,
 ) {
+    /**
+     * null si no hay valor. Keystore invalidado (cambio de bloqueo, restauracion) o archivo dañado: ilegible para siempre, se aparta
+     * en cuarentena (.bad) y se responde «no hay valor»: la app pide iniciar sesion de nuevo en vez de fallar en bucle (H-16).
+     * Un fallo PASAJERO (Keystore ocupado) se propaga sin tocar el archivo: no se pierde la sesion ni la cola (A1).
+     */
     fun get(key: String): String? {
         val storage = storageFor(key)
         val bytes = storage.read() ?: return null
         return try {
             String(cipher.decrypt(bytes), Charsets.UTF_8)
-        } catch (e: GeneralSecurityException) {
-            // Keystore invalidado (cambio de bloqueo, restauración) o archivo dañado: ilegible para siempre.
-            // Se borra y se responde «no hay valor»: la app pide iniciar sesión de nuevo en vez de fallar en bucle (H-16).
-            storage.delete()
-            null
-        } catch (e: RuntimeException) {
-            storage.delete()
+        } catch (e: Exception) {
+            if (!UnreadableData.isPermanent(e)) throw e
+            storage.quarantine()
             null
         }
     }

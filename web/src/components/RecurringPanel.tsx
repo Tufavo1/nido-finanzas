@@ -6,6 +6,7 @@ import { money } from '../lib/format'
 import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
 import { daysUntil, digitsOnly, inDays, longDate, nextOccurrence, dots } from '../lib/ui'
+import { moreCount } from '../lib/plural'
 import { resolveScope, scopeRecurring } from '../lib/scope'
 import { splitOf } from '../lib/split'
 import type { Scope } from '../lib/scope'
@@ -218,7 +219,7 @@ export default function RecurringPanel({ hh, data, onToast, scope }: Props) {
         <div className="cat-actions">
           {sorted.length > PAGE && (
             <button type="button" className="btn ghost small wide" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
-              {showAll ? 'Ver menos gastos fijos' : `Ver más (${sorted.length - PAGE} gastos fijos más)`}
+              {showAll ? 'Ver menos gastos fijos' : `Ver más (${moreCount(sorted.length - PAGE, 'gasto fijo', 'gastos fijos')})`}
             </button>
           )}
         </div>

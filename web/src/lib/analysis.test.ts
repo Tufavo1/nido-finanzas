@@ -22,6 +22,7 @@ const base = (over: Partial<AnalysisInput> = {}): AnalysisInput => ({
   meId: 'a',
   memberCount: 2,
   month: OCT,
+  cardExpenses: [],
   now: NOW,
   history: [],
   categories: cats,
@@ -163,9 +164,16 @@ describe('resumen y casos borde', () => {
     expect(a.summary).toContain('costo real')
     expect(a.summary).toContain('te sobrarían')
   })
+  it('las categorías eliminadas van juntas en una sola línea, no una por cada una', () => {
+    const gone = ['x1', 'x2'].map((c) => exp(20_000, '2026-10-03', { category_id: c }))
+    const a = buildAnalysis(base({ history: gone }))
+    expect(a.slices).toHaveLength(1)
+    expect(a.slices[0]).toMatchObject({ name: 'Categoría eliminada', amount: 40_000 })
+  })
   it('agrupa en "otras categorías" lo que pasa de cinco', () => {
     const many = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'].map((c, i) => exp(10_000 * (i + 1), '2026-10-03', { category_id: c }))
-    const a = buildAnalysis(base({ history: many }))
+    const known = many.map((e) => ({ id: e.category_id, name: `Cat ${e.category_id}`, monthly_budget: 0 }))
+    const a = buildAnalysis(base({ history: many, categories: known }))
     expect(a.slices).toHaveLength(6)
     expect(a.slices[5]?.name).toBe('Otras categorías')
     expect(a.slices.reduce((s, x) => s + x.amount, 0)).toBe(a.cost)

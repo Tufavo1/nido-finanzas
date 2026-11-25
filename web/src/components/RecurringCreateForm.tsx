@@ -124,7 +124,7 @@ export default function RecurringCreateForm({ hh, data, onToast, onSaved }: { hh
       )}
       <div className="field">
         <label htmlFor="rec-amount">Monto al mes (CLP)</label>
-        <input id="rec-amount" autoComplete="off" className="input" inputMode="numeric" placeholder={idea ? `Ej. ${idea.example}` : 'Ej. 350000'} value={dots(amount)}
+        <input id="rec-amount" autoComplete="off" className="input" inputMode="numeric" placeholder={idea ? `Ej. ${dots(idea.example)}` : 'Ej. 350.000'} value={dots(amount)}
           onChange={(e) => setAmount(digitsOnly(e.target.value))} />
         {amount && <span className="hint num">{money(Number(amount) * 12)} al año</span>}
       </div>

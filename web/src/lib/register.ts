@@ -1,5 +1,3 @@
-import { parseBankNotice } from './bankNotice'
-import { suggestCategory } from './categorize'
 import { money } from './format'
 
 /** Lo que la persona va anotando en «Registrar» antes de guardar */
@@ -36,27 +34,6 @@ export function resolveSpentOn(date: string, today: string): string | null {
   return date > today ? null : date
 }
 
-export type NoticeDraft =
-  | { ok: true; digits: string; note: string; /** Vacía = hoy */ date: string; /** null = que la persona elija */ catId: string | null }
-  | { ok: false; error: string }
-
-/** El monto más grande que acepta el teclado de «Registrar» (9 cifras) */
-const MAX_AMOUNT = 999_999_999
-
-/** Convierte el aviso de compra del banco en un gasto listo para revisar y guardar */
-export function draftFromNotice(
-  text: string,
-  categories: { id: string; name: string }[],
-  history: { note: string | null; category_id: string }[],
-  now: Date,
-): NoticeDraft {
-  const n = parseBankNotice(text, now)
-  if (!n) return { ok: false, error: 'No encontramos un monto en pesos en ese aviso. Anótalo a mano.' }
-  if (n.kind === 'income') return { ok: false, error: 'Ese aviso es de plata que entró, no de un gasto.' }
-  if (n.amount > MAX_AMOUNT) return { ok: false, error: 'Ese monto es demasiado grande. Anótalo a mano.' }
-  return { ok: true, digits: String(n.amount), note: n.merchant, date: n.date ?? '', catId: suggestCategory(n.merchant, categories, history) }
-}
-
 /** Qué se está registrando: un gasto, un pago a una deuda o un aporte a una meta */
 export type TargetKind = 'expense' | 'debt' | 'goal'
 
@@ -83,4 +60,12 @@ export function saveLabel(blocker: Blocker | null, amount: number, kind: TargetK
   if (kind === 'debt') return `Pagar ${money(amount)}`
   if (kind === 'goal') return `Aportar ${money(amount)}`
   return `Guardar ${money(amount)}`
+}
+
+/**
+ * Compartido o Personal mientras la persona no lo toque: en la vista Hogar lo que sugiere el historial (o Compartido);
+ * en la vista Yo o de la pareja, Personal.
+ */
+export function defaultShared(scope: string, suggested: boolean | null): boolean {
+  return scope === 'all' ? (suggested ?? true) : false
 }

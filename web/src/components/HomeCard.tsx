@@ -1,3 +1,4 @@
+import { toAppError } from '../lib/appError'
 import { useToastError } from '../lib/useToastError'
 import type { Notify } from './Toast'
 import type { Household } from '../App'
@@ -26,7 +27,7 @@ export default function HomeCard({ hh, reload, onToast }: { hh: Household; reloa
     setError(null)
     const { error: err } = await supabase.rpc('rotate_invite_code')
     if (err) {
-      setError(err.message)
+      setError(toAppError(err).message)
       return
     }
     onToast('Código nuevo listo\nEl anterior **ya no sirve**.')

@@ -10,11 +10,12 @@ import type { HouseholdData } from './data'
 import { money } from './format'
 import { draftExpenseId } from './draftExpenseId'
 import { newId } from './idempotency'
-import { expenseRow, planDrafts } from './inbox'
-import { ContigoNative, isNativeApp, ownerKeyOf, parseAutoSaved, pendingToSendCount, readDrafts, readRecentApps } from './nativeBridge'
-import type { AutoSavedItem, NativeDraft } from './nativeBridge'
+import { draftCategoryId, expenseRow, planDrafts, withoutSavedDrafts } from './inbox'
+import { ContigoNative, isNativeApp, ownerKeyOf, parseAutoSaved, parseSyncNowResult, pendingToSendCount, readDrafts, readRecentApps } from './nativeBridge'
+import type { AutoSavedItem, NativeDraft, SyncNowResult } from './nativeBridge'
 import type { OfflineQueue } from './offlineQueue'
-import { unsentCount, unsentDrafts } from './draftFlags'
+import { syncNeedsSignIn } from './bankAuto'
+import { sendNowNotice, stillUnsent, syncResultNotice, unsentCount, unsentDrafts } from './draftFlags'
 import { enqueueWithNotice } from './queueNotice'
 import { deleteExpense, insertExpenseRow } from './saveExpense'
 import { debtPaymentRow, incomeRow, newDebtRow, saveMovement } from './movements'
@@ -185,11 +186,11 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
   )
 
   const ignore = useCallback(
-    async (d: NativeDraft) => {
+    async (d: NativeDraft, notice = 'Descartado\nNo lo anotamos.') => {
       try {
         await ContigoNative.removeDraft({ id: d.id })
         await load()
-        notify('Descartado\nNo lo anotamos.', 'info')
+        notify(notice, 'info')
       } catch (e) {
         logError(e, 'useDetected')
         notify('No se pudo descartar\nInténtalo de nuevo.', 'error')
@@ -197,6 +198,9 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
     },
     [load, notify],
   )
+
+  /** «Es una cuota de una compra que ya anoté»: se descarta sin crear gasto (la compra ya suma por su total) */
+  const discardPriorCharge = useCallback((d: NativeDraft) => ignore(d, 'Cuota descartada\nNo la sumé: esa compra ya está anotada.'), [ignore])
 
   /**
    * Deshacer un guardado automático. Si el gasto ya llegó al servidor, la app lo borra por la ruta de datos de
@@ -229,12 +233,36 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
   /** «Enviar ahora»: vuelve a intentar lo que quedó trabado */
   const sendNow = useCallback(async () => {
     setStuck(new Set())
-    if (native) {
-      // El teléfono envía lo que guardó solo en segundo plano; un fallo ya queda en su estado de envío
-      await ContigoNative.syncNow().catch((e: unknown) => logError(e, 'useDetected'))
+    if (!native) return
+    // Lo que la app guarda sola (confirmados con el total) no es del teléfono: lo cuenta aparte
+    const unsentNow = async (): Promise<number> => {
+      const list = await readDrafts(ContigoNative)
+      const saving = new Set(planDrafts(list, config, ctx, new Set()).auto.map((d) => d.id))
+      return stillUnsent(list, saving).length
     }
+    let before = 0
+    let failed = false
+    let result: SyncNowResult | null = null
+    try {
+      before = await unsentNow()
+      result = parseSyncNowResult(await ContigoNative.syncNow())
+    } catch (e) {
+      logError(e, 'useDetected')
+      failed = true
+    }
+    // Un plugin que responde sin enviar nada se nota porque el borrador sigue ahí
+    const remaining = await unsentNow().catch(() => before)
     await load()
-  }, [load, native])
+    if (result) {
+      const needsSignIn = result.result === 'NO_SESSION' && syncNeedsSignIn(await ContigoNative.getSyncState().catch(() => null))
+      const notice = syncResultNotice(result, { waiting: Math.max(before, remaining), needsSignIn })
+      if (notice) notify(notice.text, notice.tone)
+      return
+    }
+    // Teléfono viejo: no informa el resultado, se compara lo que había antes y después
+    const text = sendNowNotice({ before, remaining, failed })
+    if (text) notify(text, remaining > 0 ? 'warn' : 'success')
+  }, [load, native, config, ctx, notify])
 
   // Guardado automático de lo que ya está confirmado o cumple las reglas del modo automático
   useEffect(() => {
@@ -242,7 +270,7 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
     const skip = new Set([...inflight.current, ...stuck])
     for (const d of planDrafts(drafts, config, ctx, skip).auto) {
       inflight.current.add(d.id)
-      const form = candidateToDraft(d, { paidBy: hh.me.user_id, shared: config.shared, categories: ctx.categories, history: ctx.history })
+      const form = { ...candidateToDraft(d, { paidBy: hh.me.user_id, shared: config.autoShared, categories: ctx.categories, history: ctx.history }), category_id: draftCategoryId(d, ctx.categories, ctx.history) }
       void save(form, d.id)
         .catch((e: unknown) => {
           logError(e, 'useDetected')
@@ -255,8 +283,14 @@ export function useDetected({ hh, data, config, queue, notify }: Args) {
 
   // En la bandeja: lo que se guardará solo no aparece (salvo que haya fallado)
   const autoIds = new Set((drafts ? planDrafts(drafts, config, ctx, new Set()).auto : []).map((d) => d.id))
-  const waiting = (drafts ?? []).filter((d) => stuck.has(d.id) || !autoIds.has(d.id))
+  const savedIds = new Set(history.map((e) => e.id))
+  // Mientras un gasto guardado solo sigue sincronizando, el teléfono aún puede traer su borrador: no se muestra dos veces
+  const waiting = withoutSavedDrafts(
+    (drafts ?? []).filter((d) => stuck.has(d.id) || !autoIds.has(d.id)),
+    autoSaved,
+    savedIds,
+  )
   const localUnsent = unsentDrafts(waiting)
   const unsent = { count: unsentCount(pending, localUnsent.length) }
-  return { drafts: drafts === null ? null : waiting, unsent, appNames, autoSaved, undoAuto, kept, keepBoth, sendNow, failed, openId, clearOpen, save, saveIncome, saveDebtPayment, saveDebtPaymentNew, ignore, reload: load, ctx }
+  return { drafts: drafts === null ? null : waiting, unsent, appNames, autoSaved, undoAuto, kept, keepBoth, sendNow, failed, openId, clearOpen, save, saveIncome, saveDebtPayment, saveDebtPaymentNew, ignore, discardPriorCharge, reload: load, ctx }
 }

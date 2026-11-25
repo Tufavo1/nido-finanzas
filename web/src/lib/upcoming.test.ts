@@ -10,6 +10,7 @@ const debt = (o: Partial<Debt> = {}): Debt =>
   ({ id: 'd1', household_id: 'h', name: 'Tarjeta', kind: 'tarjeta', owner_id: 'a', original_amount: 1_000_000, monthly_payment: 100_000, monthly_rate: 2, due_day: 28, archived: false, created_at: '', ...o }) as Debt
 const base = (o: Partial<UpcomingInput> = {}): UpcomingInput => ({
   now: NOW,
+  expenses: [],
   meId: 'a',
   split: 2,
   recurring: [],

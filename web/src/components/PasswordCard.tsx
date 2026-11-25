@@ -1,3 +1,4 @@
+import { userMessage } from '../lib/appError'
 import { useToastError } from '../lib/useToastError'
 import type { Notify } from './Toast'
 import { useState } from 'react'
@@ -30,13 +31,13 @@ export default function PasswordCard({ title = false, onToast }: { title?: boole
       await confirmPassword(currentPw)
     } catch (err) {
       setBusy(false)
-      setError(err instanceof Error ? err.message : 'Contraseña actual incorrecta')
+      setError(userMessage(err))
       return
     }
     const { error: err } = await supabase.auth.updateUser({ password: pw })
     setBusy(false)
     if (err) {
-      setError(friendlyError(err.message))
+      setError(friendlyError(err))
       return
     }
     setPw('')
@@ -47,7 +48,7 @@ export default function PasswordCard({ title = false, onToast }: { title?: boole
   async function signOutOthers() {
     setError(null)
     const { error: err } = await supabase.auth.signOut({ scope: 'others' })
-    if (err) setError(friendlyError(err.message))
+    if (err) setError(friendlyError(err))
     else onToast('Sesiones cerradas\nCerraste sesión en tus **otros dispositivos**.')
   }
 

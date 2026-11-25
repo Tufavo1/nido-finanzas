@@ -1,6 +1,8 @@
+import { signOutClean } from '../lib/signOut'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import DeleteAccountInline from '../components/DeleteAccountInline'
+import { friendlyError } from '../lib/security'
 import { supabase } from '../lib/supabase'
 import Spin from '../components/Spin'
 
@@ -29,7 +31,7 @@ export default function Onboarding({ onDone, step }: { onDone: () => Promise<voi
         ? await supabase.rpc('create_household', { p_name: hhName.trim(), p_display_name: name.trim() })
         : await supabase.rpc('join_household', { p_code: code.trim().toUpperCase(), p_display_name: name.trim() })
     if (res.error) {
-      setError(res.error.message)
+      setError(friendlyError(res.error))
     } else if (mode === 'join' && !res.data) {
       setError('Código inválido, vencido o ya utilizado. Pide uno nuevo a tu pareja.')
     } else {
@@ -103,7 +105,7 @@ export default function Onboarding({ onDone, step }: { onDone: () => Promise<voi
           </button>
         </form>
 
-        <button className="btn ghost" type="button" onClick={() => void supabase.auth.signOut()}>
+        <button className="btn ghost" type="button" onClick={() => void signOutClean()}>
           Cerrar sesión
         </button>
         <DeleteAccountInline />

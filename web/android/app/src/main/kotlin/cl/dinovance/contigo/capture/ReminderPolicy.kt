@@ -15,6 +15,10 @@ object ReminderPolicy {
     fun pendingToSend(drafts: List<Draft>, activeOwner: String?): Int =
         OwnerFilter.visible(drafts, activeOwner).count { it.status == DraftStatus.CONFIRMED && sendsAlone(it.candidate.kind) && !it.syncRejected }
 
+    /** Lo que la persona guardo con «Guardar» (sin lo guardado solo): el aviso «Los guardaste desde la notificacion» de la app. */
+    fun savedByPerson(drafts: List<Draft>, activeOwner: String?): Int =
+        OwnerFilter.visible(drafts, activeOwner).count { it.status == DraftStatus.CONFIRMED && !it.autoSaved && sendsAlone(it.candidate.kind) && !it.syncRejected }
+
     /** Lo que el telefono envia solo: gastos (expenses) e ingresos extra (incomes). Pagos de deuda y transferencias jamas. */
     fun sendsAlone(kind: cl.nido.parser.Kind): Boolean = kind == cl.nido.parser.Kind.EXPENSE || kind == cl.nido.parser.Kind.INCOME
 }

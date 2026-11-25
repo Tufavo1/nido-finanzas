@@ -18,4 +18,4 @@
 5. Cada servicio nuevo pasa por esta tabla **antes** de usarse, incluido su impacto en la política de privacidad.
 
 ## Dependencias de software
-Gestionadas con `package-lock.json`, Dependabot semanal, `npm audit` y `npm audit signatures` en CI. Alternativas ante una dependencia comprometida: fijar versión anterior, reemplazar o eliminar (ver `04`).
+Gestionadas con `package-lock.json`, Dependabot semanal y `npm audit --omit=dev --audit-level=high` en CI (la CI no verifica firmas de paquetes). Alternativas ante una dependencia comprometida: fijar versión anterior, reemplazar o eliminar (ver `04`).

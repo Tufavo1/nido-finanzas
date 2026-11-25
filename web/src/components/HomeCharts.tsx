@@ -1,3 +1,4 @@
+import { plural } from '../lib/plural'
 import { splitOf } from '../lib/split'
 import { useEffect, useMemo, useState } from 'react'
 import type { KeyboardEvent, PointerEvent } from 'react'
@@ -246,7 +247,7 @@ export function WeekdayCard({ expenses }: { expenses: Expense[] }) {
               key={b.idx}
               tabIndex={0}
               role="button"
-              aria-label={`${b.name}: ${money(b.amount)}, ${b.count} ${b.count === 1 ? 'gasto' : 'gastos'}`}
+              aria-label={`${b.name}: ${money(b.amount)}, ${plural(b.count, 'gasto', 'gastos')}`}
               className={b.idx === (active ?? top) ? 'wk on' : 'wk'}
               onPointerEnter={() => setActive(b.idx)}
               onPointerLeave={() => setActive(null)}

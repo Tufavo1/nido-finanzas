@@ -27,6 +27,6 @@ class NoRawTextTest {
     @Test
     fun `solo expone los campos del contrato`() {
         val nombres = ParsedCandidate::class.java.declaredFields.map { it.name }.toSet()
-        assertTrue(nombres == setOf("amountClp", "merchant", "kind", "confidence", "installment", "fingerprint", "account"), "campos: $nombres")
+        assertTrue(nombres == setOf("amountClp", "merchant", "kind", "confidence", "installment", "fingerprint", "account", "installmentPlan"), "campos: $nombres")
     }
 }

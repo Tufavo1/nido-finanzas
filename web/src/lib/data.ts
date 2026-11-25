@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import type { Tables } from './database.types'
+import { toAppError } from './appError'
 import { toISO } from './format'
+import { isFinanceStale } from './loadStale'
 import { fetchAllPages } from './paging'
+import { cardsSince, isCardExpense } from './finance'
 
 export type Category = Tables<'categories'>
 /** Medio de pago del gasto: con débito baja la cuenta; con tarjeta sube lo usado de la tarjeta (ver finance.ts) */
@@ -11,7 +14,8 @@ export type Expense = Tables<'expenses'> & { payment_method?: PaymentMethod; car
 export type Goal = Tables<'goals'>
 export type Contribution = Tables<'contributions'>
 /** reported_balance / reported_at: saldo que informa el banco (tarjeta) y su fecha; van juntos o ninguno */
-export type Debt = Tables<'debts'> & { reported_balance?: number | null; reported_at?: string | null }
+/** credit_limit: cupo TOTAL de la tarjeta (informativo; no se suma a ninguna deuda ni total) */
+export type Debt = Tables<'debts'> & { reported_balance?: number | null; reported_at?: string | null; credit_limit?: number | null }
 export type DebtPayment = Tables<'debt_payments'>
 export type Salary = Tables<'salaries'>
 export type Profile = Tables<'profiles'>
@@ -24,6 +28,11 @@ export interface HouseholdData {
   expenses: Expense[]
   /** Gastos del mes anterior, para comparar */
   prevExpenses: Expense[]
+  /**
+   * Compras con tarjeta desde el saldo informado más antiguo de las tarjetas, sin importar el mes que se mira.
+   * De aquí salen todos los saldos de tarjeta (Deudas, Inicio, Análisis, Números, avisos).
+   */
+  cardExpenses: Expense[]
   goals: Goal[]
   contributions: Contribution[]
   /** Deudas del hogar activas y todos sus pagos */
@@ -76,6 +85,12 @@ const REFRESH_DEBOUNCE_MS = 350
 /** Si la app estuvo oculta más que esto, al volver se refresca aunque no haya llegado ningún aviso */
 const STALE_AFTER_MS = 30_000
 
+/** Las compras con tarjeta ya cargadas más las de los meses a la vista que aún no estén (por id) */
+export function mergeCardExpenses(loaded: Expense[], visible: Expense[]): Expense[] {
+  const ids = new Set(loaded.map((e) => e.id))
+  return [...loaded, ...visible.filter((e) => isCardExpense(e) && !ids.has(e.id))]
+}
+
 export function useData(
   householdId: string,
   userId: string,
@@ -87,6 +102,7 @@ export function useData(
   const [categories, setCategories] = useState<Category[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [prevExpenses, setPrevExpenses] = useState<Expense[]>([])
+  const [loadedCards, setLoadedCards] = useState<Expense[] | null>(null)
   const [goals, setGoals] = useState<Goal[]>([])
   const [contributions, setContributions] = useState<Contribution[]>([])
   const [debts, setDebts] = useState<Debt[]>([])
@@ -97,7 +113,8 @@ export function useData(
   const [recurring, setRecurring] = useState<Recurring[]>([])
   const [profileReady, setProfileReady] = useState(true)
   const [financeReady, setFinanceReady] = useState(true)
-  const [financeStale, setFinanceStale] = useState(false)
+  const [staticStale, setStaticStale] = useState(false)
+  const [incomesStale, setIncomesStale] = useState(false)
   const [loadedKey, setLoadedKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [errorStatus, setErrorStatus] = useState(0)
@@ -133,14 +150,16 @@ export function useData(
     if (mine !== monthSeq.current) return
     if (exps.error) {
       setErrorStatus(exps.status)
-      setError(exps.error.message)
+      setError(toAppError(exps).message)
       return
     }
     // payment_method es texto en la base; el CHECK solo deja 'debito' o 'tarjeta'
     const rows = (exps.data ?? []) as Expense[]
     setExpenses(rows.filter((e) => e.spent_on >= start))
     setPrevExpenses(rows.filter((e) => e.spent_on < start))
-    setIncomes(incs.error ? [] : (incs.data ?? []))
+    // Si fallan solo los ingresos extra se conservan los ya cargados y se avisa
+    if (!incs.error) setIncomes(incs.data ?? [])
+    setIncomesStale(!!incs.error)
     setError(null)
     setLoadedKey(thisKey)
   }, [householdId, year, monthIndex])
@@ -166,7 +185,7 @@ export function useData(
     if (err) {
       // Las metas y categorías traen el código; si falló otra cosa se trata como falla del servicio
       setErrorStatus(cats.error ? cats.status : gls.error ? gls.status : 502)
-      setError(err.message)
+      setError(toAppError(err).message)
       return
     }
     setCategories(cats.data ?? [])
@@ -177,19 +196,38 @@ export function useData(
     // Solo una tabla inexistente (migración pendiente) apaga la sección; un fallo pasajero conserva lo ya cargado
     const finMissing = !!finErr && (finErr.code === 'PGRST205' || finErr.code === '42P01')
     setFinanceReady(!finMissing)
-    setFinanceStale(!!finErr && !finMissing)
+    setStaticStale(isFinanceStale({ finance: finErr, recurring: recs.error, profiles: profs.error }))
     if (!finErr || finMissing) {
       setSalary(finErr ? null : (sal.data ?? null))
       setDebts(finErr ? [] : (dts.data ?? []))
       setDebtPayments(finErr ? [] : (pays.data ?? []))
     }
     setProfileReady(!profs.error)
-    setProfiles(profs.error ? [] : (profs.data ?? []))
-    setRecurring(recs.error ? [] : (recs.data ?? []))
+    if (!profs.error) setProfiles(profs.data ?? [])
+    if (!recs.error) setRecurring(recs.data ?? [])
     setStaticReady(true)
   }, [householdId])
 
   // Recarga completa: la usan las pantallas después de guardar algo propio
+  // Compras con tarjeta desde el saldo informado: se vuelven a pedir cuando cambian las deudas o los gastos del mes
+  useEffect(() => {
+    const since = cardsSince(debts)
+    // Sin tarjetas no hay saldos que calcular: no se pide nada
+    if (since === null) return
+    let off = false
+    void fetchAllPages((from, to) =>
+      supabase.from('expenses').select('*').eq('household_id', householdId).eq('payment_method', 'tarjeta').gte('spent_on', since).order('spent_on').order('id').range(from, to),
+    ).then(({ data, error }) => {
+      // Si falla se conservan las ya cargadas (nunca se muestra una tarjeta con menos compras por un error pasajero)
+      if (!off && !error) setLoadedCards((data ?? []) as Expense[])
+    })
+    return () => {
+      off = true
+    }
+  }, [householdId, debts, expenses])
+  // Mientras llegan (o si fallan), se cuentan al menos las del mes que ya está a la vista; las recién guardadas entran sin esperar
+  const cardExpenses = useMemo(() => mergeCardExpenses(loadedCards ?? [], [...prevExpenses, ...expenses]), [loadedCards, prevExpenses, expenses])
+
   const refresh = useCallback(async () => {
     await Promise.all([loadMonth(), loadStatic()])
   }, [loadMonth, loadStatic])
@@ -295,6 +333,7 @@ export function useData(
     categories,
     expenses,
     prevExpenses,
+    cardExpenses,
     goals,
     contributions,
     debts,
@@ -305,7 +344,7 @@ export function useData(
     recurring,
     profileReady,
     financeReady,
-    financeStale,
+    financeStale: staticStale || incomesStale,
     ready: loadedKey !== null && staticReady,
     loading: loadedKey !== key,
     error,

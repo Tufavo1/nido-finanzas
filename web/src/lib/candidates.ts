@@ -1,5 +1,8 @@
 // Copyright (c) 2026 Dinovance
+import { santiagoDay } from './format'
 import { learnedCategory, suggestCategory } from './categorize'
+import { cuotasText, installmentCase } from './installments'
+import type { InstallmentFields } from './installments'
 
 /**
  * EXPENSE: compra. INCOME: plata que entró (ingreso extra). DEBT_PAYMENT: pago a tu propia tarjeta o crédito (no es gasto).
@@ -9,7 +12,7 @@ export type CandidateKind = 'EXPENSE' | 'INCOME' | 'DEBT_PAYMENT' | 'TRANSFER_OU
 export type CandidateConfidence = 'HIGH' | 'MEDIUM' | 'LOW'
 
 /** Lo que entrega el plugin nativo (ParsedCandidate de Kotlin + fecha del aviso). Nunca incluye el texto bruto. */
-export interface ParsedCandidate {
+export interface ParsedCandidate extends InstallmentFields {
   amountClp: number
   merchant: string | null
   kind: CandidateKind
@@ -42,32 +45,36 @@ export interface DraftOptions {
   history: Past[]
 }
 
-/** La base cuenta los días en America/Santiago: la fecha del gasto sale de esa zona, no de la del teléfono (H-13). */
-const SANTIAGO_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit' })
-
+/** La fecha del gasto sale de America/Santiago, no de la zona del teléfono (H-13). */
 export function localDate(millis: number): string {
-  return SANTIAGO_DAY.format(new Date(millis))
+  return santiagoDay(new Date(millis))
 }
 
-/** «Prueba Electro (cuota 1/3)»: el valor guardado es el de la cuota, el total queda en la nota. */
+/**
+ * Compra en cuotas: «Comercio (3 cuotas de $10.000)», igual que la nota del teléfono; el valor guardado es el total.
+ * Un borrador antiguo solo con «installment» queda como «Comercio (cuota 1/3)».
+ */
 function noteOf(c: ParsedCandidate): string {
   const merchant = c.merchant?.trim() ?? ''
-  if (!c.installment) return merchant
-  const cuota = `cuota ${c.installment.n}/${c.installment.total}`
+  const cuota = c.installmentCount ? cuotasText(c.installmentCount, c.installmentValueClp) : c.installment ? `cuota ${c.installment.n}/${c.installment.total}` : null
+  if (!cuota) return merchant
   return merchant ? `${merchant} (${cuota})` : cuota
 }
 
 export function candidateToDraft(c: ParsedCandidate & { medium?: string | null }, o: DraftOptions): ExpenseDraft {
   const merchant = c.merchant?.trim() ?? ''
+  const noTotal = installmentCase(c) === 'NO_TOTAL'
   return {
-    amount: Math.trunc(c.amountClp),
+    // Si el aviso solo trae una cuota, el monto queda vacío: el total lo escribe la persona
+    amount: noTotal ? 0 : Math.trunc(c.amountClp),
     note: noteOf(c),
     spent_on: localDate(c.postedAtMillis),
     shared: o.shared,
     paid_by: o.paidBy,
     category_id: merchant ? suggestCategory(merchant, o.categories, o.history) : null,
     // Una compra avisada como crédito va a la tarjeta (sin tarjeta elegida: la única del hogar, si hay una)
-    ...(c.kind === 'EXPENSE' && c.medium === 'CREDIT' ? { paymentMethod: 'tarjeta' as const } : {}),
+    // Una compra en cuotas es con tarjeta de crédito aunque el aviso no lo diga
+    ...(c.kind === 'EXPENSE' && (c.medium === 'CREDIT' || c.installmentRole === 'PURCHASE') ? { paymentMethod: 'tarjeta' as const } : {}),
   }
 }
 

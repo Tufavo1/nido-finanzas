@@ -1,7 +1,7 @@
 <!-- Copyright (c) 2026 Dinovance -->
 # Requisitos: Contigo para Android (paridad total + captura desde notificaciones)
 
-Estado: borrador v0.1 · Fecha: 2026-11-21 · Rama: `feat/android-ios` · Worktree: `/home/jromero/proyectos/nido-mobile`
+Estado: borrador v0.1 · Fecha: 2026-11-21 · Rama: `<rama de trabajo>` · Worktree: `<ruta local del worktree>`
 
 Fuente: lectura de código del repo (sin ejecutar nada contra producción, sin red). Cada afirmación sobre el código cita su archivo. Lo que no se comprobó por ejecución va marcado **NO VERIFICADO**.
 
@@ -21,7 +21,7 @@ Marcas usadas en el inventario:
 | DEC-03 | **Almacenamiento de la sesión.** `web/src/lib/supabase.ts` usa `storageKey: 'contigo-auth'` (localStorage). `web/src/lib/oauth.ts` usa un segundo cliente con `storageKey: OAUTH_KEY`. | localStorage de una WebView no está cifrado ni protegido por hardware. | Requisito RF-19 / NFR-01. |
 | DEC-04 | **Push nativo.** Hoy: `web/src/lib/push.ts` usa `PushManager` + VAPID y guarda en `push_subscriptions` (`supabase/migrations/20261018024931_push.sql`: columnas `endpoint`, `p256dh`, `auth_key`). El envío lo hace `supabase/functions/notify/index.ts` con la librería `web-push`. | FCM no usa esas columnas. Hace falta un token FCM por dispositivo y un emisor FCM. Cambios de esquema = migración nueva (AGENTS.md). | Requisito RF-10. Sin aplicar ni desplegar nada desde este agente. |
 | DEC-05 | **Captura desde notificaciones.** Requiere que la persona conceda acceso a notificaciones en Ajustes del sistema (`NotificationListenerService`). | Es el único camino en Android para leer notificaciones de otras apps. Puede tener restricciones en la tienda de aplicaciones. | **NO VERIFICADO**: revisar políticas vigentes de Google Play antes de comprometer el alcance. |
-| SUP-01 | Plataforma objetivo Android: versión mínima **a definir** (no se fijó en el repo). | Depende de Capacitor 8 y de los plugins que se elijan. | NO VERIFICADO. |
+| SUP-01 | Plataforma objetivo Android: `minSdk 26`, `targetSdk 36` (`web/android/variables.gradle:3-5`). | Depende de Capacitor 8 y de los plugins que se elijan. | Fijado en el repo; compatibilidad de los plugins en dispositivo NO VERIFICADO. |
 | SUP-02 | Los textos de la app siguen en español simple, sin jerga financiera (AGENTS.md, «Reglas»). | Regla del proyecto. | Vigente. |
 | SUP-03 | Todo se prueba en local (AGENTS.md, «REGLA DE ORO»). Ningún agente despliega, hace `git push` ni toca el Supabase real. | Regla del proyecto. | Vigente. |
 
@@ -473,7 +473,7 @@ Formato: cada requisito tiene ID, descripción, reutilización del código exist
 - La sesión de Supabase se guarda en almacenamiento seguro y no en localStorage (DEC-03). CA: tras cerrar sesión, no queda ningún token en el almacenamiento de la WebView.
 - Lista blanca: solo paquetes aprobados por la persona (RF-01). CA: un paquete fuera de la lista no se lee.
 - Copias de seguridad de Android: los datos de la cola y la sesión quedan excluidos de la copia automática del sistema (reglas de extracción de datos; NO VERIFICADO el detalle de atributos).
-- Captura de pantalla: pantalla de bloqueo y Confirmar gasto no se pueden capturar si la persona lo activa (`FLAG_SECURE`, opción a decidir).
+- Captura de pantalla: la app aplica `FLAG_SECURE` (`web/android/app/src/main/java/cl/dinovance/contigo/MainActivity.java:20`): no se pueden hacer capturas de la app. Comprobación en teléfono real pendiente.
 - Sin permisos adicionales fuera de los necesarios: acceso a notificaciones (captura), notificaciones (avisos), biometría, red. CA: el manifiesto no incluye permisos no listados aquí (revisión manual).
 - Cumplir RLS existente: la app nunca consulta tablas sin filtro de hogar. Las pruebas SQL existentes (`supabase/tests/*.sql`) no cambian.
 

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import Modal from './Modal'
 import { SkeletonCard } from './Skeleton'
 import type { Notify } from './Toast'
+import { CAPTURE_AVAILABLE_TEXT } from '../lib/bankAuto'
 import { activatedMessage, consentNext, foundLine, parseDetectedBanks, writeConsent } from '../lib/bankConsent'
 import type { ConsentStep, DetectedBank, DetectedBanksApi } from '../lib/bankConsent'
 import type { CaptureConfig } from '../lib/captureConfig'
@@ -117,6 +118,7 @@ export default function BankConsentSheet({ config, onConfig, onToast, onClose }:
           <>
             <h2 className="perm-title">¿Conectar tus bancos?</h2>
             <p>Leemos solo los avisos de gasto de tus apps de banco, en tu teléfono.</p>
+            <p className="muted">{CAPTURE_AVAILABLE_TEXT}</p>
             <p className="muted">El texto no sale del teléfono.</p>
             <button type="button" className="btn" onClick={accept}>
               Aceptar
@@ -182,6 +184,7 @@ export default function BankConsentSheet({ config, onConfig, onToast, onClose }:
           <>
             <h2 className="perm-title">No encontramos bancos</h2>
             <p className="muted">No vimos apps de bancos conocidos en este teléfono.</p>
+            <p className="muted small-text">{CAPTURE_AVAILABLE_TEXT}</p>
             <button type="button" className="btn" onClick={() => onClose(true)}>
               Elegir app a mano
             </button>

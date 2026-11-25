@@ -42,8 +42,9 @@ class NotificationCaptureService : NotificationListenerService() {
         if (posted.packageName != packageName) graph.recent.record(posted.packageName, posted.postTime)
         // RF-01: se decide por el nombre del paquete antes de tocar los extras.
         if (!graph.processor.accepts(posted.packageName)) {
-            // App de banco conocida pero fuera de la lista: se anota el motivo SIN leer el texto del aviso
-            if (graph.prefs.bankOfPackage(posted.packageName) != null) graph.diagnostics.add(DiagReason.PACKAGE_NOT_ALLOWED, graph.prefs.bankOfPackage(posted.packageName), null)
+            // App de banco conocida pero fuera de la lista, o fuente no verificada que estaba encendida: se anota el motivo SIN leer el
+            // texto del aviso (CaptureProcessor.rejection)
+            graph.processor.rejection(posted.packageName)?.let { graph.diagnostics.add(it, graph.prefs.bankOfPackage(posted.packageName), null) }
             return
         }
         try {

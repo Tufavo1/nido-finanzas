@@ -24,8 +24,14 @@ data class IncomingNotice(
  * Registro persistente y cifrado de los avisos ya convertidos en borrador, para deduplicar aunque el proceso muera (la memoria del
  * procesador se pierde) y fuera de la ventana de 45 s. Guarda SOLO resumenes SHA-256 (identidad, «ranura» = paquete+clave, monto),
  * el `when`, el id del borrador y la hora; jamas texto, monto ni clave en claro. Tope de [max] entradas y 48 h. Nunca lanza.
+ *
+ * R7: agregar lee con readChecked; ante un fallo PASAJERO del Keystore NO reescribe el registro (antes lo dejaba vacio y el mismo
+ * aviso podia volver a guardarse: gasto duplicado). La entrada nueva espera en memoria ([CheckedJsonList]) y ya deduplica en este
+ * proceso; se escribe en el siguiente cambio que logre leer.
  */
-class NoticeLedger(private val store: TextStore, private val max: Int = MAX) {
+class NoticeLedger(store: TextStore, private val max: Int = MAX, onFailure: (String) -> Unit = {}) {
+    private val entries = CheckedJsonList(store, ::parse, ::encode, max, onFailure)
+
     data class Entry(val id: String, val slot: String, val money: String, val whenMillis: Long, val draftId: String, val at: Long)
 
     @Synchronized
@@ -37,21 +43,21 @@ class NoticeLedger(private val store: TextStore, private val max: Int = MAX) {
 
     @Synchronized
     fun add(entry: Entry) {
-        val keep = load().filter { entry.at - it.at < MAX_AGE_MILLIS && it.id != entry.id }
-        save((keep + entry).takeLast(max))
+        entries.update { items -> (items.filter { entry.at - it.at < MAX_AGE_MILLIS && it.id != entry.id } + entry).takeLast(max) }
     }
 
-    private fun load(): List<Entry> = try {
-        val a = JSONArray(store.read() ?: "[]")
-        (0 until a.length()).map { i -> a.getJSONObject(i).let { Entry(it.getString("i"), it.getString("s"), it.getString("m"), it.optLong("w"), it.getString("d"), it.getLong("a")) } }
-    } catch (e: Exception) {
-        emptyList()
+    private fun load(): List<Entry> = entries.view()
+
+    /** Lanza si el JSON esta dañado. */
+    private fun parse(raw: String): List<Entry> {
+        val a = JSONArray(raw)
+        return (0 until a.length()).map { i -> a.getJSONObject(i).let { Entry(it.getString("i"), it.getString("s"), it.getString("m"), it.optLong("w"), it.getString("d"), it.getLong("a")) } }
     }
 
-    private fun save(items: List<Entry>) {
+    private fun encode(items: List<Entry>): String {
         val a = JSONArray()
         items.forEach { a.put(JSONObject().put("i", it.id).put("s", it.slot).put("m", it.money).put("w", it.whenMillis).put("d", it.draftId).put("a", it.at)) }
-        store.write(a.toString())
+        return a.toString()
     }
 
     companion object {

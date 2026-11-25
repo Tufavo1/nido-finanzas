@@ -9,6 +9,12 @@ object OwnerFilter {
     /** Los de otro dueño o sin dueño se descartan al cambiar de sesion: no deben sobrevivir al otro usuario. */
     fun foreign(drafts: List<Draft>, activeOwner: String?): List<Draft> = drafts.filter { it.ownerKey != activeOwner || activeOwner == null }
 
+    /** El borrador es del dueno activo. Uno sin dueno (capturado sin sesion) no es de nadie hasta que se adopta (R2-03). */
+    fun owns(draft: Draft, activeOwner: String?): Boolean = activeOwner != null && draft.ownerKey == activeOwner
+
+    /** Id que se entrega a la app al abrir desde la notificacion: solo si es de un borrador del dueno activo; si no, null. */
+    fun openable(drafts: List<Draft>, activeOwner: String?, id: String?): String? = id?.takeIf { i -> drafts.any { it.id == i && owns(it, activeOwner) } }
+
     /** Usuario de una clave `usuario:hogar`. */
     fun userOf(ownerKey: String): String = ownerKey.substringBefore(':')
 

@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Dinovance
 import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core'
 import type { CandidateConfidence, CandidateKind, ParsedCandidate } from './candidates'
+import { unsentDrafts } from './draftFlags'
+import type { InstallmentFields, InstallmentRole } from './installments'
 import type { SecureBackend } from './secureSession'
 
 /** Estado de la captura de gastos en el teléfono (sin ningún dato del usuario). */
@@ -45,6 +47,23 @@ export interface NativeDraft extends ParsedCandidate {
   account?: string
   /** Medio de pago que informa el teléfono */
   medium?: 'DEBIT' | 'CREDIT' | 'UNKNOWN'
+  /** El aviso traía varios montos (compra y comisión): la persona confirma el monto; nunca se guarda solo. Opcional: un teléfono viejo no lo manda */
+  ambiguousAmount?: boolean
+  /** Aviso viejo reentregado (la fecha de su texto es de otro día): la persona decide; nunca se guarda solo. Opcional como el anterior */
+  staleDate?: boolean
+  /** Categoría con que el teléfono enviaría este borrador (la elegida o aprendida). Opcional: un teléfono viejo no la manda */
+  categoryId?: string
+}
+
+export type SyncNowCode = 'ALL_SENT' | 'NOTHING_TO_SEND' | 'NEEDS_PERSON' | 'REJECTED' | 'NO_SESSION' | 'RETRY' | 'FAILED' | 'IN_PROGRESS'
+const SYNC_CODES: readonly SyncNowCode[] = ['ALL_SENT', 'NOTHING_TO_SEND', 'NEEDS_PERSON', 'REJECTED', 'NO_SESSION', 'RETRY', 'FAILED', 'IN_PROGRESS']
+
+/** Lo que responde `syncNow`: cuántos se enviaron, cuántos fallaron, cuántos necesitan a la persona y el motivo. */
+export interface SyncNowResult {
+  sent: number
+  failed: number
+  needsPerson: number
+  result: SyncNowCode
 }
 
 /** Medio de pago del gasto según el aviso: tarjeta solo si el teléfono dice crédito; cualquier otro caso es débito */
@@ -181,6 +200,11 @@ export interface ContigoNativePlugin {
   setAutoSaveAll(options: { enabled: boolean }): Promise<BankSetupResult>
   /** Ultimos 20 avisos no aceptados: motivo y texto ENMASCARADO (digitos a #). Solo local, nunca se envia solo. */
   getCaptureDiagnostics(): Promise<DiagnosticsResult>
+  /**
+   * «Borrar» en «Avisos que no pude leer». PENDIENTE DEL BACKEND (no existe aún en el plugin Android): con `atMillis` borra las entradas
+   * con esa hora; sin él borra todas. Solo el diagnóstico local (no borradores ni gastos). Devuelve { removed: número }.
+   */
+  clearDiagnostics?(options: { atMillis?: number }): Promise<{ removed: number }>
   getAppInfo(): Promise<AppInfo>
   /** Consulta anonima a GitHub (le muestra la IP): ultimo release publicado y mayor que el instalado. */
   checkForUpdate(): Promise<UpdateCheck>
@@ -203,7 +227,7 @@ export interface ContigoNativePlugin {
   /** Apps que mostraron notificaciones hace poco, para elegir cuáles vigilar. Solo paquete, nombre y hora: jamás texto. */
   getRecentNotifyingApps(): Promise<{ apps: unknown[] }>
   /** «Borrar todo lo capturado»: borradores, notificaciones propias y lista de apps recientes. No cierra la sesión. */
-  clearCaptured(): Promise<void>
+  clearCaptured(): Promise<{ unsentRemoved: number } | void>
   /** Por defecto true (decisión 5): oculta monto y comercio con el teléfono bloqueado */
   setHideOnLockScreen(options: { hide: boolean }): Promise<void>
 
@@ -240,7 +264,10 @@ export interface ContigoNativePlugin {
   /** Dirección del Worker (VITE_API_BASE), solo https. */
   configureSync(options: { apiBase: string | null }): Promise<void>
   getSyncState(): Promise<unknown>
-  syncNow(): Promise<void>
+  /** Un teléfono viejo responde sin datos (void): se trata como «sin resultado». */
+  syncNow(): Promise<SyncNowResult | void>
+  /** Borra solo los PENDING del dueño activo. Rechaza con STORE_UNAVAILABLE sin borrar. Puede no existir en un teléfono viejo. */
+  clearPending(): Promise<{ removed: number }>
   /** Vuelve a leer los avisos que ya estaban en la barra del teléfono: { processed, connected } */
   rescanNotifications(): Promise<unknown>
   /** Gastos guardados solos (por enviar o ya enviados), los más nuevos primero. */
@@ -298,6 +325,7 @@ const KINDS: readonly CandidateKind[] = ['EXPENSE', 'INCOME', 'DEBT_PAYMENT', 'T
 const CONFIDENCES: readonly CandidateConfidence[] = ['HIGH', 'MEDIUM', 'LOW']
 const MAX_AMOUNT = 10_000_000_000
 const MAX_MERCHANT = 60
+const CATEGORY_ID = /^[A-Za-z0-9_-]{1,64}$/
 const MAX_ACCOUNT = 60
 
 /** Texto de cuenta que llega del teléfono: sin caracteres de control ni marcas, espacios simples, largo acotado. null si no sirve. */
@@ -315,6 +343,19 @@ function readInstallment(v: unknown): { n: number; total: number } | null | unde
   if (v === null || v === undefined) return null
   if (!isRecord(v) || !isCount(v['n']) || !isCount(v['total'])) return undefined
   return v['n'] >= 1 && v['n'] <= v['total'] ? { n: v['n'], total: v['total'] } : undefined
+}
+
+const ROLES: readonly InstallmentRole[] = ['PURCHASE', 'PRIOR_CHARGE']
+const MAX_INSTALLMENTS = 120
+
+/** Los tres datos de cuotas se validan uno por uno: lo inválido se descarta solo, el borrador sigue (y un teléfono viejo no los manda) */
+function readInstallmentFields(raw: Record<string, unknown>): InstallmentFields {
+  const { installmentRole: role, installmentCount: count, installmentValueClp: value } = raw
+  return {
+    ...(ROLES.includes(role as InstallmentRole) ? { installmentRole: role as InstallmentRole } : {}),
+    ...(isCount(count) && count >= 2 && count <= MAX_INSTALLMENTS ? { installmentCount: count } : {}),
+    ...(isCount(value) && value >= 1 && value < MAX_AMOUNT ? { installmentValueClp: value } : {}),
+  }
 }
 
 /** Valida lo que llega del plugin (frontera): descarta lo que no tenga la forma exacta, nunca lanza. */
@@ -338,12 +379,25 @@ export function parseNativeDraft(raw: unknown): NativeDraft | null {
     postedAtMillis,
     createdAtMillis,
     status,
+    ...readInstallmentFields(raw),
     ...(sanitizeAccount(raw['account']) ? { account: sanitizeAccount(raw['account']) as string } : {}),
     ...(raw['possibleDuplicate'] === true ? { possibleDuplicate: true } : {}),
+    ...(raw['ambiguousAmount'] === true ? { ambiguousAmount: true } : {}),
+    ...(raw['staleDate'] === true ? { staleDate: true } : {}),
     ...(raw['bankAutoOff'] === true ? { bankAutoOff: true } : {}),
     ...(raw['syncRejected'] === true ? { syncRejected: true } : {}),
     ...(typeof raw['sourcePackage'] === 'string' && raw['sourcePackage'].length <= 200 ? { sourcePackage: raw['sourcePackage'] } : {}),
+    ...(typeof raw['categoryId'] === 'string' && CATEGORY_ID.test(raw['categoryId']) ? { categoryId: raw['categoryId'] } : {}),
   }
+}
+
+/** Valida lo que responde `syncNow` (frontera). null = un teléfono viejo que no informa el resultado. */
+export function parseSyncNowResult(raw: unknown): SyncNowResult | null {
+  if (!isRecord(raw)) return null
+  const { sent, failed, needsPerson, result } = raw
+  const code = SYNC_CODES.find((c) => c === result)
+  if (!isCount(sent) || !isCount(failed) || !isCount(needsPerson) || !code) return null
+  return { sent, failed, needsPerson, result: code }
 }
 
 export type RescanReason = 'OK' | 'LISTENER_OFF' | 'NO_BANK_APP' | 'NOTHING_ACTIVE' | 'ONLY_SEEN'
@@ -382,8 +436,39 @@ export const ownerKeyOf = (userId: string, householdId: string): string => `${us
 
 /** Gastos que la persona guardó en la notificación y faltan por enviar (el plugin ya filtra por dueño). */
 export async function pendingToSendCount(plugin: Pick<ContigoNativePlugin, 'listDrafts'>): Promise<number> {
+  return unsentDrafts(await readDrafts(plugin)).length
+}
+
+/**
+ * «Vaciar movimientos pendientes»: borra solo los borradores PENDING y conserva los CONFIRMED que aún no se envían.
+ * Usa `clearPending` del teléfono (una sola operación); si el teléfono es viejo y no lo tiene, borra uno por uno con
+ * `removeDraft`. No usa `clearCaptured`, que los borraría. Un STORE_UNAVAILABLE se propaga: no se borró nada.
+ */
+export async function clearPendingDrafts(plugin: Pick<ContigoNativePlugin, 'listDrafts' | 'removeDraft'> & Partial<Pick<ContigoNativePlugin, 'clearPending'>>): Promise<{ removed: number; keptSaved: number }> {
+  if (typeof plugin.clearPending === 'function') {
+    try {
+      const { removed } = await plugin.clearPending()
+      const kept = (await readDrafts(plugin)).filter((d) => d.status === 'CONFIRMED').length
+      return { removed: isCount(removed) ? removed : 0, keptSaved: kept }
+    } catch (e) {
+      if ((e as { code?: unknown } | null)?.code !== 'UNIMPLEMENTED') throw e
+    }
+  }
   const drafts = await readDrafts(plugin)
-  return drafts.filter((d) => d.status === 'CONFIRMED' && d.kind === 'EXPENSE').length
+  const pending = drafts.filter((d) => d.status === 'PENDING')
+  for (const d of pending) await plugin.removeDraft({ id: d.id })
+  return { removed: pending.length, keptSaved: drafts.length - pending.length }
+}
+
+/** Gastos guardados con «Guardar» que aún no se envían: lo que se perdería con un borrado total. */
+export async function countUnsentSaved(plugin: Pick<ContigoNativePlugin, 'listDrafts'>): Promise<number> {
+  return (await readDrafts(plugin)).filter((d) => d.status === 'CONFIRMED').length
+}
+
+/** Borrado TOTAL de lo capturado. Devuelve cuántos guardados sin enviar se perdieron de verdad; null si el teléfono (viejo) no lo informa. */
+export async function wipeCapturedAll(plugin: Pick<ContigoNativePlugin, 'clearCaptured'>): Promise<number | null> {
+  const r: unknown = await plugin.clearCaptured()
+  return isRecord(r) && isCount(r['unsentRemoved']) ? r['unsentRemoved'] : null
 }
 
 export interface NotifyingApp {

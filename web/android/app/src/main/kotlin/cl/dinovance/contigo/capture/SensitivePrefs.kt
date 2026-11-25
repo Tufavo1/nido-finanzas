@@ -20,6 +20,10 @@ class SafeTextStore(
         null
     }
 
+    override fun readChecked(): String? = readFn()
+
+    override fun writeChecked(value: String?) = writeFn(value)
+
     override fun write(value: String?) {
         try {
             writeFn(value)
@@ -57,6 +61,8 @@ class SensitivePrefs(
     private val onFailure: (String) -> Unit = {},
 ) {
     private var cache: JSONObject? = null
+    /** false: [cache] NO salio de una lectura buena (fallo pasajero): no sirve de base para reescribir el documento (B3). */
+    private var trusted = false
 
     @Synchronized fun whitelist(): Set<String> = strings(doc().optJSONArray(F_WHITELIST))
 
@@ -109,6 +115,7 @@ class SensitivePrefs(
     @Synchronized
     fun clearAll() {
         cache = JSONObject()
+        trusted = true
         store.write(null)
         // Si quedaba algo en claro de una version anterior (migracion aplazada), tambien se va
         legacy?.let { l -> l.all().keys.filter(::isSensitiveLegacy).takeIf { it.isNotEmpty() }?.let { l.remove(it) } }
@@ -116,7 +123,7 @@ class SensitivePrefs(
 
     /** Cambio de cuenta: se borra la configuracion de la persona anterior. Las apps instaladas detectadas se conservan (son del telefono). */
     @Synchronized
-    fun clearAccountConfig() = edit { o -> listOf(F_WHITELIST, F_RECENT, F_BANK_PKG, F_BANK_AUTO, F_CAP).forEach { o.remove(it) } }
+    fun clearAccountConfig() = edit(evenIfUnreadable = true) { o -> listOf(F_WHITELIST, F_RECENT, F_BANK_PKG, F_BANK_AUTO, F_CAP).forEach { o.remove(it) } }
 
     /** Persistencia para [RecentApps] (solo paquete y hora). */
     fun asRecentStore(): RecentStore = object : RecentStore {
@@ -143,9 +150,16 @@ class SensitivePrefs(
             if (l.version() < VERSION) l.setVersion(VERSION)
             return MigrationResult.NOT_NEEDED
         }
-        val merged = JSONObject(doc().toString())
+        val base = trustedDoc()
+        val merged = JSONObject((base ?: doc()).toString())
         plain.forEach { (k, v) -> mergeLegacy(merged, k, v) }
         cache = merged
+        trusted = base != null
+        // Sin leer lo cifrado no se escribe: se usa en memoria y se reintenta en el siguiente arranque (lo cifrado gana)
+        if (base == null) {
+            onFailure("MigrationDeferred")
+            return MigrationResult.DEFERRED
+        }
         val expected = merged.toString()
         store.write(expected)
         if (store.read() != expected) {
@@ -184,20 +198,38 @@ class SensitivePrefs(
 
     private fun strings(a: JSONArray?): Set<String> = if (a == null) emptySet() else (0 until a.length()).mapNotNull { a.optString(it).ifEmpty { null } }.toSet()
 
-    private fun doc(): JSONObject = cache ?: load().also { cache = it }
+    // Una lectura fallida NO se cachea como documento vacio: se reintenta en el proximo acceso (B3).
+    private fun doc(): JSONObject = trustedDoc() ?: cache ?: JSONObject()
 
-    private fun load(): JSONObject = try {
-        store.read()?.let { JSONObject(it) } ?: JSONObject()
-    } catch (e: Exception) {
-        onFailure(e.javaClass.simpleName)
-        JSONObject()
+    /** El documento leido de verdad (y se cachea), o null si la lectura fallo. */
+    private fun trustedDoc(): JSONObject? {
+        if (trusted) cache?.let { return it }
+        return load()?.also { cache = it; trusted = true }
     }
 
-    private inline fun edit(change: (JSONObject) -> Unit) {
-        val next = JSONObject(doc().toString())
+    private fun load(): JSONObject? = try {
+        store.readChecked()?.let { JSONObject(it) } ?: JSONObject()
+    } catch (e: Exception) {
+        onFailure(e.javaClass.simpleName)
+        null
+    }
+
+    /**
+     * Cambia el documento sobre lo leido de verdad. Si no se pudo leer, el cambio vale solo en memoria y NO se escribe: escribir
+     * sobre un documento vacio borraria la configuracion real (B3). [evenIfUnreadable]: borrar datos de otra persona se escribe igual.
+     */
+    private inline fun edit(evenIfUnreadable: Boolean = false, change: (JSONObject) -> Unit) {
+        val base = trustedDoc()
+        val next = JSONObject((base ?: if (evenIfUnreadable) JSONObject() else cache ?: JSONObject()).toString())
         change(next)
         next.put(F_VERSION, VERSION)
         cache = next
+        if (base == null && !evenIfUnreadable) {
+            trusted = false
+            onFailure("EditDeferred")
+            return
+        }
+        trusted = true
         store.write(next.toString())
     }
 

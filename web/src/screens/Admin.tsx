@@ -134,7 +134,7 @@ function Cleanup({ onChanged, onToast }: { onChanged: () => void; onToast: Notif
       setPicked(new Set())
     } catch (e) {
       logError(e, 'Admin')
-      setError('No se pudo cargar la lista. Revisa que la migración panel_admin esté aplicada.')
+      setError('No se pudo cargar la lista. Intenta de nuevo.')
     } finally {
       setBusy(false)
     }
@@ -324,7 +324,7 @@ function AdminPanel({ onBack, onToast }: { onBack: () => void; onToast: Notify }
       setStorage(sg)
     } catch (e) {
       logError(e, 'Admin')
-      setError('No se pudo cargar el panel. Revisa que la migración panel_admin esté aplicada.')
+      setError('No se pudo cargar el panel. Intenta de nuevo.')
     } finally {
       setBusy(false)
       // Pausa entre consultas para no cargar la base del plan gratuito

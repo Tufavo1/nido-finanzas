@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { topCategories } from './homeSummary'
+import { otherCategories, topCategories } from './homeSummary'
 
 const c = (id: string, spent: number, budget = 0) => ({ id, name: id, spent, budget })
 
@@ -25,4 +25,20 @@ describe('topCategories: en qué se fue la plata, de un vistazo', () => {
     expect(t).toMatchObject({ pct: 50, left: null })
   })
   it('sin gastos no hay nada que mostrar', () => expect(topCategories([c('a', 0, 1000)], 0)).toEqual([]))
+})
+
+describe('otherCategories: lo que no cabe en las 4 de arriba (para que la suma cuadre con el total)', () => {
+  it('suma las categorías que quedaron fuera y cuántas son', () => {
+    const rows = [c('a', 10), c('b', 500), c('c', 0), c('d', 300), c('e', 200), c('f', 100)]
+    expect(otherCategories(rows, topCategories(rows, 1110))).toEqual({ spent: 10, count: 1 })
+  })
+  it('con todo a la vista no hay nada más', () => {
+    const rows = [c('a', 10), c('b', 500)]
+    expect(otherCategories(rows, topCategories(rows, 510))).toBeNull()
+  })
+  it('lo de arriba más «otras» es el total', () => {
+    const rows = [c('a', 10), c('b', 500), c('d', 300), c('e', 200), c('f', 100), c('g', 7)]
+    const top = topCategories(rows, 1117)
+    expect(top.reduce((s, t) => s + t.spent, 0) + (otherCategories(rows, top)?.spent ?? 0)).toBe(1117)
+  })
 })

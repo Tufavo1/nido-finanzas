@@ -7,15 +7,26 @@ import { isPackageName } from './captureApps'
 export interface Bank {
   id: string
   name: string
+  /** ¿La captura de avisos de esta fuente está verificada? Solo las verificadas se ofrecen. El dueño las reactiva una a una. */
+  available: boolean
 }
 export const BANKS: readonly Bank[] = [
-  { id: 'santander', name: 'Santander' },
-  { id: 'banco-estado', name: 'Banco Estado' },
-  { id: 'banco-falabella', name: 'Banco Falabella' },
-  { id: 'banco-chile', name: 'Banco de Chile' },
+  { id: 'santander', name: 'Santander', available: false },
+  { id: 'banco-estado', name: 'Banco Estado', available: false },
+  { id: 'banco-falabella', name: 'Banco Falabella', available: true },
+  { id: 'banco-chile', name: 'Banco de Chile', available: false },
   // No es un banco: la billetera del teléfono (pagos sin contacto). El nativo la trata como una fuente más (id estable).
-  { id: 'billetera-google', name: 'Billetera Google' },
+  { id: 'billetera-google', name: 'Billetera de Google', available: true },
 ]
+
+/** Única lista de fuentes que se pueden conectar: de aquí salen todos los selectores y textos de captura */
+export const CAPTURE_AVAILABLE: readonly Bank[] = BANKS.filter((b) => b.available)
+
+/** Qué sí funciona hoy (Hick: no se muestran opciones que no funcionan) */
+export const CAPTURE_AVAILABLE_TEXT = `Por ahora funciona con ${CAPTURE_AVAILABLE.map((b) => b.name).join(' y ')}. Pronto sumaremos más bancos.`
+
+/** Para quien ya la tenía encendida antes de ocultarla */
+export const CAPTURE_UNAVAILABLE_LABEL = 'Ya no disponible por ahora'
 
 export interface BankPreset extends Bank {
   /** App del banco asociada (elegida con el modo aprender); null = sin app asociada */
@@ -36,14 +47,18 @@ export interface BankAutoApi {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-/** Siempre todas las fuentes (bancos y Billetera Google). Sin app asociada no puede quedar encendido el guardado automático. */
+/**
+ * Las fuentes disponibles, más las ocultas solo si ya estaban encendidas (para poder apagarlas).
+ * Sin app asociada no puede quedar encendido el guardado automático.
+ */
 export function parseBankPresets(raw: unknown): BankPreset[] {
   const rows = isRecord(raw) && Array.isArray(raw['banks']) ? raw['banks'].filter(isRecord) : []
-  return BANKS.map((b) => {
+  const presets = BANKS.map((b) => {
     const row = rows.find((r) => r['id'] === b.id)
     const pkg = row && typeof row['packageName'] === 'string' && isPackageName(row['packageName']) ? row['packageName'] : null
     return { ...b, packageName: pkg, autoSave: pkg !== null && row?.['autoSave'] === true }
   })
+  return presets.filter((p) => p.available || p.autoSave)
 }
 
 export const bankStatus = (b: BankPreset): string => (b.packageName ? `App asociada: ${b.packageName}` : 'Sin app asociada')
@@ -61,6 +76,14 @@ export function parseSyncState(raw: unknown): SyncState {
   const pending = typeof r['pending'] === 'number' && Number.isSafeInteger(r['pending']) && r['pending'] > 0 ? r['pending'] : 0
   const last = typeof r['lastSyncAt'] === 'number' && Number.isFinite(r['lastSyncAt']) ? r['lastSyncAt'] : null
   return { state, lastSyncAt: last, pending }
+}
+
+/** Errores del último envío que se arreglan volviendo a entrar (sesión o perfil del hogar) */
+const SIGN_IN_ERRORS: readonly string[] = ['OWNER', 'NO_PROFILE']
+
+/** ¿El último envío falló porque hay que volver a entrar? Lee `lastError` de `getSyncState`; nunca se muestra el código. */
+export function syncNeedsSignIn(raw: unknown): boolean {
+  return isRecord(raw) && typeof raw['lastError'] === 'string' && SIGN_IN_ERRORS.includes(raw['lastError'])
 }
 
 const gastos = (n: number) => `${n} ${n === 1 ? 'gasto' : 'gastos'}`

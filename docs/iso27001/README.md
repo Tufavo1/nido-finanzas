@@ -19,7 +19,7 @@ La 27001 certifica un **Sistema de Gestión de Seguridad de la Información (SGS
 - **Aislamiento y privilegios:** RLS por hogar y por dueño, funciones con `search_path` fijo, administración con segundo factor y auditoría. Pruebas: `supabase/tests/*.sql`.
 - **Red y aplicación:** Worker con rutas permitidas, control de origen, límites de uso, validación de la redirección a Google; cabeceras (CSP, HSTS…). Pruebas: `web/worker/proxy.test.ts`.
 - **Identidad:** contraseñas exigentes, CAPTCHA, inicio con Google con contraseña propia obligatoria, **verificación en dos pasos opcional para todas las personas** (Ajustes → Seguridad, y desafío al entrar), bloqueo por inactividad, reconfirmación en acciones delicadas.
-- **Desarrollo seguro:** CI con tipos, lint, pruebas, `npm audit` y firmas, **gitleaks** y **CodeQL** (`.github/workflows/security.yml`), Dependabot, plantilla de PR, `CODEOWNERS`.
+- **Desarrollo seguro:** CI con tipos, lint, pruebas, `npm audit` (dependencias de producción), **gitleaks** y **CodeQL** (`.github/workflows/security.yml`), Dependabot, plantilla de PR, `CODEOWNERS`.
 - **Respaldos:** `scripts/backup.sh` (cifrado AES-256, permisos 600, suma SHA-256, retención) y `scripts/restore-test.sh` (restauración en base temporal con verificación). Probados contra la base local.
 - **Divulgación responsable:** `SECURITY.md` y `/.well-known/security.txt`.
 

@@ -8,8 +8,13 @@ export interface CaptureConfig {
   mode: CaptureMode
   /** Tope del modo automático, en pesos (inclusivo) */
   maxClp: number
-  /** Los gastos detectados parten como compartidos */
+  /** Los gastos detectados que la persona revisa parten como compartidos */
   shared: boolean
+  /**
+   * Los que se guardan SOLOS (sin que la persona los revise) van compartidos. Solo lo enciende la persona en Ajustes > Gastos
+   * automáticos: por defecto, y para preferencias antiguas sin el campo, van personales (no tocan las cuentas con la pareja).
+   */
+  autoShared: boolean
   /** Apps elegidas; se recuerdan aunque la captura esté apagada */
   savedPackages: string[]
   /** Interruptor de captura: apagado, el teléfono no lee ningún aviso */
@@ -20,7 +25,7 @@ export interface CaptureConfig {
 export const MIN_CAP_CLP = 1_000
 export const MAX_CAP_CLP = 5_000_000
 
-export const DEFAULT_CAPTURE_CONFIG: CaptureConfig = { ...DEFAULT_CAPTURE_SETTINGS, shared: true, savedPackages: [], enabled: true }
+export const DEFAULT_CAPTURE_CONFIG: CaptureConfig = { ...DEFAULT_CAPTURE_SETTINGS, shared: true, autoShared: false, savedPackages: [], enabled: true }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
@@ -38,6 +43,7 @@ export function parseCaptureConfig(raw: string | null): CaptureConfig {
     mode: v['mode'] === 'AUTO' ? 'AUTO' : d.mode,
     maxClp: typeof v['maxClp'] === 'number' && Number.isInteger(v['maxClp']) && v['maxClp'] >= MIN_CAP_CLP && v['maxClp'] <= MAX_CAP_CLP ? v['maxClp'] : d.maxClp,
     shared: typeof v['shared'] === 'boolean' ? v['shared'] : d.shared,
+    autoShared: v['autoShared'] === true,
     savedPackages: Array.isArray(v['savedPackages']) ? v['savedPackages'].filter((p): p is string => typeof p === 'string' && isPackageName(p)) : [],
     enabled: typeof v['enabled'] === 'boolean' ? v['enabled'] : d.enabled,
   }

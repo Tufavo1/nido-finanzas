@@ -87,7 +87,7 @@ export const NEWS_SLIDES: Slide[] = [
   },
   {
     title: 'Todo se crea desde Registrar',
-    text: '**Registrar** se abre en el monto para anotar rápido. Al final, en **Crear otra cosa**, agregas una **deuda**, una **categoría**, un **gasto fijo** o una **meta**.',
+    text: '**Registrar** se abre en el monto para anotar rápido. Arriba, en **Crear**, agregas una **deuda**, una **categoría**, un **gasto fijo** o una **meta**.',
     art: badge('plus'),
   },
   {

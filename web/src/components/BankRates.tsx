@@ -6,10 +6,10 @@ import type { RateEntry, RateProduct } from '../lib/bankData'
 import { compareDebt, monthlyRange, offersFor, productForDebt } from '../lib/bankRates'
 import type { BankOffer, DebtComparison } from '../lib/bankRates'
 import { debtView } from '../lib/finance'
-import { money } from '../lib/format'
+import { money, pctText } from '../lib/format'
 import Icon from './Icon'
 
-const pct = (n: number) => `${n.toFixed(2).replace('.', ',')} %`
+const pct = (n: number) => pctText(n, 2, 2)
 
 const VERDICT: Record<DebtComparison['verdict'], { level: 'ok' | 'warn' | 'bad'; mark: string; short: string; text: string }> = {
   bajo: { level: 'ok', mark: '✓', short: 'Estás pagando poco', text: 'Tu tasa es igual o más baja que la mejor que publican estos bancos.' },

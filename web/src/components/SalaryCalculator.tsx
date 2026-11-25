@@ -4,7 +4,7 @@ import Spin from './Spin'
 import { useState } from 'react'
 import { AFPS, calcularLiquido } from '../lib/chile'
 import type { AfpId, Contrato } from '../lib/chile'
-import { money } from '../lib/format'
+import { pctText, money } from '../lib/format'
 import { digitsOnly, dots } from '../lib/ui'
 
 const CONTRATOS: { key: Contrato; label: string }[] = [
@@ -56,7 +56,7 @@ export default function SalaryCalculator({ onUse, busy = false }: { onUse: (liqu
       </div>
       <div className="field">
         <label htmlFor="bruto">Sueldo bruto (el de tu contrato)</label>
-        <input id="bruto" className="input" inputMode="numeric" autoComplete="off" placeholder="Ej. 1200000" value={dots(bruto)} onChange={(e) => setBruto(digitsOnly(e.target.value))} />
+        <input id="bruto" className="input" inputMode="numeric" autoComplete="off" placeholder="Ej. 1.200.000" value={dots(bruto)} onChange={(e) => setBruto(digitsOnly(e.target.value))} />
       </div>
       <div className="field">
         <span className="label-text" id="contrato-label">
@@ -76,7 +76,7 @@ export default function SalaryCalculator({ onUse, busy = false }: { onUse: (liqu
           <select id="afp" className="input" value={afp} onChange={(e) => setAfp(e.target.value as AfpId)}>
             {AFPS.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.name} (comisión {String(a.comision).replace('.', ',')} %)
+                {a.name} (comisión {pctText(a.comision)})
               </option>
             ))}
           </select>
@@ -100,7 +100,7 @@ export default function SalaryCalculator({ onUse, busy = false }: { onUse: (liqu
           <div className="stack tight">
             <span className="muted">Te llegan cada mes</span>
             <span className="cat-big num">{money(r.liquido)}</span>
-            <span className="muted">Es un {String(r.descuentoPct).replace('.', ',')} % menos que tu bruto</span>
+            <span className="muted">Es un {pctText(r.descuentoPct)} menos que tu bruto</span>
             {contrato === 'honorarios' && <span className="muted small-text">La retención se ajusta en abril: puedes recuperar o pagar más.</span>}
           </div>
           <button type="button" className="btn" disabled={busy} onClick={() => void use(r.liquido)}>

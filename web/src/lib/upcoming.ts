@@ -1,5 +1,6 @@
 import type { Debt, DebtPayment, Recurring } from './data'
 import { debtView } from './finance'
+import type { PaidExpense } from './finance'
 import { toISO } from './format'
 import { fraction, portion } from './split'
 import type { Split } from './split'
@@ -43,6 +44,8 @@ export interface UpcomingInput {
   recurring: Recurring[]
   debts: Debt[]
   debtPayments: DebtPayment[]
+  /** Compras con tarjeta desde el saldo informado de cada tarjeta (no solo las del mes): una tarjeta las cuenta para saber si aún debe */
+  expenses: PaidExpense[]
   salary: { amount: number; pay_day: number } | null
   /** Lo que te sobra hoy del mes (ingreso − gastos − cuotas); null sin sueldo */
   free: number | null
@@ -109,7 +112,7 @@ export function buildUpcoming(input: UpcomingInput): Upcoming {
 
   for (const d of input.debts) {
     if (d.owner_id !== input.meId && d.owner_id !== null) continue
-    const v = debtView(d, input.debtPayments, now)
+    const v = debtView(d, input.debtPayments, now, input.expenses, input.debts)
     if (v.remaining <= 0 || d.monthly_payment <= 0 || !d.due_day) continue
     const share = d.owner_id === input.meId ? 1 : fraction(input.split, input.meId)
     const pending = Math.max(0, d.monthly_payment - v.paidThisMonth)

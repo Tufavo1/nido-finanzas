@@ -38,7 +38,7 @@ export default function PartnerPrivacyCard({ hh, reload, onToast }: { hh: Househ
     return (
       <section className="card">
         <strong>Privacidad con tu pareja</strong>
-        <span className="muted">Esta opción aún no está activa en tu base de datos. Aplica la migración de privacidad y recarga.</span>
+        <span className="muted">Esta opción no está lista todavía. Intenta de nuevo más tarde.</span>
       </section>
     )
   }

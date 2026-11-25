@@ -163,7 +163,7 @@ export default function ProfileCard({ hh, data, reload, onToast }: Props) {
             </>
           ) : (
             <span className="muted small-text">
-              Para guardar profesión falta aplicar la migración <strong>20261018060000_perfil_edicion</strong>.
+              Guardar la profesión no está disponible todavía. Intenta de nuevo más tarde.
             </span>
           )}
           <div className="row">

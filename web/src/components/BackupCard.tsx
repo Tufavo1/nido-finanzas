@@ -1,3 +1,4 @@
+import { plural } from '../lib/plural'
 import { useState } from 'react'
 import { buildBackup, download, expensesCsv, stamp } from '../lib/backup'
 import { useToastError } from '../lib/useToastError'
@@ -17,10 +18,10 @@ export default function BackupCard({ onToast }: { onToast: Notify }) {
       const count = Object.values(b.tables).reduce((s, rows) => s + rows.length, 0)
       if (kind === 'json') {
         download(`contigo-respaldo-${stamp()}.json`, JSON.stringify(b, null, 2), 'application/json')
-        onToast(`Respaldo descargado\nSe guardaron **${count} registros** en un archivo de tu dispositivo.`)
+        onToast(`Respaldo descargado\nSe guardaron **${plural(count, 'registro', 'registros')}** en un archivo de tu dispositivo.`)
       } else {
         download(`contigo-gastos-${stamp()}.csv`, expensesCsv(b), 'text/csv;charset=utf-8')
-        onToast(`Gastos exportados\nSe descargaron **${b.tables.expenses.length} gastos** listos para Excel.`)
+        onToast(`Gastos exportados\nSe descargaron **${plural(b.tables.expenses.length, 'gasto', 'gastos')}** listos para Excel.`)
       }
     } catch (e) {
       logError(e, 'BackupCard')

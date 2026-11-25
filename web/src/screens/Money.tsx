@@ -13,18 +13,23 @@ import SalaryCalculator from '../components/SalaryCalculator'
 import SavingsCheck from '../components/SavingsCheck'
 import { isCustomSplit, percentOf, splitOf } from '../lib/split'
 import ScopeBar from '../components/ScopeBar'
+import { Rich } from '../lib/rich'
 import { resolveScope, scopeDebts, scopeDebtShares } from '../lib/scope'
 import type { Scope } from '../lib/scope'
-import { cardBalance, debtView, monthIncome, monthsToPayoff, summarizeDebts } from '../lib/finance'
+import { cardBalance, cardEditReport, cardLimitStatus, creditLimitInput, creditLimitPatch, creditLimitProblem, debtSaveMessage, debtPayChips, debtView, monthIncome, monthsToPayoff, saveDebtKeepingData, summarizeDebts } from '../lib/finance'
 import type { DebtView } from '../lib/finance'
-import { money, todayISO } from '../lib/format'
+import { money, pctText, todayISO } from '../lib/format'
 import { computeMetrics } from '../lib/metrics'
 import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
-import { daysUntil, digitsOnly, inDays, longDate, monthName, nextOccurrence, dots } from '../lib/ui'
+import { daysUntil, digitsOnly, MAX_BALANCE_DIGITS, inDays, longDate, monthName, nextOccurrence, dots } from '../lib/ui'
+import { moreCount } from '../lib/plural'
+import { debtEndShort, debtEndTile } from '../lib/debtText'
+import { cardLimitText, otherName } from '../lib/scopeText'
 import type { Notify } from '../components/Toast'
 import type { MoneySection } from '../lib/engine'
 import Spin from '../components/Spin'
+import PayChips from '../components/PayChips'
 import { logError } from '../lib/safeLog'
 
 interface Props {
@@ -218,7 +223,7 @@ function SalaryPanel({ hh, data, month, onToast }: Props) {
                   id="salary" autoComplete="off"
                   className="input"
                   inputMode="numeric"
-                  placeholder="Ej. 1500000"
+                  placeholder="Ej. 1.500.000"
                   value={dots(amount)}
                   onChange={(e) => setAmount(digitsOnly(e.target.value))}
                 />
@@ -260,15 +265,18 @@ function DebtCard({
   hh,
   data,
   onToast,
+  scope,
 }: {
   v: DebtView
   hh: Household
   data: HouseholdData
   onToast: Notify
+  /** A quién se mira: con la pareja, los textos hablan de ella */
+  scope: Scope
 }) {
   const d = v.debt
   const [paying, setPaying] = useState(false)
-  const [value, setValue] = useState(String(d.monthly_payment || ''))
+  const [value, setValue] = useState('')
   const [confirm, setConfirm] = useState(false)
   const [editing, setEditing] = useState(false)
   const [open, setOpen] = useState(false)
@@ -283,10 +291,19 @@ function DebtCard({
   const setError = useToastError(onToast)
   const myPays = data.debtPayments.filter((p) => p.debt_id === d.id)
   const isCard = d.kind === 'tarjeta'
-  const cardBal = isCard ? cardBalance(d, data.debtPayments, data.expenses, data.debts) : null
+  const cardBal = isCard ? cardBalance(d, data.debtPayments, data.cardExpenses, data.debts) : null
+  const limitSt = cardBal ? cardLimitStatus(d, cardBal.used) : null
+  const other = otherName(scope, hh.me.user_id, hh.everyone)
   const owner = d.owner_id ? hh.everyone.find((m) => m.user_id === d.owner_id) : null
   // Las deudas personales de la pareja solo se ven: la base de datos tampoco deja tocarlas
   const canManage = d.owner_id === null || d.owner_id === hh.me.user_id
+
+  // Al abrir el pago ya viene la cuota (sin pasar del saldo): lo habitual es un toque y listo
+  function startPaying() {
+    const { fee } = debtPayChips(d.monthly_payment, v.remaining)
+    setValue(fee === null ? '' : String(fee))
+    setPaying(true)
+  }
 
   async function pay(e: FormEvent) {
     e.preventDefault()
@@ -405,6 +422,7 @@ function DebtCard({
   }
 
   const done = v.remaining === 0
+  const endTile = debtEndTile(d.kind, v.months, done)
   const close = () => {
     setOpen(false)
     setEditing(false)
@@ -433,10 +451,16 @@ function DebtCard({
         </span>
         <span className="fixed-amount num">{money(v.remaining)}</span>
       </span>
-      <Meter pct={v.progressPct} level={level} />
+      {d.kind !== 'tarjeta' && <Meter pct={v.progressPct} level={level} />}
+      {limitSt && (
+        <span className={`small-text${limitSt.over > 0 ? ' hint' : ' muted'}`}>
+          Cupo {money(limitSt.limit)} · usado {money(limitSt.used)}
+          {limitSt.over > 0 ? ` · ${other ? `${other} se pasó` : 'Te pasaste'} por ${money(limitSt.over)}` : ` · ${other ? `Le quedan a ${other}` : 'Te quedan'} ${money(limitSt.free)}`}
+        </span>
+      )}
       <span className="row between muted small-text">
-        <span>Pagado {v.progressPct} %</span>
-        <span>{done ? 'Saldada 🎉' : v.months === null ? 'Sin fecha de término' : `Faltan ~${v.months} ${v.months === 1 ? 'mes' : 'meses'}`}</span>
+        <span>{d.kind === 'tarjeta' ? 'Lo usado de la tarjeta' : `Pagado ${v.progressPct} %`}</span>
+        <span>{debtEndShort(d.kind, v.months, done)}</span>
       </span>
       <span className="card-cta" aria-hidden="true">
         Toca para ver el detalle <Icon name="chevR" size={16} />
@@ -473,11 +497,18 @@ function DebtCard({
               {isCard && cardBal ? (
                 <span className="muted small-text">
                   {cardBal.informed && cardBal.informedAt
-                    ? `Saldo de tu banco al ${cardBal.informedAt.slice(8, 10)}/${cardBal.informedAt.slice(5, 7)}${cardBal.sinceInformed > 0 ? `, más ${money(cardBal.sinceInformed)} en compras nuevas` : ''}.`
-                    : 'Aún no pones el saldo que dice tu banco: así no se corre.'}
+                    ? `Saldo del banco al ${cardBal.informedAt.slice(8, 10)}/${cardBal.informedAt.slice(5, 7)}${cardBal.sinceInformed > 0 ? `, más ${money(cardBal.sinceInformed)} en compras nuevas` : ''}.`
+                    : 'Aún falta el saldo que dice el banco: así no se corre.'}
                 </span>
               ) : (
                 <span className="muted">La deuda era de {money(d.original_amount)}</span>
+              )}
+              {limitSt ? (
+                <span className={`small-text${limitSt.over > 0 ? ' hint' : ' muted'}`} role="status">
+                  Cupo {money(limitSt.limit)} · usado {money(limitSt.used)}. {cardLimitText(limitSt, other)}
+                </span>
+              ) : (
+                isCard && canManage && <span className="muted small-text">Agrega el cupo total para ver cuánto te queda (en «Editar información»).</span>
               )}
               {isCard && canManage && !updBank && (
                 <button type="button" className="btn ghost small" onClick={() => setUpdBank(true)}>
@@ -487,7 +518,7 @@ function DebtCard({
               {isCard && updBank && (
                 <form className="stack tight" onSubmit={(e) => void saveBankBalance(e)}>
                   <label className="muted small-text" htmlFor="bank-bal">Cupo utilizado según tu banco</label>
-                  <input id="bank-bal" className="input" inputMode="numeric" autoComplete="off" placeholder="Ej. 1056489" value={bankBal} onChange={(e) => setBankBal(e.target.value.replace(/\D/g, '').slice(0, 10))} />
+                  <input id="bank-bal" className="input" inputMode="numeric" autoComplete="off" placeholder="Ej. 1.056.489" value={bankBal} onChange={(e) => setBankBal(digitsOnly(e.target.value, MAX_BALANCE_DIGITS))} />
                   <div className="row">
                     <button type="submit" className="btn small" disabled={busy}>{busy ? <Spin label="Guardando…" /> : 'Guardar'}</button>
                     <button type="button" className="btn ghost small" disabled={busy} onClick={() => setUpdBank(false)}>Cancelar</button>
@@ -496,12 +527,14 @@ function DebtCard({
               )}
             </div>
 
-            <div className="stack tight">
-              <div className="bar cat-bar" role="img" aria-label={`${v.progressPct} % pagado`}>
-                <span style={{ width: `${Math.min(100, v.progressPct)}%`, background: 'var(--accent)' }} />
+            {d.kind !== 'tarjeta' && (
+              <div className="stack tight">
+                <div className="bar cat-bar" role="img" aria-label={`${v.progressPct} % pagado`}>
+                  <span style={{ width: `${Math.min(100, v.progressPct)}%`, background: 'var(--accent)' }} />
+                </div>
+                <span className="muted small-text">{v.progressPct} % pagado</span>
               </div>
-              <span className="muted small-text">{v.progressPct} % pagado</span>
-            </div>
+            )}
 
             <div className="tiles">
               <div className="tile">
@@ -510,12 +543,14 @@ function DebtCard({
               </div>
               <div className="tile">
                 <span className="muted small-text">Interés</span>
-                <span className="amount-sm num">{d.monthly_rate > 0 ? `${d.monthly_rate} % al mes` : 'Sin interés'}</span>
+                <span className="amount-sm num">{d.monthly_rate > 0 ? `${pctText(d.monthly_rate)} al mes` : 'Sin interés'}</span>
               </div>
-              <div className="tile">
-                <span className="muted small-text">Terminan de pagar</span>
-                <span className="amount-sm">{done ? 'Saldada 🎉' : v.months === null ? 'Sin fecha' : `En ~${v.months} ${v.months === 1 ? 'mes' : 'meses'}`}</span>
-              </div>
+              {endTile !== null && (
+                <div className="tile">
+                  <span className="muted small-text">Terminan de pagar</span>
+                  <span className="amount-sm">{endTile}</span>
+                </div>
+              )}
               <div className="tile">
                 <span className="muted small-text">Vence</span>
                 <span className="amount-sm">{d.due_day ? `El día ${d.due_day}` : 'Sin día'}</span>
@@ -544,8 +579,9 @@ function DebtCard({
                   />
                   <span className="hint">Solo anota el pago en la app; no mueve plata de tu banco.</span>
                 </div>
+                <PayChips monthlyPayment={d.monthly_payment} remaining={v.remaining} onPick={(n) => setValue(String(n))} />
                 <button className="btn" type="submit" disabled={busy}>
-                  {busy ? <Spin label="Registrando pago…" /> : 'Guardar el pago'}
+                  {busy ? <Spin label="Registrando pago…" /> : Number(value) > 0 ? `Pagar ${money(Number(value))}` : 'Guardar el pago'}
                 </button>
                 <button type="button" className="btn ghost" onClick={() => setPaying(false)}>
                   Cancelar
@@ -562,7 +598,7 @@ function DebtCard({
                     Guardar en el archivo (ya está pagada)
                   </button>
                 ) : (
-                  <button type="button" className="btn" onClick={() => setPaying(true)}>
+                  <button type="button" className="btn" onClick={() => startPaying()}>
                     Anotar un pago
                   </button>
                 )}
@@ -654,12 +690,17 @@ function DebtEditForm({
   const [name, setName] = useState(existing?.name ?? '')
   const [kind, setKind] = useState<(typeof KINDS)[number]['key']>((existing?.kind as (typeof KINDS)[number]['key']) ?? 'tarjeta')
   const [owner, setOwner] = useState<string>(existing?.owner_id ?? '')
-  const [total, setTotal] = useState(existing ? String(existing.original_amount) : '')
+  // Tarjeta: se edita lo que hoy se ve como usado (la misma cifra de la lista), no el monto anotado al darla de alta
+  const shownCard = existing && existing.kind === 'tarjeta' ? cardBalance(existing, data.debtPayments, data.cardExpenses, data.debts).used : null
+  const [total, setTotal] = useState(existing ? String(shownCard ?? existing.original_amount) : '')
   const [fee, setFee] = useState(existing && existing.monthly_payment ? String(existing.monthly_payment) : '')
   const [rate, setRate] = useState(existing && existing.monthly_rate ? String(existing.monthly_rate).replace('.', ',') : '')
   const [due, setDue] = useState(existing?.due_day ? String(existing.due_day) : '')
+  const [limit, setLimit] = useState(existing?.credit_limit ? String(existing.credit_limit) : '')
   const [busy, setBusy] = useState(false)
   const setError = useToastError(onToast)
+  // Aviso en vivo: el campo deja escribir un dígito de más justo para poder decirlo
+  const limitProblem = kind === 'tarjeta' ? creditLimitProblem(limit) : null
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -670,6 +711,7 @@ function DebtEditForm({
     if (!orig || orig <= 0) return setError('Escribe cuánto deben en total')
     if (Number.isNaN(r) || r < 0 || r > 30) return setError('El interés mensual debe estar entre 0 y 30 %')
     if (dueDay !== null && (dueDay < 1 || dueDay > 31)) return setError('El día de vencimiento va de 1 a 31')
+    if (limitProblem) return setError(limitProblem)
     setBusy(true)
     setError(null)
     const fields = {
@@ -680,16 +722,20 @@ function DebtEditForm({
       monthly_payment: Number(fee || '0'),
       monthly_rate: r,
       due_day: dueDay,
+      ...cardEditReport(existing, kind, orig, shownCard, todayISO()),
+      ...(kind === 'tarjeta' ? creditLimitPatch(limit, existing) : {}),
     }
-    const { error: err } = existing
-      ? await supabase.from('debts').update(fields).eq('id', existing.id)
-      : await supabase.from('debts').insert({ household_id: hh.household.id, ...fields })
+    const { error: err, droppedLimit } = await saveDebtKeepingData(
+      (f) => (existing ? supabase.from('debts').update(f as never).eq('id', existing.id) : supabase.from('debts').insert({ household_id: hh.household.id, ...f } as never)),
+      fields,
+    )
     setBusy(false)
     if (err) {
-      setError('No se pudo guardar la deuda. Revisa tu conexión e intenta de nuevo.')
+      setError(debtSaveMessage(err))
       return
     }
-    onToast(existing ? 'Deuda actualizada\nSus **cuotas** y saldo se recalcularon.' : 'Deuda agregada\nYa aparece en tu plan de **pago**.')
+    if (droppedLimit) onToast('Guardada sin el cupo\nEsta versión del servidor todavía no guarda el cupo; guardamos el resto.')
+    else onToast(existing ? 'Deuda actualizada\nSus **cuotas** y saldo se recalcularon.' : 'Deuda agregada\nYa aparece en tu plan de **pago**.')
     onClose()
     await data.refresh()
   }
@@ -734,12 +780,23 @@ function DebtEditForm({
           </div>
         )}
         <div className="field">
-          <label htmlFor="d-total">Lo que falta pagar (CLP)</label>
-          <input id="d-total" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800000" value={dots(total)} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
+          <label htmlFor="d-total">{kind === 'tarjeta' ? 'Cupo utilizado según tu banco hoy (CLP)' : 'Lo que falta pagar (CLP)'}</label>
+          <input id="d-total" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800.000" value={dots(total)} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
         </div>
+        {kind === 'tarjeta' && (
+          <div className="field">
+            <label htmlFor="d-limit">Cupo total de la tarjeta (CLP)</label>
+            <input id="d-limit" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 960.000 (opcional)" value={dots(limit)} aria-invalid={limitProblem !== null} aria-describedby={limitProblem ? 'd-limit-err' : undefined} onChange={(e) => setLimit(creditLimitInput(e.target.value))} />
+            {limitProblem ? (
+              <span id="d-limit-err" className="error" role="alert">{limitProblem}</span>
+            ) : (
+              <span className="line-help">Es el cupo aprobado por el banco. Si no lo sabes, déjalo vacío.</span>
+            )}
+          </div>
+        )}
         <div className="field">
           <label htmlFor="d-fee">Cuota al mes (CLP)</label>
-          <input id="d-fee" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 65000" value={dots(fee)} onChange={(e) => setFee(digitsOnly(e.target.value))} />
+          <input id="d-fee" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 65.000" value={dots(fee)} onChange={(e) => setFee(digitsOnly(e.target.value))} />
           {payoff === null && <span className="hint">Con esa cuota la deuda no baja: conviene subirla.</span>}
           {typeof payoff === 'number' && <span className="hint">Terminarían de pagar en ~{payoff} {payoff === 1 ? 'mes' : 'meses'}.</span>}
         </div>
@@ -758,7 +815,7 @@ function DebtEditForm({
             ))}
           </select>
         </div>
-        <button className="btn" type="submit" disabled={busy}>
+        <button className="btn" type="submit" disabled={busy || limitProblem !== null}>
           {busy ? <Spin label="Guardando deuda…" /> : 'Guardar cambios'}
         </button>
       </form>
@@ -800,7 +857,7 @@ function BetweenUs({ hh, data, month, onToast }: Pick<Props, 'hh' | 'data' | 'mo
     <section className={`card verdict ${level}`}>
       <strong>Entre ustedes dos</strong>
       <span className="owe-main">{main}</span>
-      <span className="muted small-text">{help}</span>
+      <span className="muted small-text"><Rich text={help} /></span>
       {mine && other && m.shared > 0 && (
         <span className="line-help">
           Gastos compartidos de {monthName(month)}: {money(m.shared)}. Tú pusiste {money(mine.paidShared)} y {other.name}{' '}
@@ -951,7 +1008,7 @@ function ArchivedDebts({ hh, data, who, onToast }: { hh: Household; data: Househ
   }
 
   function detail(d: HouseholdData['debts'][number]) {
-    const v = debtView(d, data.debtPayments, now, data.expenses, data.debts)
+    const v = debtView(d, data.debtPayments, now, data.cardExpenses, data.debts)
     const pays = data.debtPayments.filter((p) => p.debt_id === d.id)
     const owner = d.owner_id ? hh.everyone.find((m) => m.user_id === d.owner_id) : null
     const kindLabel = KINDS.find((k) => k.key === d.kind)?.label ?? 'Otra'
@@ -989,7 +1046,7 @@ function ArchivedDebts({ hh, data, who, onToast }: { hh: Household; data: Househ
               </div>
               <div className="tile">
                 <span className="muted small-text">Interés</span>
-                <span className="amount-sm num">{d.monthly_rate > 0 ? `${d.monthly_rate} % al mes` : 'Sin interés'}</span>
+                <span className="amount-sm num">{d.monthly_rate > 0 ? `${pctText(d.monthly_rate)} al mes` : 'Sin interés'}</span>
               </div>
             </div>
 
@@ -1043,7 +1100,7 @@ function ArchivedDebts({ hh, data, who, onToast }: { hh: Household; data: Househ
       {open && (
         <div id="archived-debts" className="fixed-grid wide">
           {shown.map((d) => {
-            const v = debtView(d, data.debtPayments, now, data.expenses, data.debts)
+            const v = debtView(d, data.debtPayments, now, data.cardExpenses, data.debts)
             return (
               <button
                 key={d.id}
@@ -1074,10 +1131,10 @@ function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
   const [showAll, setShowAll] = useState(false)
   const who = resolveScope(scope, hh.members)
   const debts = scopeDebts(data.debts, who)
-  const real = summarizeDebts(debts, data.debtPayments, undefined, data.expenses, data.debts)
+  const real = summarizeDebts(debts, data.debtPayments, undefined, data.cardExpenses, data.debts)
   // Para una persona, las deudas compartidas cuentan solo su parte en los totales y el análisis
   const mine = scopeDebtShares(data.debts, data.debtPayments, who, splitOf(hh.members))
-  const s = summarizeDebts(mine.debts, mine.payments, undefined, data.expenses, data.debts)
+  const s = summarizeDebts(mine.debts, mine.payments, undefined, data.cardExpenses, data.debts)
   const empty = debts.length === 0
   const person = hh.members.find((m) => m.user_id === who)
 
@@ -1130,7 +1187,7 @@ function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
           <SectionHead title="Cada deuda" hint="Toca una para ver todo, anotar un pago, editarla o borrarla" />
           <div className="fixed-grid wide">
             {shown.map((v) => (
-              <DebtCard key={v.debt.id} v={v} hh={hh} data={data} onToast={onToast} />
+              <DebtCard key={v.debt.id} v={v} hh={hh} data={data} onToast={onToast} scope={who} />
             ))}
           </div>
         </>
@@ -1139,7 +1196,7 @@ function DebtsPanel({ hh, data, month, onToast, scope }: Props) {
       <div className="cat-actions">
         {!empty && views.length > PAGE && (
           <button type="button" className="btn ghost small wide" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
-            {showAll ? 'Ver menos deudas' : `Ver más (${views.length - PAGE} deudas más)`}
+            {showAll ? 'Ver menos deudas' : `Ver más (${moreCount(views.length - PAGE, 'deuda', 'deudas')})`}
           </button>
         )}
         <ArchivedDebts hh={hh} data={data} who={who} onToast={onToast} />
@@ -1194,11 +1251,8 @@ export default function Money(props: Props) {
 
       {!data.financeReady ? (
         <section className="card">
-          <strong>Falta activar esta sección</strong>
-          <span className="muted">
-            La base de datos aún no tiene las tablas de sueldo y deudas. Aplica la migración
-            <strong>20261018050000_sueldo_deudas</strong> y recarga.
-          </span>
+          <strong>Esta sección no está lista todavía</strong>
+          <span className="muted">Intenta de nuevo en un rato.</span>
           <button type="button" className="btn small" onClick={() => void data.refresh()}>
             Reintentar
           </button>
@@ -1207,7 +1261,7 @@ export default function Money(props: Props) {
         <>
           {data.financeStale && (
             <p className="notice" role="status">
-              No se pudo actualizar sueldo y deudas; ves los últimos datos cargados.{' '}
+              No se pudo actualizar todo (sueldo, deudas, fijos o ingresos); ves los últimos datos cargados.{' '}
               <button type="button" className="btn small" onClick={() => void data.refresh()}>
                 Reintentar
               </button>

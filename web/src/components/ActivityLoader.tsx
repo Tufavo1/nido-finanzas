@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import LogoLoader from './LogoLoader'
-import { getActivity, loaderText, subscribeActivity } from '../lib/activity'
+import { getActivity, loaderText, loaderView, subscribeActivity } from '../lib/activity'
 
 /** Cuánto se espera antes de mostrar el cargador, para que lo instantáneo no parpadee */
 const SHOW_AFTER_MS = 300
@@ -55,11 +55,18 @@ export default function ActivityLoader() {
     }
   }, [reading])
 
-  const text = loaderText(a.method, slow, a.waiting > 0 || !online, a.label)
+  const offline = a.waiting > 0 || !online
+  const view = loaderView(writing, show, offline)
+  const text = loaderText(a.method, slow, offline, a.label)
   return createPortal(
     <>
       {bar && <div className="net-bar" role="progressbar" aria-label="Cargando datos" />}
-      {writing && show && (
+      {view === 'banner' && (
+        <div className="wait-banner" role="status" aria-live="polite">
+          <strong>{text.title}</strong> <span>{text.detail}</span>
+        </div>
+      )}
+      {view === 'blocking' && (
         <div className="loader-back" role="status" aria-live="polite" aria-busy="true">
           <div className="loader-card">
             <LogoLoader />

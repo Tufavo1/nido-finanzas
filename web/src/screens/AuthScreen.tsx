@@ -93,7 +93,7 @@ export default function AuthScreen({ notice }: { notice?: string | null }) {
         options: { captchaToken: captcha, data: { accepted_terms_at: new Date().toISOString(), terms_version: LEGAL_VERSION } },
       })
       if (error) {
-        setMsg({ text: friendlyError(error.message), error: true })
+        setMsg({ text: friendlyError(error), error: true })
       } else if (!data.session) {
         setMsg({
           text: 'Te enviamos un correo para confirmar la cuenta. Confírmala y vuelve a iniciar sesión.',

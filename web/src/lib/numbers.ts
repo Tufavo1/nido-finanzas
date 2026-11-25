@@ -2,9 +2,9 @@ import type { Analysis, AnalysisInput } from './analysis'
 import { monthKey, myShare } from './analysis'
 import { emergencySaved } from './goals'
 import { fraction } from './split'
-import { analyzeSalary, debtView, myDebtShare, salaryFlows, summarizeDebts } from './finance'
+import { debtView, myDebtShare, summarizeDebts } from './finance'
+import { categoryKey, REMOVED_CATEGORY_NAME, salaryPicture } from './monthFigures'
 import { monthName } from './ui'
-import { pendingFixedThisMonth } from './upcoming'
 
 /** Números extra del análisis personal: cada uno responde una pregunta simple («¿cuánto me sobra?», «¿qué cambió?»). */
 
@@ -128,8 +128,9 @@ export function buildNumbers(input: AnalysisInput, a: Analysis): Numbers {
   const prevMonth = new Date(month.getFullYear(), month.getMonth() - 1, 1)
   const prevKey = monthKey(prevMonth)
   const catName = new Map(input.categories.map((c) => [c.id, c.name] as const))
-  // Te queda del sueldo: sin las compras con tarjeta, con lo pagado a deudas y la cuota que falta como por pagar (igual que Inicio)
-  const flows = salaryFlows({ expenses: history, debts: input.debts, debtPayments: input.debtPayments, meId, split: memberCount, month, now, trueCost: a.cost })
+  // Te queda: sin las compras con tarjeta, con lo pagado a deudas y la cuota que falta como por pagar (igual que Inicio)
+  const pic = salaryPicture({ expenses: history, cardExpenses: input.cardExpenses, debts: input.debts, debtPayments: input.debtPayments, recurring: input.recurring, meId, split: memberCount, month, now, income: a.income, cost: a.cost, saved: a.saved })
+  const flows = pic.flows
   const commitments = flows.commitments
   const income = a.income
 
@@ -137,10 +138,8 @@ export function buildNumbers(input: AnalysisInput, a: Analysis): Numbers {
   let flow: Flow | null = null
   let outlookFree: number | null = null
   if (income > 0) {
-    const fixedBooked = history.reduce((s, e) => (e.recurring_id && e.spent_on.startsWith(key) ? s + myShare(e, meId, memberCount) : s), 0)
-    const pendingFixed = (isCurrent ? pendingFixedThisMonth(input.recurring, meId, memberCount, now) : 0) + flows.pendingDebt
+    const { pendingFixed, sal } = pic
     const saved = a.saved
-    const sal = analyzeSalary({ income, spent: flows.spent, commitments, month, now, pendingFixed, fixedBooked, saved })
     outlookFree = sal.projectedFree ?? sal.free
     const spentPct = pctOf(flows.spent, income)
     const debtsPct = pctOf(commitments, income)
@@ -177,12 +176,13 @@ export function buildNumbers(input: AnalysisInput, a: Analysis): Numbers {
     if (mine <= 0) continue
     const k = e.spent_on.slice(0, 7)
     const day = Number(e.spent_on.slice(8, 10))
+    const cat = categoryKey(e.category_id, catName)
     if (k === key) {
-      catNow.set(e.category_id, (catNow.get(e.category_id) ?? 0) + mine)
+      catNow.set(cat, (catNow.get(cat) ?? 0) + mine)
       if (e.recurring_id) fixed += mine
     } else if (k === prevKey && day <= elapsed) {
       // Mes en curso: se compara con el mismo tramo del mes pasado, no con el mes entero
-      catPrev.set(e.category_id, (catPrev.get(e.category_id) ?? 0) + mine)
+      catPrev.set(cat, (catPrev.get(cat) ?? 0) + mine)
     }
     const [y, m, d] = e.spent_on.split('-').map(Number)
     byWeekday[new Date(y ?? 0, (m ?? 1) - 1, d ?? 1).getDay()]! += mine
@@ -198,7 +198,7 @@ export function buildNumbers(input: AnalysisInput, a: Analysis): Numbers {
       .map((id) => {
         const n = Math.round(catNow.get(id) ?? 0)
         const b = Math.round(catPrev.get(id) ?? 0)
-        return { name: catName.get(id) ?? 'Otra categoría', now: n, before: b, diff: n - b, pct: b > 0 ? Math.round(((n - b) * 100) / b) : null }
+        return { name: catName.get(id) ?? REMOVED_CATEGORY_NAME, now: n, before: b, diff: n - b, pct: b > 0 ? Math.round(((n - b) * 100) / b) : null }
       })
       .filter((c) => Math.abs(c.diff) >= MIN_CHANGE_CLP)
       .sort((x, y) => Math.abs(y.diff) - Math.abs(x.diff))
@@ -222,20 +222,20 @@ export function buildNumbers(input: AnalysisInput, a: Analysis): Numbers {
 
   // ---------- Deudas ----------
   let debts: DebtNumbers | null = null
-  const mine = input.debts.filter((d) => debtView(d, input.debtPayments, now).remaining > 0 && (d.owner_id === meId || d.owner_id === null))
+  const mine = input.debts.filter((d) => debtView(d, input.debtPayments, now, input.cardExpenses, input.debts).remaining > 0 && (d.owner_id === meId || d.owner_id === null))
   if (mine.length > 0) {
     let remaining = 0
     let interest = 0
     for (const d of mine) {
       const share = d.owner_id === meId ? 1 : fraction(memberCount, meId)
-      const v = debtView(d, input.debtPayments, now)
+      const v = debtView(d, input.debtPayments, now, input.cardExpenses, input.debts)
       remaining += v.remaining * share
       interest += v.monthlyInterest * share
     }
-    const sm = summarizeDebts(mine, input.debtPayments, now, input.history, input.debts)
+    const sm = summarizeDebts(mine, input.debtPayments, now, input.cardExpenses, input.debts)
     debts = {
       remaining: Math.round(remaining),
-      payment: myDebtShare(input.debts, input.debtPayments, meId, memberCount),
+      payment: myDebtShare(input.debts, input.debtPayments, meId, memberCount, now, input.cardExpenses),
       interest: Math.round(interest),
       monthsOfIncome: income > 0 ? Math.round((remaining / income) * 10) / 10 : null,
       freeInMonths: sm.freeInMonths,

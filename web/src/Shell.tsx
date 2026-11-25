@@ -1,3 +1,4 @@
+import { detectedLabel } from './lib/plural'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Household } from './App'
 import { SkeletonScreen } from './components/Skeleton'
@@ -21,8 +22,10 @@ import { useCaptureConfig } from './lib/useCaptureConfig'
 import { useDeepLink } from './lib/useDeepLink'
 import { useAutoSync } from './lib/useAutoSync'
 import { useDetected } from './lib/useDetected'
+import { installmentInfo } from './lib/installments'
 import { useExpenseQueue } from './lib/useExpenseQueue'
 import { errorScreen } from './lib/screenState'
+import { bodyGate } from './lib/shellGate'
 import { supabase } from './lib/supabase'
 import Icon from './components/Icon'
 import InstallBanner from './components/InstallBanner'
@@ -51,7 +54,6 @@ const Expenses = lazy(() => import('./screens/Expenses'))
 const Goals = lazy(() => import('./screens/Goals'))
 import Home from './screens/Home'
 import { resolveScope } from './lib/scope'
-import { readSharedNotice } from './lib/bankNotice'
 import type { Scope } from './lib/scope'
 const Money = lazy(() => import('./screens/Money'))
 const Register = lazy(() => import('./screens/Register'))
@@ -82,19 +84,12 @@ function warmScreens() {
 
 export default function Shell({ hh, reload }: { hh: Household; reload: () => Promise<void> }) {
   // Los accesos directos de la app instalada abren con ?tab=add, ?tab=expenses, etc.
-  // Aviso del banco con que otra app abrió Contigo (compartir en Android o una automatización)
-  const [notice, setNotice] = useState<string | null>(() => readSharedNotice(location.search, location.hash))
-  useEffect(() => {
-    // El texto no se queda en la dirección ni en el historial del navegador
-    if (notice) history.replaceState(null, '', '/?tab=add')
-  }, [notice])
   // Un enlace con ?tab= que no existe (viejo o mal escrito) muestra «No encontramos esa página»
   const [notFound, setNotFound] = useState(() => {
     const t = new URLSearchParams(location.search).get('tab')
     return t !== null && !TABS.some((x) => x.key === t)
   })
   const [tab, setTab] = useState<Tab>(() => {
-    if (readSharedNotice(location.search, location.hash)) return 'add'
     const t = new URLSearchParams(location.search).get('tab')
     return TABS.some((x) => x.key === t) ? (t as Tab) : 'home'
   })
@@ -144,7 +139,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
     const t = window.setTimeout(() => setAskBanks(true), 7000)
     return () => window.clearTimeout(t)
   }, [])
-  useAutoSync({ userId: hh.me.user_id, householdId: hh.household.id, shared: capture.shared, categories: data.categories, history: detected.ctx.history, ready: data.ready })
+  useAutoSync({ userId: hh.me.user_id, householdId: hh.household.id, shared: capture.autoShared, categories: data.categories, history: detected.ctx.history, ready: data.ready })
   const [reviewId, setReviewId] = useState<string | null>(null)
   const [linkCandidate, setLinkCandidate] = useState<ParsedCandidate | null>(null)
   useDeepLink((url) => {
@@ -157,11 +152,11 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
     if (isNativeApp()) void refreshPushToken().catch((e: unknown) => logPushError(e, 'Shell'))
   }, [hh.me.user_id])
   const draftOpts = useMemo(() => ({ paidBy: hh.me.user_id, shared: capture.shared, categories: data.categories, history: detected.ctx.history }), [hh.me.user_id, capture.shared, data.categories, detected.ctx.history])
-  const reviewDraft = detected.drafts?.find((d) => d.kind === 'EXPENSE' && d.id === (reviewId ?? detected.openId))
+  const reviewDraft = detected.drafts?.find((d) => d.kind === 'EXPENSE' && d.installmentRole !== 'PRIOR_CHARGE' && d.id === (reviewId ?? detected.openId))
   const review = useMemo(() => {
     if (!data.ready) return null
-    if (reviewDraft) return { key: reviewDraft.id, nativeId: reviewDraft.id, expense: candidateToDraft(reviewDraft, draftOpts) }
-    if (linkCandidate) return { key: 'link', nativeId: undefined, expense: candidateToDraft(linkCandidate, draftOpts) }
+    if (reviewDraft) return { key: reviewDraft.id, nativeId: reviewDraft.id, expense: candidateToDraft(reviewDraft, draftOpts), installment: installmentInfo(reviewDraft) }
+    if (linkCandidate) return { key: 'link', nativeId: undefined, expense: candidateToDraft(linkCandidate, draftOpts), installment: null }
     return null
   }, [data.ready, reviewDraft, linkCandidate, draftOpts])
   const { clearOpen } = detected
@@ -237,12 +232,12 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
 
   function backToNow(message?: string) {
     if (message) setToast(message)
-    setNotice(null)
     const n = new Date()
     setYm({ y: n.getFullYear(), m: n.getMonth() })
     setTab('home')
   }
 
+  const gate = bodyGate(tab, data.error !== null, data.ready)
   let body
   if (notFound) {
     body = (
@@ -256,18 +251,19 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
         />
       </main>
     )
-  } else if (data.error) {
+  } else if (gate === 'error') {
     body = (
       <main className="screen center-y">
         <ErrorPage
           status={data.errorStatus}
           onRetry={() => void data.refresh()}
+          // Solo con 401/403 (sesión ya inválida): el servidor no dejaría borrar el aviso, así que se cierra directo
           onExit={data.errorStatus === 401 || data.errorStatus === 403 ? () => void supabase.auth.signOut() : undefined}
           exitLabel="Cerrar sesión"
         />
       </main>
     )
-  } else if (!data.ready) {
+  } else if (gate === 'loading') {
     body = (
       <SkeletonScreen />
     )
@@ -276,6 +272,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
       <ConfirmExpense
         key={review.key}
         draft={review.expense}
+        installment={review.installment}
         categories={data.categories}
         members={hh.members}
         onConfirm={async (f) => {
@@ -297,6 +294,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
           detected.save(d.kind === 'DEBT_PAYMENT' || d.kind === 'TRANSFER_OUT' ? movementExpenseDraft(d, draftOpts, categoryId) : { ...candidateToDraft(d, draftOpts), category_id: categoryId }, d.id)
         }
         onIgnore={(d) => void detected.ignore(d)}
+        onPriorCharge={(d) => void detected.discardPriorCharge(d)}
         onRetry={() => void detected.reload()}
         onSettings={() => setTab('security')}
         kept={detected.kept}
@@ -317,7 +315,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
         monthLeft={(d, effect: MonthEffect, debtId?: string) => {
           const split = splitOf(hh.members)
           const free = isCurrent ? monthFreeNow(data, hh.me.user_id, split, now) : null
-          const impact = effect === 'debt' && debtId ? debtPayImpact(data.debts, data.debtPayments, debtId, d.amountClp, hh.me.user_id, split, now) : 0
+          const impact = effect === 'debt' && debtId ? debtPayImpact(data.debts, data.debtPayments, debtId, d.amountClp, hh.me.user_id, split, data.cardExpenses, now) : 0
           return monthLeftAfter(free, effect, d.amountClp, impact)
         }}
       />
@@ -344,7 +342,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
   } else if (tab === 'expenses') {
     body = <Expenses hh={hh} data={data} month={month} onToast={setToast} scope={scope} onScope={setScope} onRegister={() => setTab('add')} initialCategory={expCat} />
   } else if (tab === 'add') {
-    body = <Register hh={hh} data={data} onSaved={backToNow} onToast={setToast} notice={notice} queue={queue} />
+    body = <Register hh={hh} data={data} onSaved={backToNow} onToast={setToast} queue={queue} scope={scope} />
   } else if (tab === 'money') {
     body = <Money key={moneyNav.n} hh={hh} data={data} month={month} onToast={setToast} section={moneyNav.section} scope={scope} onScope={setScope} />
   } else if (tab === 'goals') {
@@ -393,8 +391,7 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
             aria-current={tab === t.key ? 'page' : undefined}
             onClick={() => {
               setExpCat(undefined)
-              setNotice(null)
-              setTab(t.key)
+                        setTab(t.key)
             }}
           >
             {t.key === 'add' ? (
@@ -407,8 +404,8 @@ export default function Shell({ hh, reload }: { hh: Household; reload: () => Pro
             <span>{t.label}</span>
             {t.key === 'home' && (detected.drafts?.length ?? 0) > 0 && (
               <span className="badge">
-                {detected.drafts?.length}
-                <span className="sr-only"> movimientos detectados</span>
+                <span aria-hidden="true">{detected.drafts?.length}</span>
+                <span className="sr-only">{detectedLabel(detected.drafts?.length ?? 0)}</span>
               </span>
             )}
           </button>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toAppError, type AppErrorKind } from './appError'
+import { toAppError, userMessage, UserError, type AppErrorKind } from './appError'
 
 // Estándares, Backend: taxonomía tipada, mapeo HTTP/Supabase/Postgres → mensaje en español + acción, sin tragar excepciones.
 const pg = (code: string, message: string, status: number) => ({ status, error: { code, message } })
@@ -83,5 +83,19 @@ describe('toAppError: no traga excepciones ni filtra detalles', () => {
   it('un 5xx cuyo cuerpo trae un token no lo copia al mensaje', () => {
     const e = toAppError({ status: 500, error: { message: 'apikey=sb_publishable_demo Authorization: Bearer abc.def.ghi' } })
     expect(e.message).not.toMatch(/sb_publishable|Bearer|abc\.def/)
+  })
+})
+
+describe('M3 userMessage: nunca texto crudo del servidor', () => {
+  it('un mensaje técnico de la base no se muestra', () => {
+    const m = userMessage({ message: 'duplicate key value violates unique constraint "x" (monto 12990)', code: '23505' })
+    expect(m).toBe(toAppError({ code: '23505' }).message)
+    expect(m).not.toMatch(/duplicate|12990/)
+  })
+  it('un Error común tampoco se copia', () => {
+    expect(userMessage(new Error('select * from secret'))).not.toMatch(/select/)
+  })
+  it('un mensaje escrito por nosotros (UserError) sí se muestra', () => {
+    expect(userMessage(new UserError('Contraseña incorrecta'))).toBe('Contraseña incorrecta')
   })
 })

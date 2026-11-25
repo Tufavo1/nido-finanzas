@@ -1,3 +1,4 @@
+import { plural } from './plural'
 import type { Household } from '../App'
 import type { HouseholdData } from './data'
 import { analyzeSalary, monthIncome, salaryFlows, summarizeDebts } from './finance'
@@ -9,7 +10,7 @@ import { smartAlerts } from './smartAlerts'
 import type { ExpRow } from './expenseAnalysis'
 import { adviceFor } from './profile'
 import { pendingFixedThisMonth } from './upcoming'
-import { isEmergencyGoal, savedInMonth } from './goals'
+import { goalSaved, isEmergencyGoal, savedInMonth } from './goals'
 import { monthKey, myShare } from './analysis'
 import { splitOf } from './split'
 
@@ -86,7 +87,7 @@ export function salaryAnalysisFor(hh: Household, data: HouseholdData, month: Dat
   const meId = hh.me.user_id
   const split = splitOf(hh.members)
   const me = m.people.find((p) => p.userId === meId)
-  const flows = salaryFlows({ expenses: data.expenses, debts: data.debts, debtPayments: data.debtPayments, meId, split, month, now, trueCost: me?.trueCost ?? 0 })
+  const flows = salaryFlows({ expenses: data.expenses, cardExpenses: data.cardExpenses, debts: data.debts, debtPayments: data.debtPayments, meId, split, month, now, trueCost: me?.trueCost ?? 0 })
   return analyzeSalary({
     income: monthIncome(data.salary, data.incomes),
     spent: flows.spent,
@@ -128,7 +129,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
         level: 'warn',
         area: 'gastos',
         title: `**${c.name}** va en ${Math.round(ratio * 100)} % del presupuesto`,
-        detail: `Quedan ${money(c.budget - c.spent)}${isCurrent ? ` para ${daysInMonth - today} días` : ''}.`,
+        detail: `Quedan ${money(c.budget - c.spent)}${isCurrent ? ` para ${plural(daysInMonth - today, 'día', 'días')}` : ''}.`,
         tab: 'expenses',
       })
     } else if (isCurrent && today >= 7 && c.spent > 0) {
@@ -242,7 +243,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
         id: `idle:${mk}:${Math.floor(gap / 4)}`,
         level: 'info',
         area: 'gastos',
-        title: `Hace ${gap} días que no registran gastos`,
+        title: `Hace ${plural(gap, 'día', 'días')} que no registran gastos`,
         detail: 'Si gastaron algo, anótenlo ahora mientras se acuerdan.',
         tab: 'home',
       })
@@ -262,7 +263,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
   }
 
   /* ---------- Deudas ---------- */
-  const debts = summarizeDebts(data.debts, data.debtPayments, now, data.expenses, data.debts)
+  const debts = summarizeDebts(data.debts, data.debtPayments, now, data.cardExpenses, data.debts)
   if (isCurrent) {
     for (const f of debts.findings) {
       if (f.level === 'ok') continue
@@ -320,7 +321,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
   /* ---------- Metas ---------- */
   for (const g of data.goals) {
     const mine = data.contributions.filter((c) => c.goal_id === g.id)
-    const saved = mine.reduce((s, c) => s + c.amount, 0)
+    const saved = goalSaved(mine)
     const remaining = g.target_amount - saved
     if (remaining <= 0) {
       add({
@@ -334,7 +335,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
       continue
     }
     const monthAgo = toISO(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30))
-    const recent = mine.filter((c) => c.contributed_on >= monthAgo).reduce((s, c) => s + c.amount, 0)
+    const recent = goalSaved(mine.filter((c) => c.contributed_on >= monthAgo))
     if (g.target_date) {
       const msLeft = Date.parse(g.target_date) - now.getTime()
       const monthsLeft = Math.max(1, Math.ceil(msLeft / (30 * 86400000)))
@@ -401,8 +402,7 @@ export function buildAlerts(hh: Household, data: HouseholdData, month: Date, now
           tab: 'goals',
         })
       } else {
-        const ids = new Set(fundGoals.map((g) => g.id))
-        const saved = data.contributions.filter((c) => ids.has(c.goal_id)).reduce((s, c) => s + c.amount, 0)
+        const saved = fundGoals.reduce((s, g) => s + goalSaved(data.contributions, g.id), 0)
         if (saved < target * 0.5) {
           add({
             id: `fund-low:${Math.floor((saved * 4) / target)}`,

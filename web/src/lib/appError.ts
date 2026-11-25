@@ -117,3 +117,16 @@ export function toAppError(err: unknown): AppError {
   const kind = shape ? kindOf(shape) : 'UNKNOWN'
   return { kind, ...INFO[kind], cause: err }
 }
+
+/** Error con un mensaje que escribimos nosotros, ya en español simple: se puede mostrar tal cual. */
+export class UserError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'UserError'
+  }
+}
+
+/** Texto seguro para mostrar: el nuestro si es UserError; de lo contrario el mensaje fijo del tipo de error (nunca texto del servidor). */
+export function userMessage(err: unknown): string {
+  return err instanceof UserError ? err.message : toAppError(err).message
+}

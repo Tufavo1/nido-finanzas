@@ -1,12 +1,11 @@
 // Copyright (c) 2026 Dinovance
 // «Cuánto te queda del mes» después de guardar un movimiento detectado. Lógica pura.
-import { monthKey, myShare } from './analysis'
-import type { HistExpense } from './analysis'
 import type { Debt, DebtPayment, HouseholdData } from './data'
-import { analyzeSalary, monthIncome, myDebtDue, myDebtPaidThisMonth, salaryFlows } from './finance'
+import { monthIncome, myDebtDue, myDebtPaidThisMonth } from './finance'
+import type { PaidExpense } from './finance'
 import { savedInMonth } from './goals'
+import { monthKey, myMonthCost, salaryLeft, salaryPicture } from './monthFigures'
 import type { Split } from './split'
-import { pendingFixedThisMonth } from './upcoming'
 
 export type MonthEffect = 'income' | 'expense' | 'debt' | 'newdebt'
 
@@ -24,32 +23,36 @@ export function monthLeftAfter(free: number | null, effect: MonthEffect, amount:
 /**
  * Cuánto baja lo que te queda al registrar este pago: lo pagado sube y la cuota por pagar baja, así que
  * un pago que cabe en la cuota del mes (ya reservada como por pagar) no cambia nada; lo que pasa de la cuota sí.
+ * `expenses`: compras con tarjeta desde el saldo informado (de ahí sale el saldo de las tarjetas).
  */
-export function debtPayImpact(debts: Debt[], payments: DebtPayment[], debtId: string, amount: number, meId: string, split: Split, now: Date = new Date()): number {
+export function debtPayImpact(debts: Debt[], payments: DebtPayment[], debtId: string, amount: number, meId: string, split: Split, expenses: PaidExpense[], now: Date = new Date()): number {
   const debt = debts.find((d) => d.id === debtId)
   if (!debt) return 0
   const fake = { id: '__nuevo__', household_id: debt.household_id, debt_id: debtId, amount, paid_by: meId, paid_on: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`, created_at: now.toISOString() } as DebtPayment
-  const load = (ps: DebtPayment[]) => myDebtPaidThisMonth(debts, ps, meId, split, now) + myDebtDue(debts, ps, meId, split, now)
+  const load = (ps: DebtPayment[]) => myDebtPaidThisMonth(debts, ps, meId, split, now) + myDebtDue(debts, ps, meId, split, now, expenses)
   return load([...payments, fake]) - load(payments)
 }
 
 /**
- * Lo que te queda hoy del mes, igual que en Inicio (sueldo + ingresos extra - gastos - cuotas y pagos - ahorro - fijos que vienen).
+ * Lo que te queda hoy del mes: la MISMA cifra de Inicio (`salaryPicture` + `salaryLeft`, de monthFigures).
  * null si no hay sueldo o los datos del mes aún no cargan: entonces no se muestra nada.
  */
-export function monthFreeNow(data: Pick<HouseholdData, 'salary' | 'incomes' | 'expenses' | 'debts' | 'debtPayments' | 'contributions' | 'recurring' | 'ready' | 'financeReady'>, meId: string, split: Split, now: Date = new Date()): number | null {
+export function monthFreeNow(data: Pick<HouseholdData, 'salary' | 'incomes' | 'expenses' | 'cardExpenses' | 'debts' | 'debtPayments' | 'contributions' | 'recurring' | 'ready' | 'financeReady'>, meId: string, split: Split, now: Date = new Date()): number | null {
   if (!data.ready || !data.financeReady || !data.salary) return null
   const month = new Date(now.getFullYear(), now.getMonth(), 1)
-  const trueCost = data.expenses.reduce((s, e) => s + myShare(e as HistExpense, meId, split), 0)
-  const flows = salaryFlows({ expenses: data.expenses, debts: data.debts, debtPayments: data.debtPayments, meId, split, month, now, trueCost })
-  return analyzeSalary({
-    income: monthIncome(data.salary, data.incomes),
-    spent: flows.spent,
-    commitments: flows.commitments,
+  const { sal } = salaryPicture({
+    expenses: data.expenses,
+    cardExpenses: data.cardExpenses,
+    debts: data.debts,
+    debtPayments: data.debtPayments,
+    recurring: data.recurring,
+    meId,
+    split,
     month,
     now,
-    pendingFixed: pendingFixedThisMonth(data.recurring, meId, split, now) + flows.pendingDebt,
-    fixedBooked: data.expenses.reduce((s, e) => (e.recurring_id ? s + myShare(e, meId, split) : s), 0),
+    income: monthIncome(data.salary, data.incomes),
+    cost: myMonthCost(data.expenses, meId, split),
     saved: savedInMonth(data.contributions, meId, monthKey(month)),
-  }).realFree
+  })
+  return salaryLeft(sal).amount
 }

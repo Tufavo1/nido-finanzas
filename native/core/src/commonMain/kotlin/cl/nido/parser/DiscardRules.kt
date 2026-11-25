@@ -28,8 +28,19 @@ internal object DiscardRules {
 
     private val CLOSING_PHRASE = Regex("\\bingresa a (?:la|tu) app(?:licacion)?\\b")
 
+    // «9,99 dólares», «10 dolares»: la palabra pegada a un numero (no basta «dólar» suelto en el nombre de un comercio).
+    private val DOLLAR_WORD = Regex("\\d[\\d.,]*[\\s\u00a0]*d[oó]lar(?:es)?\\b", RegexOption.IGNORE_CASE)
+
+    /**
+     * Compra en otra moneda (USD, US$, EUR, UF, «dólares», COP...). Nunca se convierte ni se guarda como pesos: el parser responde
+     * [ParseRejection.FOREIGN_CURRENCY] para que el diagnostico diga «compra en moneda extranjera, anotala a mano». Es amplio a
+     * proposito («Compra en USD por $10» no puede quedar como $10 pesos); el costo es perder un comercio llamado «Usd Store».
+     */
+    fun isForeignCurrency(rawText: String): Boolean =
+        FOREIGN_CURRENCY.containsMatchIn(rawText) || OTHER_CURRENCY.containsMatchIn(rawText) || DOLLAR_WORD.containsMatchIn(rawText)
+
+    /** Claves, promociones, saldo, rechazos, estado de cuenta... La moneda extranjera va aparte ([isForeignCurrency]). */
     fun shouldDiscard(rawText: String, rawTitle: String?): Boolean {
-        if (FOREIGN_CURRENCY.containsMatchIn(rawText) || OTHER_CURRENCY.containsMatchIn(rawText)) return true
         // «!Ingresa a la App y revisa tus movimientos!» es un cierre habitual de los avisos de movimiento, no una instruccion.
         val haystack = CLOSING_PHRASE.replace(TextNormalizer.forKeywords(listOfNotNull(rawTitle, rawText).joinToString(" ")), " ")
         return DISCARD_WORDS.containsMatchIn(haystack)

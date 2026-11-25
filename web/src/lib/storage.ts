@@ -1,3 +1,4 @@
+import { plural } from './plural'
 /** Cuánto tardaría en llenarse la base a este ritmo, dicho en palabras */
 export function fillForecast(dbBytes: number, limitBytes: number, bytesPerDay: number): { days: number | null; text: string } {
   const free = Math.max(0, limitBytes - dbBytes)
@@ -10,7 +11,7 @@ export function fillForecast(dbBytes: number, limitBytes: number, bytesPerDay: n
     return { days, text: `A este ritmo el espacio alcanza por unos ${String(years).replace('.', ',')} años.` }
   }
   if (days >= 60) return { days, text: `A este ritmo el espacio alcanza por unos ${Math.round(days / 30)} meses.` }
-  return { days, text: `Ojo: a este ritmo el espacio se acaba en unos ${days} días.` }
+  return { days, text: `Ojo: a este ritmo el espacio se acaba en unos ${plural(days, 'día', 'días')}.` }
 }
 
 /** Nombres de tablas en lenguaje de persona, para el panel */

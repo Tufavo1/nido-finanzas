@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Dinovance
+import { PushNotifications } from '@capacitor/push-notifications'
 import { toAppError } from './appError'
 import { ContigoNative, isNativeApp } from './nativeBridge'
 import { emitNow, invalidateOwner } from './nativeSerial'
@@ -15,7 +16,7 @@ function wipeLocal(): void {
     const drop: string[] = []
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i)
-      if (k && ((k.startsWith('contigo-') && !KEEP.has(k) && k !== 'contigo-auth') || k.startsWith('nido:'))) drop.push(k)
+      if (k && ((k.startsWith('contigo-') && !KEEP.has(k) && k !== 'contigo-auth') || k.startsWith('nido:') || k.startsWith('contigo.push.token.'))) drop.push(k)
     }
     drop.forEach((k) => localStorage.removeItem(k))
     sessionStorage.clear()
@@ -35,6 +36,7 @@ export function wipeSessionData(): void {
   wipeLocal()
   if (!isNativeApp()) return
   invalidateOwner()
+  void PushNotifications.unregister().catch(logWipeFailure)
   void emitNow(ContigoNative.wipe()).catch(logWipeFailure)
 }
 
@@ -50,6 +52,7 @@ export function wipeForAccountSwitch(): void {
   wipeLocal()
   if (!isNativeApp()) return
   invalidateOwner()
+  void PushNotifications.unregister().catch(logWipeFailure)
   void emitNow(ContigoNative.wipeForAccountSwitch({ ownerKey: null })).catch(logWipeFailure)
   void emitNow(ContigoNative.secureRemove({ key: CAPTURE_CONFIG_KEY })).catch(logWipeFailure)
 }

@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { santiagoDay } from './format'
 import { APP_NAME, VERSION } from './about'
 
 /** Tablas del hogar que entran en el respaldo. La base ya entrega solo lo que esta persona puede ver. */
@@ -115,4 +116,4 @@ export function download(filename: string, content: string, type: string): void 
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
-export const stamp = (d: Date = new Date()): string => d.toISOString().slice(0, 10)
+export const stamp = (d: Date = new Date()): string => santiagoDay(d)

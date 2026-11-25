@@ -5,7 +5,7 @@ import cl.dinovance.contigo.security.BlobCipher
 import cl.dinovance.contigo.security.BlobStorage
 import org.json.JSONArray
 import org.json.JSONException
-import java.security.GeneralSecurityException
+import cl.dinovance.contigo.security.UnreadableData
 
 interface DraftRepository {
     fun list(): List<Draft>
@@ -33,16 +33,26 @@ interface DraftRepository {
 class EncryptedDraftRepository(
     private val storage: BlobStorage,
     private val cipher: BlobCipher,
+    /** Salud del servicio: recibe SOLO el nombre de la clase del fallo al leer la cola (jamas datos). */
+    private val onFailure: (String) -> Unit = {},
     private val clock: () -> Long,
 ) : DraftRepository {
     // Todas las operaciones son leer-modificar-escribir sobre el mismo archivo: el servicio y el hilo del plugin
     // compiten, así que van serializadas (H-07). La instancia es única (CaptureGraph).
+    // Un fallo TRANSITORIO al leer (Keystore ocupado) deja la lista vacia sin tocar el archivo; las operaciones que escriben
+    // lanzan en vez de reescribir la cola a partir de esa lista vacia (A1).
     @Synchronized
-    override fun list(): List<Draft> = load().filter { it.status == DraftStatus.CONFIRMED || clock() - it.createdAtMillis < MAX_AGE_MILLIS }
+    override fun list(): List<Draft> = try {
+        current()
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    private fun current(): List<Draft> = load().filter { it.status == DraftStatus.CONFIRMED || clock() - it.createdAtMillis < MAX_AGE_MILLIS }
 
     @Synchronized
     override fun add(draft: Draft): Boolean {
-        val current = list()
+        val current = current()
         if (current.size >= MAX_DRAFTS) return false
         save(current + draft)
         return true
@@ -53,18 +63,18 @@ class EncryptedDraftRepository(
 
     @Synchronized
     override fun update(id: String, change: (Draft) -> Draft): Boolean {
-        val current = list()
+        val current = current()
         if (current.none { it.id == id }) return false
         save(current.map { if (it.id == id) change(it) else it })
         return true
     }
 
     @Synchronized
-    override fun remove(id: String) = save(list().filterNot { it.id == id })
+    override fun remove(id: String) = save(current().filterNot { it.id == id })
 
     @Synchronized
     override fun purge(predicate: (Draft) -> Boolean): Int {
-        val current = list()
+        val current = current()
         val kept = current.filterNot(predicate)
         if (kept.size != current.size) save(kept)
         return current.size - kept.size
@@ -79,20 +89,14 @@ class EncryptedDraftRepository(
             val array = JSONArray(String(cipher.decrypt(bytes), Charsets.UTF_8))
             // Un borrador ilegible (p. ej. un tipo que esta version no conoce) se salta sin perder los demas
             (0 until array.length()).mapNotNull { i -> try { Draft.fromJson(array.getJSONObject(i)) } catch (e: JSONException) { null } catch (e: IllegalArgumentException) { null } }
-        } catch (e: GeneralSecurityException) {
-            discardUnreadable()
-        } catch (e: JSONException) {
-            discardUnreadable()
-        } catch (e: RuntimeException) {
-            // ProviderException del Keystore u otro fallo al descifrar: como una clave perdida, no debe tumbar la captura
-            discardUnreadable()
+        } catch (e: Exception) {
+            onFailure(e.javaClass.simpleName)
+            // Clave perdida o archivo dañado: no se puede leer nunca mas. Se aparta (cuarentena .bad) en vez de borrarlo y se
+            // sigue con la cola vacia. Cualquier otro fallo es pasajero: se propaga y el archivo queda intacto (A1).
+            if (!UnreadableData.isPermanent(e)) throw e
+            storage.quarantine()
+            emptyList()
         }
-    }
-
-    // Clave perdida o archivo dañado: no hay forma de recuperarlo, así que se vacía en vez de fallar siempre.
-    private fun discardUnreadable(): List<Draft> {
-        storage.delete()
-        return emptyList()
     }
 
     private fun save(drafts: List<Draft>) {

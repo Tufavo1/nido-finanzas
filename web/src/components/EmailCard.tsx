@@ -2,6 +2,7 @@ import { useToastError } from '../lib/useToastError'
 import type { Notify } from './Toast'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { userMessage } from '../lib/appError'
 import { friendlyError } from '../lib/security'
 import { confirmPassword } from '../lib/reauth'
 import { supabase } from '../lib/supabase'
@@ -34,13 +35,13 @@ export default function EmailCard({ onToast }: { onToast: Notify }) {
       await confirmPassword(password)
     } catch (err) {
       setBusy(false)
-      setError(err instanceof Error ? err.message : 'Contraseña incorrecta')
+      setError(userMessage(err))
       return
     }
     const { error: err } = await supabase.auth.updateUser({ email: next })
     setBusy(false)
     if (err) {
-      setError(friendlyError(err.message))
+      setError(friendlyError(err))
       return
     }
     setEditing(false)

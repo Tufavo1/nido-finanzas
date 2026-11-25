@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { suggestCategory, suggestShared } from './categorize'
-import { draftFromNotice } from './register'
 
 const cats = [
   { id: 'super', name: 'Supermercado' },
@@ -24,7 +23,7 @@ describe('suggestCategory: adivinar la categoría de un gasto', () => {
   })
 
   it('reconoce el mismo comercio aunque cambie la sucursal', () => {
-    expect(suggestCategory('Starbucks Costanera', cats, [past('Starbucks Providencia', 'otros')])).toBe('otros')
+    expect(suggestCategory('Starbucks Costanera', cats, [past('Starbucks Providencia', 'super')])).toBe('super')
   })
 
   it('sin historial usa comercios conocidos', () => {
@@ -50,32 +49,30 @@ describe('suggestCategory: adivinar la categoría de un gasto', () => {
   })
 })
 
-describe('draftFromNotice: del aviso del banco al gasto listo para guardar', () => {
-  const NOW = new Date(2026, 10, 11)
-
-  it('llena monto, nota, fecha y categoría', () => {
-    const d = draftFromNotice('Compra por $12.990 en LIDER EXPRESS el 10/11/2026', cats, [], NOW)
-    expect(d).toEqual({ ok: true, digits: '12990', note: 'Lider Express', date: '2026-11-10', catId: 'super' })
+describe('suggestCategory: comercio con prefijo y categoría general', () => {
+  it('reconoce la palabra clave dentro del nombre aunque tenga prefijo, guion o mayúsculas', () => {
+    expect(suggestCategory('PRUEBA-EMU FARMACIA', cats, [])).toBe('salud')
+    expect(suggestCategory('Prueba-Emu Farmacia', cats, [])).toBe('salud')
+    expect(suggestCategory('Farmacias Ahumada', cats, [])).toBe('salud')
+    expect(suggestCategory('Cruz Verde', cats, [])).toBe('salud')
+    expect(suggestCategory('Unimarc', cats, [])).toBe('super')
+    expect(suggestCategory('JUMBO', cats, [])).toBe('super')
+    expect(suggestCategory('Comercio Desconocido', cats, [])).toBeNull()
   })
-
-  it('sin categoría reconocida deja que la persona la elija', () => {
-    const d = draftFromNotice('Transferencia realizada a Juan Pérez por $20.000', cats, [], NOW)
-    expect(d).toEqual({ ok: true, digits: '20000', note: 'Juan Pérez', date: '', catId: null })
+  it('un gasto que quedó en la general («Otros») no tapa la palabra clave', () => {
+    const h = [past('PRUEBA-EMU FARMACIA', 'otros')]
+    expect(suggestCategory('PRUEBA-EMU FARMACIA', cats, h)).toBe('salud')
+    expect(suggestCategory('Prueba-Emu Farmacia', cats, h)).toBe('salud')
   })
-
-  it('explica cuando el aviso es de plata que entró', () => {
-    expect(draftFromNotice('Recibiste una transferencia de María por $50.000', cats, [], NOW)).toEqual({
-      ok: false,
-      error: 'Ese aviso es de plata que entró, no de un gasto.',
-    })
+  it('si no hay palabra clave, lo aprendido en la general se respeta', () => {
+    expect(suggestCategory('Juan Pérez', cats, [past('Juan Pérez', 'otros')])).toBe('otros')
   })
-
-  it('explica cuando no encuentra un monto', () => {
-    expect(draftFromNotice('Hola', cats, [], NOW)).toEqual({ ok: false, error: 'No encontramos un monto en pesos en ese aviso. Anótalo a mano.' })
+  it('una categoría elegida a mano que no es la general sigue ganando', () => {
+    expect(suggestCategory('Prueba-Emu Farmacia', cats, [past('Prueba-Emu Farmacia', 'super')])).toBe('super')
   })
-
-  it('un monto más grande de lo que acepta la app se rechaza', () => {
-    expect(draftFromNotice('Compra por $9.999.999.999 en X', cats, [], NOW).ok).toBe(false)
+  it('busca la categoría por su nombre real, no por un id fijo', () => {
+    const mine = [{ id: 'k9', name: 'Salud y bienestar' }, { id: 'zz', name: 'Varios' }]
+    expect(suggestCategory('Prueba-Emu Farmacia', mine, [past('Prueba-Emu Farmacia', 'zz')])).toBe('k9')
   })
 })
 

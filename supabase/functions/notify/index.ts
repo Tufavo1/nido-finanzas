@@ -96,7 +96,8 @@ async function deliver(admin: ReturnType<typeof createClient>, recipients: strin
       } catch (err) {
         const status = (err as { statusCode?: number }).statusCode
         if (status === 404 || status === 410) dead.push(s.id)
-        else console.error('push error', status, String(err))
+        // Solo estado y nombre del error: String(err) puede incluir el endpoint de la suscripción
+        else console.error('push error', status ?? 'sin estado', (err as Error)?.name ?? 'Error')
       }
     }),
   )
@@ -237,7 +238,8 @@ Deno.serve(async (req) => {
     for (const g of groups) sent += await deliver(admin, g.ids, g.title, g.body)
     return reply(200, { sent })
   } catch (e) {
-    console.error(e)
+    // Nunca el objeto completo (puede traer datos de la petición o de la suscripción): solo el nombre del error
+    console.error('notify error', (e as Error)?.name ?? 'Error')
     return reply(500, { error: 'internal' })
   }
 })

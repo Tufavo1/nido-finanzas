@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Dinovance
 import { describe, expect, it } from 'vitest'
-import { consentNext, diagnosticText, foundLine, parseDetectedBanks, parseDiagnostics, shouldAskConsent, activatedMessage, summarizeCapture } from './bankConsent'
+import { consentNext, DIAGNOSTIC_REASONS, diagnosticText, foundLine, parseDetectedBanks, parseDiagnostics, shouldAskConsent, activatedMessage, summarizeCapture } from './bankConsent'
 
 describe('flujo del consentimiento (máquina de estados)', () => {
   it('Aceptar sin permiso va al permiso; con permiso va directo a detectar', () => {
@@ -39,10 +39,14 @@ describe('shouldAskConsent: solo la primera vez y sin insistir', () => {
 })
 
 describe('bancos detectados', () => {
-  it('solo bancos conocidos con paquete válido, sin repetir', () => {
-    const r = parseDetectedBanks({ banks: [{ id: 'santander', packageName: 'cl.santander.app' }, { id: 'santander', packageName: 'cl.santander.app' }, { id: 'raro', packageName: 'x.y' }, { id: 'banco-chile', packageName: 'no valido!' }, { id: 'banco-chile', packageName: 'cl.bancochile.mobile' }] })
-    expect(r.map((b) => b.id)).toEqual(['santander', 'banco-chile'])
-    expect(r[0]).toEqual({ id: 'santander', name: 'Santander', packageName: 'cl.santander.app' })
+  it('solo fuentes disponibles con paquete válido, sin repetir', () => {
+    const r = parseDetectedBanks({ banks: [{ id: 'banco-falabella', packageName: 'cl.bf.app' }, { id: 'banco-falabella', packageName: 'cl.bf.app' }, { id: 'raro', packageName: 'x.y' }, { id: 'billetera-google', packageName: 'no valido!' }, { id: 'billetera-google', packageName: 'com.google.android.apps.walletnfcrel' }] })
+    expect(r.map((b) => b.id)).toEqual(['banco-falabella', 'billetera-google'])
+    expect(r[0]).toEqual({ id: 'banco-falabella', name: 'Banco Falabella', packageName: 'cl.bf.app' })
+  })
+  it('un banco detectado pero oculto no se ofrece', () => {
+    const r = parseDetectedBanks({ banks: [{ id: 'santander', packageName: 'cl.santander.app' }, { id: 'banco-estado', packageName: 'cl.be.app' }, { id: 'banco-chile', packageName: 'cl.bancochile.mobile' }] })
+    expect(r).toEqual([])
   })
   it('basura da lista vacía', () => {
     expect(parseDetectedBanks(null)).toEqual([])
@@ -84,5 +88,14 @@ describe('diagnóstico: motivo → texto simple', () => {
   it('sin texto enmascarado no hay nada que copiar', () => {
     expect(parseDiagnostics({ items: [{ reason: 'INCOME', at: 5 }] })[0]?.masked).toBeNull()
     expect(parseDiagnostics(undefined)).toEqual([])
+  })
+})
+
+describe('motivos de cuotas', () => {
+  it('tienen título y explicación propios', () => {
+    expect(DIAGNOSTIC_REASONS['INSTALLMENT_PURCHASE']).toEqual({ title: 'Compra en cuotas', detail: 'La anoté por el total. Confírmala.' })
+    expect(DIAGNOSTIC_REASONS['INSTALLMENT_TOTAL_UNKNOWN']).toEqual({ title: 'Falta el total', detail: 'El aviso solo trae el valor de la cuota. Pon el total de la compra.' })
+    expect(DIAGNOSTIC_REASONS['SOURCE_UNAVAILABLE']).toEqual({ title: 'Banco no disponible por ahora', detail: 'Por ahora solo leemos avisos de Banco Falabella y Billetera de Google. Puedes apagar este banco en Gastos automáticos.' })
+    expect(DIAGNOSTIC_REASONS['INSTALLMENT_CHARGE']).toEqual({ title: 'Cuota de una compra anterior', detail: 'Es el cobro de una cuota de algo que ya anotaste, no un gasto nuevo.' })
   })
 })

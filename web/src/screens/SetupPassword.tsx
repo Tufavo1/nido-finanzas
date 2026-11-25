@@ -1,3 +1,4 @@
+import { signOutClean } from '../lib/signOut'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import Logo from '../components/Logo'
@@ -74,7 +75,7 @@ export default function SetupPassword({ name }: { name?: string }) {
             {busy ? <Spin label="Guardando…" /> : 'Continuar'}
           </button>
         </form>
-        <button className="link-btn" type="button" onClick={() => void supabase.auth.signOut()}>
+        <button className="link-btn" type="button" onClick={() => void signOutClean()}>
           Cerrar sesión
         </button>
       </main>

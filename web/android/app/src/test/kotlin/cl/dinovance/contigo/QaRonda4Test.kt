@@ -200,7 +200,11 @@ class QaRonda4Test {
     @Test
     fun `r4-5 Guardar desde la notificacion se ignora para ingresos y pagos`() {
         val r = File("src/main/kotlin/cl/dinovance/contigo/capture/DraftActionReceiver.kt").readText()
-        assertTrue(r.contains("Kind.EXPENSE) return"))
+        assertTrue(r.contains("?.savableFromNotification != true) return"))
+        for (k in listOf(Kind.INCOME, Kind.DEBT_PAYMENT, Kind.TRANSFER_OUT)) {
+            val c = cl.nido.parser.ParsedCandidate(10_000, null, k, cl.nido.parser.Confidence.HIGH, null, "f")
+            assertFalse(cl.dinovance.contigo.capture.Draft("x", c, now, now, DraftStatus.PENDING).savableFromNotification)
+        }
     }
 
     @Test
