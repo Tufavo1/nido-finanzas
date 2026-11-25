@@ -1,8 +1,9 @@
 import type { Debt, DebtPayment, Recurring } from './data'
-import { analyzeSalary, monthIncome, salaryFlows, summarizeDebts } from './finance'
-import type { Finding, Level } from './finance'
-import { money } from './format'
+import { monthIncome, summarizeDebts } from './finance'
+import type { Finding, Level, PaidExpense } from './finance'
+import { decimalEs, money } from './format'
 import { emergencySaved, isEmergencyGoal, savedInMonth } from './goals'
+import { categoryKey, monthKey, myShare, REMOVED_CATEGORY_ID, REMOVED_CATEGORY_NAME, salaryPicture } from './monthFigures'
 import { portion } from './split'
 import type { Split } from './split'
 import { monthName, monthShort } from './ui'
@@ -31,6 +32,8 @@ export interface AnalysisInput {
   now?: Date
   /** Gastos del hogar de los últimos meses, incluido el elegido */
   history: HistExpense[]
+  /** Compras con tarjeta desde el saldo informado de cada tarjeta (sin filtrar por mes): de ahí salen los saldos de las deudas */
+  cardExpenses: PaidExpense[]
   categories: { id: string; name: string; monthly_budget: number }[]
   salary: { amount: number } | null
   /** Ingresos extra del mes elegido */
@@ -119,13 +122,8 @@ const FIXED_SHARE_LIMIT = 50
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n))
 const sum = (xs: number[]) => xs.reduce((s, x) => s + x, 0)
 
-export const monthKey = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-
-/** Lo que de este gasto te toca a ti: lo personal tuyo completo y tu parte de lo compartido. */
-export function myShare(e: HistExpense, meId: string, memberCount: Split): number {
-  if (e.shared) return portion(e.amount, memberCount, meId)
-  return e.paid_by === meId ? e.amount : 0
-}
+// El costo y las categorías se calculan en monthFigures.ts (una sola fuente para Inicio, Gastos y Análisis)
+export { monthKey, myShare }
 
 const HOUSING = /hogar|arriendo|dividendo|cuenta/i
 const NEEDS =
@@ -170,9 +168,10 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
     const mine = myShare(e, meId, memberCount)
     if (mine <= 0) continue
     costByMonth.set(k, (costByMonth.get(k) ?? 0) + mine)
-    const perMonth = catByMonth.get(e.category_id) ?? new Map<string, number>()
+    const cat = categoryKey(e.category_id, catName)
+    const perMonth = catByMonth.get(cat) ?? new Map<string, number>()
     perMonth.set(k, (perMonth.get(k) ?? 0) + mine)
-    catByMonth.set(e.category_id, perMonth)
+    catByMonth.set(cat, perMonth)
     if (k === key && mine <= SMALL_EXPENSE) small.push(mine)
   }
 
@@ -197,7 +196,7 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
 
   // ---------- En qué se va ----------
   const cats = [...catByMonth.entries()]
-    .map(([id, per]) => ({ id, name: catName.get(id) ?? 'Otra categoría', amount: Math.round(per.get(key) ?? 0), per }))
+    .map(([id, per]) => ({ id, name: id === REMOVED_CATEGORY_ID ? REMOVED_CATEGORY_NAME : (catName.get(id) ?? REMOVED_CATEGORY_NAME), amount: Math.round(per.get(key) ?? 0), per }))
     .filter((c) => c.amount > 0)
     .sort((a, b) => b.amount - a.amount)
   const slices: CategorySlice[] = cats.slice(0, 5).map((c) => ({
@@ -212,10 +211,10 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
   // ---------- Ingresos, cuotas y ahorro ----------
   const income = monthIncome(input.salary, input.incomes)
   // Las compras con tarjeta no bajan el sueldo (sí cuentan en el gasto del mes); las cuotas son lo pagado y lo que falta va por pagar
-  const flows = salaryFlows({ expenses: history, debts: input.debts, debtPayments: input.debtPayments, meId, split: memberCount, month, now, trueCost: cost })
-  const commitments = flows.commitments
   const saved = Math.round(savedInMonth(input.contributions, meId, key))
-  const sal = income > 0 ? analyzeSalary({ income, spent: flows.spent, commitments, month, now, pendingFixed: pendingFixed + flows.pendingDebt, fixedBooked, saved }) : null
+  const pic = salaryPicture({ expenses: history, cardExpenses: input.cardExpenses, debts: input.debts, debtPayments: input.debtPayments, recurring: input.recurring, meId, split: memberCount, month, now, income, cost, saved })
+  const commitments = pic.flows.commitments
+  const sal = income > 0 ? pic.sal : null
   const outlookFree = sal ? (sal.projectedFree ?? sal.free) : null
   // Ahorro del mes: lo que apartaste más lo que sobraría
   const savingsPct = sal && outlookFree !== null ? Math.round(((outlookFree + saved) * 100) / income) : null
@@ -272,7 +271,7 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
         points: Math.round(clamp(monthsCovered / 6, 0, 1) * 20),
         level: monthsCovered >= 3 ? 'ok' : monthsCovered >= 1 ? 'warn' : 'bad',
         detail: hasFund
-          ? `Lo que llevas en tu ahorro para imprevistos cubre ${monthsCovered.toFixed(1).replace('.', ',')} meses de tus gastos. Lo ideal son 3 a 6.`
+          ? `Lo que llevas en tu ahorro para imprevistos cubre ${decimalEs(monthsCovered, 1, 1)} meses de tus gastos. Lo ideal son 3 a 6.`
           : 'Aún no tienes una meta de ahorro para imprevistos (ponle «Fondo de emergencia»). Lo ideal son 3 a 6 meses de gastos.',
       })
     }
@@ -365,7 +364,7 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
       const target = Math.round(baseCost * 3)
       insights.push({
         level: monthsCovered < 1 ? 'bad' : 'warn',
-        title: `Tu ahorro para imprevistos cubre ${monthsCovered.toFixed(1).replace('.', ',')} meses`,
+        title: `Tu ahorro para imprevistos cubre ${decimalEs(monthsCovered, 1, 1)} meses`,
         detail: `Primera meta: 3 meses de gastos (~${money(target)}). Aportando ~${money(Math.max(1000, Math.round((target - myContrib) / 12)))} al mes la alcanzas en un año.`,
       })
     } else if (monthsCovered >= 6) {
@@ -384,7 +383,7 @@ export function buildAnalysis(input: AnalysisInput): Analysis {
     insights.push({ level: 'ok', title: `Gastaste ${Math.round(100 - (cost * 100) / avgPrev)} % menos que tu promedio`, detail: `${money(cost)} frente a ${money(avgPrev)} de tus meses anteriores.` })
   }
 
-  for (const f of summarizeDebts(input.debts, input.debtPayments, now, input.history, input.debts).findings.filter((x) => x.level !== 'ok').slice(0, 2)) insights.push(f)
+  for (const f of summarizeDebts(input.debts, input.debtPayments, now, input.cardExpenses, input.debts).findings.filter((x) => x.level !== 'ok').slice(0, 2)) insights.push(f)
 
   insights.sort((a, b) => RANK[a.level] - RANK[b.level])
   if (insights.length === 0 && cost > 0) insights.push({ level: 'ok', title: 'Todo en orden', detail: 'No veo nada que corregir con los datos de este mes.' })

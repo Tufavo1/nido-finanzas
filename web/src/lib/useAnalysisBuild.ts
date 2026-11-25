@@ -45,6 +45,7 @@ export function useAnalysisBuild(hh: Household, data: HouseholdData, month: Date
       goals: data.goals,
       month,
       history: hist,
+      cardExpenses: data.cardExpenses,
       categories: data.categories,
       salary: data.salary,
       incomes: data.incomes,
@@ -66,6 +67,7 @@ export function useAnalysisBuild(hh: Household, data: HouseholdData, month: Date
           recurring: data.recurring,
           debts: data.debts,
           debtPayments: data.debtPayments,
+          expenses: data.cardExpenses,
           salary: data.salary,
           free: numbers.flow?.free ?? null,
           variableDaily: (numbers.fixedVar?.variable ?? analysis.cost) / Math.max(now.getDate(), 1),
@@ -79,14 +81,15 @@ export function useAnalysisBuild(hh: Household, data: HouseholdData, month: Date
             variableDaily: upcoming.variableDaily,
             income: analysis.income,
             cushion: numbers.cushion,
-            debtInsights: analyzeDebts(data.debts, data.debtPayments, now),
+            debtInsights: analyzeDebts(data.debts, data.debtPayments, now, data.cardExpenses),
             debts: data.debts,
             debtPayments: data.debtPayments,
+            expenses: data.cardExpenses,
             categories: analysis.slices.filter((x) => x.id !== 'otras').map((x) => ({ name: x.name, amount: x.amount })),
           })
         : null
     return { a: analysis, n: numbers, u: upcoming, plan }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hist, hh.me.user_id, split, monthId, data.goals, data.categories, data.salary, data.incomes, data.debts, data.debtPayments, data.contributions, data.recurring])
+  }, [hist, hh.me.user_id, split, monthId, data.goals, data.categories, data.salary, data.incomes, data.debts, data.debtPayments, data.contributions, data.recurring, data.cardExpenses])
   return { built, failed, retry: () => setAttempt((n) => n + 1) }
 }

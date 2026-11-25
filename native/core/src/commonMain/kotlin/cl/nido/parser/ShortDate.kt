@@ -2,7 +2,8 @@
 package cl.nido.parser
 
 /**
- * Fecha corta que algunos avisos traen en el texto («23 nov», «23 de nov.», «5 SEPT», «hoy», «ayer») y horas («14:35»).
+ * Fecha corta que algunos avisos traen en el texto («23 nov», «23 de nov.», «5 SEPT», «10/11/2026», «el 10/11», «hoy», «ayer») y
+ * horas («14:35»). Fechas numericas en orden chileno: dia/mes.
  * NO reemplaza la hora del aviso (Notification.postTime es la fuente confiable): sirve para quitarla del comercio y para notar un aviso
  * VIEJO reentregado (la fecha del texto cae a mas de [TOLERANCE_MILLIS] del dia de postTime). Se busca en texto plegado
  * ([TextNormalizer.fold], misma longitud que el original, asi las posiciones valen para el texto original).
@@ -15,6 +16,9 @@ internal object ShortDate {
     private const val MONTHS =
         "ene(?:ro)?|feb(?:rero)?|mar(?:zo)?|abr(?:il)?|may(?:o)?|jun(?:io)?|jul(?:io)?|ago(?:sto)?|sept?(?:iembre)?|set(?:iembre)?|oct(?:ubre)?|nov(?:iembre)?|dic(?:iembre)?"
     private val DAY_MONTH = Regex("\\b(\\d{1,2})(?:\\s+de)?\\s*($MONTHS)\\b\\.?(?:,?\\s+(?:de\\s+)?(\\d{4})\\b)?")
+    // «10/11/2026», «10-11-2026» (con año, en cualquier parte) y «el 10/11» (sin año, solo tras «el»: «cuota 1/3» no es una fecha).
+    private val NUMERIC_FULL = Regex("\\b(\\d{1,2})[/-](\\d{1,2})[/-](\\d{4})\\b")
+    private val NUMERIC_EL = Regex("\\bel\\s+(\\d{1,2})[/-](\\d{1,2})\\b(?![/-]\\d)")
     private val RELATIVE = Regex("\\b(?:hoy|ayer)\\b")
     private val TIME = Regex("\\b\\d{1,2}:\\d{2}(?:\\s*(?:hrs?|h|am|pm)\\b)?")
 
@@ -38,12 +42,23 @@ internal object ShortDate {
         return postedAtMillis < start - TOLERANCE_MILLIS || postedAtMillis > start + DAY + TOLERANCE_MILLIS
     }
 
-    private fun days(folded: String): List<Found> = DAY_MONTH.findAll(folded).mapNotNull { m ->
-        val day = m.groupValues[1].toInt()
-        val month = monthOf(m.groupValues[2]) ?: return@mapNotNull null
-        val year = m.groupValues[3].takeIf { it.isNotEmpty() }?.toInt()
-        if (day !in 1..31 || (year != null && !valid(year, month, day))) null else Found(m.range, day, month, year)
-    }.toList()
+    private fun days(folded: String): List<Found> {
+        val named = DAY_MONTH.findAll(folded).mapNotNull { m ->
+            found(m.range, m.groupValues[1].toInt(), monthOf(m.groupValues[2]), m.groupValues[3].takeIf { it.isNotEmpty() }?.toInt())
+        }
+        val full = NUMERIC_FULL.findAll(folded).mapNotNull { m ->
+            found(m.range, m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt())
+        }
+        val short = NUMERIC_EL.findAll(folded).mapNotNull { m ->
+            found(m.groups[1]!!.range.first..m.range.last, m.groupValues[1].toInt(), m.groupValues[2].toInt(), null)
+        }
+        return (named + full + short).sortedBy { it.range.first }.toList()
+    }
+
+    private fun found(range: IntRange, day: Int, month: Int?, year: Int?): Found? {
+        if (month == null || month !in 1..12 || day !in 1..31) return null
+        return if (year != null && !valid(year, month, day)) null else Found(range, day, month, year)
+    }
 
     private fun monthOf(word: String): Int? = when (word.take(3)) {
         "ene" -> 1; "feb" -> 2; "mar" -> 3; "abr" -> 4; "may" -> 5; "jun" -> 6; "jul" -> 7; "ago" -> 8

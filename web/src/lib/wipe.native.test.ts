@@ -2,17 +2,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // H-01 (h, d): cerrar sesión debe vaciar borradores, notificaciones, almacén seguro y cola del TELÉFONO, no solo localStorage.
-const { wipe } = vi.hoisted(() => ({ wipe: vi.fn(async () => undefined) }))
+const { wipe, unregister } = vi.hoisted(() => ({ wipe: vi.fn(async () => undefined), unregister: vi.fn(async () => undefined) }))
+vi.mock('@capacitor/push-notifications', () => ({ PushNotifications: { unregister } }))
 vi.mock('./nativeBridge', () => ({ isNativeApp: () => true, ContigoNative: { wipe } }))
 
 import { wipeSessionData } from './wipe'
 
 describe('wipeSessionData dentro de la app nativa', () => {
-  beforeEach(() => wipe.mockClear())
+  beforeEach(() => {
+    wipe.mockClear()
+    unregister.mockClear()
+  })
 
   it('llama a ContigoNative.wipe() (sesión, cola cifrada, borradores y notificaciones propias)', () => {
     wipeSessionData()
     expect(wipe).toHaveBeenCalledTimes(1)
+  })
+
+  it('M1 también desregistra el aviso del teléfono', () => {
+    wipeSessionData()
+    expect(unregister).toHaveBeenCalledTimes(1)
   })
 
   it('aunque localStorage no exista, igual vacía lo nativo', () => {

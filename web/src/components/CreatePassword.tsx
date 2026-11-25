@@ -21,7 +21,7 @@ export default function CreatePassword({ reason, onDone }: { reason: string; onD
     setError(null)
     const { error: err } = await supabase.auth.updateUser({ password: pw, data: { has_password: true } })
     setBusy(false)
-    if (err) return setError(friendlyError(err.message))
+    if (err) return setError(friendlyError(err))
     setPw('')
     setDone(true)
     onDone?.()

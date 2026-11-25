@@ -18,17 +18,20 @@ export class PushError extends Error {
 }
 
 export const REGISTER_TIMEOUT_MS = 15_000
-const KEY = (userId: string) => `contigo.push.token.${userId}`
+// Empieza con «contigo-» para que el cierre de sesión (wipe.ts) lo borre; la clave vieja se sigue leyendo y se limpia al escribir
+const KEY = (userId: string) => `contigo-push-token-${userId}`
+const LEGACY_KEY = (userId: string) => `contigo.push.token.${userId}`
 
 function readToken(userId: string): string | null {
   try {
-    return localStorage.getItem(KEY(userId)) || null
+    return localStorage.getItem(KEY(userId)) || localStorage.getItem(LEGACY_KEY(userId)) || null
   } catch {
     return null
   }
 }
 function writeToken(userId: string, token: string | null): void {
   try {
+    localStorage.removeItem(LEGACY_KEY(userId))
     if (token) localStorage.setItem(KEY(userId), token)
     else localStorage.removeItem(KEY(userId))
   } catch {

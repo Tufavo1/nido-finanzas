@@ -4,6 +4,8 @@
  * Si es la primera vez, reconoce comercios conocidos de Chile. Si no sabe, no inventa (null).
  */
 
+import { isGeneralCategory } from './autoCategory'
+
 interface Cat {
   id: string
   name: string
@@ -73,13 +75,8 @@ export function learnedCategory(note: string, categories: Cat[], history: Past[]
   return first.length >= 4 ? mostUsed(history, valid, (x) => x.split(' ')[0] === first) : null
 }
 
-export function suggestCategory(note: string, categories: Cat[], history: Past[]): string | null {
-  const learned = learnedCategory(note, categories, history)
-  if (learned) return learned
-  const n = norm(note)
-  if (!n) return null
-
-  // 3. Comercios conocidos
+/** Comercios conocidos: busca la palabra clave dentro del nombre y devuelve la categoría del hogar por su nombre real */
+function keywordCategory(n: string, categories: Cat[]): string | null {
   const padded = ` ${n} `
   for (const group of KNOWN) {
     // Palabras cortas («bar», «luz») solo valen enteras; las largas también como comienzo («farmacia» en «farmacias»)
@@ -88,6 +85,16 @@ export function suggestCategory(note: string, categories: Cat[], history: Past[]
     if (cat) return cat.id
   }
   return null
+}
+
+export function suggestCategory(note: string, categories: Cat[], history: Past[]): string | null {
+  const n = norm(note)
+  if (!n) return null
+  const learned = learnedCategory(note, categories, history)
+  const keyword = keywordCategory(n, categories)
+  // Lo que cayó en la general («Otros») no es una elección: si hay palabra clave, esa gana
+  if (learned && !(keyword && isGeneralCategory(learned, categories))) return learned
+  return keyword
 }
 
 /**

@@ -85,26 +85,26 @@ describe('el mes: sueldo + ingresos extra - gastos - pagos de deuda', () => {
   })
   it('pagar la cuota normal no se cuenta dos veces: el mes queda igual', () => {
     const d = debt({ monthly_payment: 65_000 })
-    expect(myDebtShare([d], [], 'me', 1, NOW)).toBe(65_000)
-    expect(myDebtShare([d], [pay({ amount: 65_000 })], 'me', 1, NOW)).toBe(65_000)
+    expect(myDebtShare([d], [], 'me', 1, NOW, [])).toBe(65_000)
+    expect(myDebtShare([d], [pay({ amount: 65_000 })], 'me', 1, NOW, [])).toBe(65_000)
   })
   it('una deuda sin cuota (creada desde la bandeja) igual resta lo que se pagó este mes', () => {
     const d = debt({ monthly_payment: 0 })
-    expect(myDebtShare([d], [], 'me', 1, NOW)).toBe(0)
-    const c = myDebtShare([d], [pay()], 'me', 1, NOW)
+    expect(myDebtShare([d], [], 'me', 1, NOW, [])).toBe(0)
+    const c = myDebtShare([d], [pay()], 'me', 1, NOW, [])
     expect(c).toBe(34_400)
     expect(base([], 0, 0) - base([], 0, c)).toBe(34_400)
   })
   it('pagar más que la cuota resta el total pagado', () => {
-    expect(myDebtShare([debt({ monthly_payment: 20_000 })], [pay({ amount: 50_000 })], 'me', 1, NOW)).toBe(50_000)
+    expect(myDebtShare([debt({ monthly_payment: 20_000 })], [pay({ amount: 50_000 })], 'me', 1, NOW, [])).toBe(50_000)
   })
   it('una deuda saldada este mes igual cuenta lo pagado; la saldada antes no', () => {
     const d = debt({ original_amount: 34_400 })
-    expect(myDebtShare([d], [pay()], 'me', 1, NOW)).toBe(34_400)
-    expect(myDebtShare([d], [pay({ paid_on: '2026-10-20' })], 'me', 1, NOW)).toBe(0)
+    expect(myDebtShare([d], [pay()], 'me', 1, NOW, [])).toBe(34_400)
+    expect(myDebtShare([d], [pay({ paid_on: '2026-10-20' })], 'me', 1, NOW, [])).toBe(0)
   })
   it('el pago de otro mes no cuenta en este', () => {
-    expect(myDebtShare([debt()], [pay({ paid_on: '2026-10-05' })], 'me', 1, NOW)).toBe(0)
+    expect(myDebtShare([debt()], [pay({ paid_on: '2026-10-05' })], 'me', 1, NOW, [])).toBe(0)
   })
   it('la fila del pago no inventa columnas', () => {
     expect(Object.keys(debtPaymentRow('h', mk(), 'd1', 'me')).sort()).toEqual(['amount', 'debt_id', 'household_id', 'id', 'paid_by', 'paid_on'])
@@ -124,10 +124,10 @@ describe('cuánto queda del mes', () => {
   })
   it('el efecto de un pago sale de comparar las cuotas del mes antes y después', () => {
     const d = debt({ monthly_payment: 65_000 })
-    expect(debtPayImpact([d], [], 'd1', 34_400, 'me', 1, NOW)).toBe(0)
-    expect(debtPayImpact([d], [], 'd1', 90_000, 'me', 1, NOW)).toBe(25_000)
-    expect(debtPayImpact([debt({ monthly_payment: 0 })], [], 'd1', 34_400, 'me', 1, NOW)).toBe(34_400)
-    expect(debtPayImpact([d], [], 'zzz', 34_400, 'me', 1, NOW)).toBe(0)
+    expect(debtPayImpact([d], [], 'd1', 34_400, 'me', 1, [], NOW)).toBe(0)
+    expect(debtPayImpact([d], [], 'd1', 90_000, 'me', 1, [], NOW)).toBe(25_000)
+    expect(debtPayImpact([debt({ monthly_payment: 0 })], [], 'd1', 34_400, 'me', 1, [], NOW)).toBe(34_400)
+    expect(debtPayImpact([d], [], 'zzz', 34_400, 'me', 1, [], NOW)).toBe(0)
   })
   it('pago a una deuda nueva resta lo pagado (no tiene cuota anotada)', () => {
     expect(monthLeftAfter(100_000, 'newdebt', 30_000)).toBe(70_000)

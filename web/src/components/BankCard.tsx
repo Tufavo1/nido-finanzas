@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Dinovance
-import { bankStatus } from '../lib/bankAuto'
+import { CAPTURE_UNAVAILABLE_LABEL, bankStatus } from '../lib/bankAuto'
 import type { BankPreset } from '../lib/bankAuto'
 
 interface Props {
@@ -16,6 +16,18 @@ const clp = new Intl.NumberFormat('es-CL')
 /** Una tarjeta por banco: guardar solos sus gastos (apagado por defecto) y qué app se vigila. */
 export default function BankCard({ bank, cap, busy, onToggle, onAssociate, onDissociate }: Props) {
   const id = `bank-${bank.id}`
+  if (!bank.available) {
+    // Ya la tenía encendida antes de ocultarla: solo se puede apagar
+    return (
+      <section className="card bank" aria-labelledby={id}>
+        <strong id={id}>{bank.name}</strong>
+        <span className="muted small-text">{CAPTURE_UNAVAILABLE_LABEL}</span>
+        <button type="button" className="btn ghost small" disabled={busy} onClick={() => onToggle(false)}>
+          Apagar
+        </button>
+      </section>
+    )
+  }
   return (
     <section className="card bank" aria-labelledby={id}>
       <div className="row between tap" onClick={() => !busy && bank.packageName !== null && onToggle(!bank.autoSave)}>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { isSnoozed, withoutSnoozed } from './alertState'
-import { buildAlerts, compareAlerts } from './engine'
+import { buildAlerts, compareAlerts, salaryAnalysisFor } from './engine'
+import { monthFreeNow } from './monthLeft'
 import type { Alert } from './engine'
 import type { ExpRow } from './expenseAnalysis'
 import { isQuietHour, pickToNotify } from './smartNotify'
@@ -16,6 +17,7 @@ const base = {
   categories: [cat('c1')],
   expenses: [] as ReturnType<typeof exp>[],
   prevExpenses: [] as ReturnType<typeof exp>[],
+  cardExpenses: [] as ReturnType<typeof exp>[],
   goals: [],
   contributions: [],
   debts: [] as ReturnType<typeof debt>[],
@@ -138,5 +140,18 @@ describe('notificaciones inteligentes', () => {
 
   it('respeta lo que ya se había avisado con la versión anterior', () => {
     expect(pickToNotify([mk('a', 'warn')], [], ['a'], noon)).toEqual([])
+  })
+})
+
+describe('A2 coherencia de «Te queda» entre Inicio, avisos y después de guardar', () => {
+  const fijo = { id: 'r1', household_id: 'h', category_id: 'c1', amount: 400_000, note: 'Arriendo', paid_by: 'a', shared: false, day_of_month: 25, starts_on: '2026-01-01', last_applied: null, active: true, created_by: 'a', created_at: '' }
+  const data = { ...base, ready: true, salary: salary(1_000_000), debts: [debt({ monthly_payment: 0 })], expenses: [exp(100_000, '2026-10-05'), exp(400_000, '2026-10-06', { payment_method: 'tarjeta' })], recurring: [fijo] }
+
+  it('una compra con tarjeta no baja el sueldo: ni Inicio ni monthLeft ni los avisos la restan', () => {
+    const inicio = salaryAnalysisFor(hh, data as never, month, now)
+    expect(inicio?.free).toBe(900_000)
+    expect(monthFreeNow(data as never, 'a', 1, now)).toBe(inicio?.realFree)
+    // Con 900.000 libres, 400.000 de fijo y ~55.000 de gasto diario sobra: antes el aviso decía que faltaría plata
+    expect(run(data).some((a) => a.id.startsWith('cash-short:'))).toBe(false)
   })
 })

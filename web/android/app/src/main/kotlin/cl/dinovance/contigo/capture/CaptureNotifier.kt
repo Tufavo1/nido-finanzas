@@ -48,7 +48,7 @@ class CaptureNotifier(private val context: Context, private val prefs: CapturePr
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(openIntent(draft.id, ACTION_OPEN))
-        for (action in actionsFor(kind)) {
+        for (action in actionsFor(draft)) {
             when (action) {
                 ACTION_SAVE -> builder.addAction(0, context.getString(R.string.capture_action_save), receiverIntent(draft.id, ACTION_SAVE))
                 ACTION_CHANGE_CATEGORY -> builder.addAction(0, context.getString(R.string.capture_action_category), openIntent(draft.id, ACTION_CHANGE_CATEGORY))
@@ -148,6 +148,13 @@ class CaptureNotifier(private val context: Context, private val prefs: CapturePr
          * Botones de la notificacion, en orden. Solo un gasto ofrece «Guardar». Ingreso y pago de deuda: «Revisar» e «Ignorar».
          * Una transferencia («¿gasto o pago de deuda?») tiene un unico boton «Revisar»: la persona decide en la app.
          */
+        /**
+         * Como [actionsFor] por tipo, pero un gasto que NO se puede guardar con un toque ([Draft.savableFromNotification]: cobro de una
+         * cuota anterior o compra en cuotas sin total) ofrece «Revisar» e «Ignorar»: la persona decide en la app.
+         */
+        fun actionsFor(draft: Draft): List<String> =
+            if (draft.candidate.kind == Kind.EXPENSE && !draft.savableFromNotification) listOf(ACTION_OPEN, ACTION_IGNORE) else actionsFor(draft.candidate.kind)
+
         fun actionsFor(kind: Kind): List<String> =
             if (kind == Kind.EXPENSE) listOf(ACTION_SAVE, ACTION_CHANGE_CATEGORY, ACTION_IGNORE)
             else if (kind == Kind.TRANSFER_OUT) listOf(ACTION_OPEN)

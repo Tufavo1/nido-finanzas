@@ -6,15 +6,26 @@ internal object MerchantExtractor {
 
     // "en TIENDA ..." o "a Empresa ..." despues del monto.
     private val AFTER_AMOUNT = Regex("(?:^|\\s)(?:en|a)\\s+(.+)", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    // Telefono en ingles (Billetera): «You paid CLP 7,000 at COPEC», «Paid CLP 7,000 to COPEC». Solo JUSTO tras el monto: en un aviso
+    // en espanol «at»/«to» no son palabras, pero un comercio puede empezar asi («To Go Sushi»).
+    private val AT_TO_AFTER_AMOUNT = Regex("^\\s*(?:at|to)\\s+(.+)", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     // "Transferencia realizada a Juana por $20.000": el nombre va ANTES del monto.
     private val BEFORE_AMOUNT = Regex("\\ba\\s+(?!las\\b)(.+?)\\s+por\\s*$", RegexOption.IGNORE_CASE)
     private val NOT_A_NAME = Regex("^(\\d+\\s+(?:cuotas?|pagos?)\\b|\\d+$|tu\\b|su\\b|cuotas?\\b)", RegexOption.IGNORE_CASE)
+
+    /** Marca, tipo de tarjeta o mascara de digitos que sigue a «con» cuando el aviso nombra el medio de pago. */
+    internal const val PAYMENT_MEDIUM =
+        "(?:(?:(?:la|el|una?)\\s+)?(?:tarjeta|visa|master\\s?card|amex|american\\s+express|diners|redcompra|maestro|cmr|d[eéÉ]bito|cr[eéÉ]dito" +
+            "|cuenta\\s?rut|google\\s+pay|g\\s?pay|billetera|google\\s+wallet|wallet|card|debit|credit)(?![a-zA-Z0-9áéíóúüñÁÉÍÓÚÜÑ])|[•·*●∙‧…]+\\s*\\d)"
 
     // Donde termina el nombre: fecha, "con tu tarjeta", "por", puntuacion final de frase, salto de linea.
     private val END_OF_NAME = Regex(
         listOf(
             "\\s+el\\s+\\d",
             "\\s+con\\s+(?:tu|su)\\b",
+            // «en COMERCIO con Visa •••• 1234», «con Mastercard 1234», «con CMR», «con la tarjeta», «con débito», «with Visa»: el medio de
+            // pago no es parte del nombre. Solo con una marca o tipo de pago detras: «Pan con Palta» y «Ferretería Con Con» se quedan enteros.
+            "\\s+(?:con|with|using)\\s+$PAYMENT_MEDIUM",
             "\\s+a\\s+las\\b",
             "\\s+desde\\b",
             "\\s+terminada\\b",
@@ -39,7 +50,11 @@ internal object MerchantExtractor {
         "temuco", "antofagasta", "iquique", "arica", "la serena", "coquimbo", "rancagua", "talca", "chillan", "los angeles", "osorno",
         "puerto montt", "valdivia", "punta arenas", "copiapo", "calama", "curico", "linares", "quillota", "melipilla", "san antonio",
     ).sortedByDescending { it.length }
-    private val CITY_COUNTRY = Regex("\\s+(?:${COMMUNES.joinToString("|")}|\\S+)\\s+chl$")
+    // «Chl» tras cualquier palabra (formato de CMR). «CL» o «Chile» solo tras una comuna CONOCIDA («COPEC LAS CONDES SANTIAGO CL»):
+    // «FARMACIA CL» se queda como esta.
+    private val CITY_COUNTRY = Regex(
+        "\\s+(?:${COMMUNES.joinToString("|")}|\\S+)\\s+chl$|\\s+(?:${COMMUNES.joinToString("|")})\\s+(?:cl|chile)$",
+    )
     private val CMR_CARD = Regex("^(?:tu|su)\\s+cmr\\b", RegexOption.IGNORE_CASE)
     const val CMR_MERCHANT = "Compra con CMR"
 
@@ -50,7 +65,7 @@ internal object MerchantExtractor {
     }
 
     private fun fromAfter(after: String): String? =
-        AFTER_AMOUNT.find(after)?.let { clean(cutAtEnd(it.groupValues[1])) }
+        (AT_TO_AFTER_AMOUNT.find(after) ?: AFTER_AMOUNT.find(after))?.let { clean(cutAtEnd(it.groupValues[1])) }
 
     private fun fromBefore(before: String): String? =
         BEFORE_AMOUNT.find("${before.trimEnd()} ")?.let { clean(it.groupValues[1]) }

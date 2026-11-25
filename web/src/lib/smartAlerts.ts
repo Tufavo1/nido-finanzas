@@ -6,7 +6,7 @@ import type { Alert } from './engine'
 import { analyzeExpenses } from './expenseAnalysis'
 import type { ExpRow } from './expenseAnalysis'
 import type { HouseholdData } from './data'
-import { analyzeSalary, monthIncome, myDebtShare } from './finance'
+import { analyzeSalary, cardBalance, cardLimitStatus, monthIncome, salaryFlows } from './finance'
 import { money } from './format'
 import { savedInMonth } from './goals'
 import { splitOf } from './split'
@@ -38,7 +38,7 @@ export function smartAlerts({ hh, data, month, now, rows, myCost }: SmartInput):
   const members = splitOf(hh.members)
 
   /* ---------- Cuotas atrasadas ---------- */
-  const debts = analyzeDebts(data.debts, data.debtPayments, now)
+  const debts = analyzeDebts(data.debts, data.debtPayments, now, data.cardExpenses)
   for (const d of debts.payments.due.filter((x) => x.late)) {
     out.push({
       id: `debt-late:${d.id}:${mk}`,
@@ -50,6 +50,21 @@ export function smartAlerts({ hh, data, month, now, rows, myCost }: SmartInput):
       action: 'Anotar el pago',
       amount: d.pending,
       priority: 96,
+    })
+  }
+  for (const d of data.debts.filter((x) => !x.archived)) {
+    const st = cardLimitStatus(d, cardBalance(d, data.debtPayments, data.cardExpenses, data.debts).used)
+    if (!st || st.over <= 0) continue
+    out.push({
+      id: `card-over:${d.id}:${mk}`,
+      level: 'warn',
+      area: 'deudas',
+      title: `Tu tarjeta **${d.name}** pasó su cupo por ${money(st.over)}`,
+      detail: `Usas ${money(st.used)} y el cupo es ${money(st.limit)}. Conviene abonar para volver bajo el cupo.`,
+      tab: 'money',
+      action: 'Ver la tarjeta',
+      amount: st.over,
+      priority: 60,
     })
   }
   if (debts.plan && debts.costs.length > 1 && debts.plan.interestSaved >= 20_000) {
@@ -70,12 +85,14 @@ export function smartAlerts({ hh, data, month, now, rows, myCost }: SmartInput):
   const salary = data.salary
   const income = monthIncome(salary, data.incomes)
   if (data.financeReady && salary && income > 0) {
-    const sal = analyzeSalary({ income, spent: myCost, commitments: myDebtShare(data.debts, data.debtPayments, meId, members), month, now, saved: savedInMonth(data.contributions, meId, `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`) })
+    // Mismo cálculo que Inicio: sin compras con tarjeta, con lo realmente pagado a deudas (lo que aún vence lo suma buildUpcoming)
+    const flows = salaryFlows({ expenses: data.expenses, cardExpenses: data.cardExpenses, debts: data.debts, debtPayments: data.debtPayments, meId, split: members, month, now, trueCost: myCost })
+    const sal = analyzeSalary({ income, spent: flows.spent, commitments: flows.commitments, month, now, saved: savedInMonth(data.contributions, meId, `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`) })
     const fixedSoFar = (rows ?? [])
       .filter((r) => r.spent_on.startsWith(`${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`) && r.recurring_id)
       .reduce((s, r) => s + myShare(r, meId, members), 0)
-    const variableDaily = Math.max(0, myCost - fixedSoFar) / Math.max(now.getDate(), 1)
-    const up = buildUpcoming({ now, meId, split: members, recurring: data.recurring, debts: data.debts, debtPayments: data.debtPayments, salary, free: sal.free, variableDaily })
+    const variableDaily = Math.max(0, flows.spent - fixedSoFar) / Math.max(now.getDate(), 1)
+    const up = buildUpcoming({ now, meId, split: members, recurring: data.recurring, debts: data.debts, debtPayments: data.debtPayments, expenses: data.cardExpenses, salary, free: sal.free, variableDaily })
 
     const end = up.endOfMonth
     if (end !== null && now.getDate() >= 5) {
@@ -113,6 +130,7 @@ export function smartAlerts({ hh, data, month, now, rows, myCost }: SmartInput):
           debtInsights: debts,
           debts: data.debts,
           debtPayments: data.debtPayments,
+          expenses: data.expenses,
           categories: [],
         })
         out.push({

@@ -7,6 +7,7 @@ import { money } from '../lib/format'
 import { isEmergencyGoal, savedInMonth } from '../lib/goals'
 import { notifyPartner } from '../lib/push'
 import { saidNoSavings, setSaidNoSavings } from '../lib/savingsAnswer'
+import { goalProgress } from '../lib/goals'
 import { monthName, digitsOnly, dots } from '../lib/ui'
 import { monthKey } from '../lib/analysis'
 import Modal from './Modal'
@@ -64,7 +65,7 @@ export default function SavingsCheck({ hh, data, month, onToast, onGoals }: Prop
     setNo(false)
     setAdding(false)
     setAmount('')
-    onToast(`Ahorro anotado\nSumaste **${money(n)}** a **${chosen.name}**. Se descontó de lo que te queda del sueldo.`)
+    onToast(`Ahorro anotado\nSumaste **${money(n)}** a **${chosen.name}**. Se descontó de lo que te queda.`)
     if (created) notifyPartner('contribution', created.id)
     await data.refresh()
   }
@@ -75,8 +76,9 @@ export default function SavingsCheck({ hh, data, month, onToast, onGoals }: Prop
     setAdding(false)
   }
 
-  const goalSaved = chosen ? data.contributions.filter((c) => c.goal_id === chosen.id).reduce((t, c) => t + c.amount, 0) : 0
-  const goalPct = chosen && chosen.target_amount > 0 ? Math.min(100, Math.round((goalSaved * 100) / chosen.target_amount)) : null
+  const chosenProgress = chosen ? goalProgress(chosen.target_amount, chosen.target_date, data.contributions.filter((c) => c.goal_id === chosen.id)) : null
+  const chosenSaved = chosenProgress?.saved ?? 0
+  const goalPct = chosen && chosen.target_amount > 0 && chosenProgress ? chosenProgress.pct : null
 
   // Ventana con toda la información y el formulario para anotar el ahorro
   const modal = adding && (
@@ -130,7 +132,7 @@ export default function SavingsCheck({ hh, data, month, onToast, onGoals }: Prop
                   <div className="row between">
                     <span className="strong">{chosen.name}</span>
                     <span className="muted num">
-                      {money(goalSaved)}
+                      {money(chosenSaved)}
                       {chosen.target_amount > 0 ? ` de ${money(chosen.target_amount)}` : ''}
                     </span>
                   </div>
@@ -147,7 +149,7 @@ export default function SavingsCheck({ hh, data, month, onToast, onGoals }: Prop
                   id="sv-amount" autoComplete="off"
                   className="input"
                   inputMode="numeric"
-                  placeholder="Ej. 50000"
+                  placeholder="Ej. 50.000"
                   value={dots(amount)}
                   onChange={(e) => setAmount(digitsOnly(e.target.value))}
                 />

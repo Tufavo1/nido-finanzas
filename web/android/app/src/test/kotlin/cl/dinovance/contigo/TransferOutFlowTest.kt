@@ -144,7 +144,8 @@ class TransferOutFlowTest {
     @Test
     fun `Guardar desde la notificacion se ignora para una transferencia`() {
         val r = File("src/main/kotlin/cl/dinovance/contigo/capture/DraftActionReceiver.kt").readText()
-        assertTrue(r.contains("?.candidate?.kind != cl.nido.parser.Kind.EXPENSE) return"))
+        assertTrue(r.contains("?.savableFromNotification != true) return"))
+        assertFalse(transfer(DraftStatus.PENDING).savableFromNotification)
     }
 
     // ---- contrato JSON con el front: kind = nombre del enum, igual que DEBT_PAYMENT

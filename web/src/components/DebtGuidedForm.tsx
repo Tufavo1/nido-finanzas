@@ -5,8 +5,8 @@ import type { HouseholdData } from '../lib/data'
 import { BANKS } from '../lib/bankData'
 import type { RateProduct } from '../lib/bankData'
 import { offersFor } from '../lib/bankRates'
-import { installment, monthsToPayoff, payoffPlan } from '../lib/finance'
-import { money } from '../lib/format'
+import { creditLimitInput, creditLimitPatch, creditLimitProblem, debtSaveMessage, installment, monthsToPayoff, payoffPlan, sameNameCard, saveDebtKeepingData } from '../lib/finance'
+import { decimalEs, money, todayISO } from '../lib/format'
 import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
 import { digitsOnly, dots } from '../lib/ui'
@@ -27,7 +27,7 @@ const TYPES: { key: TypeKey; label: string; kind: 'tarjeta' | 'credito' | 'otro'
 
 const MONTH_CHIPS = [6, 12, 24, 36, 48, 60]
 const YEAR_CHIPS = [15, 20, 25, 30]
-const fmtRate = (n: number) => String(Math.round(n * 100) / 100).replace('.', ',')
+const fmtRate = (n: number) => decimalEs(n)
 const num = (s: string) => Number(s.replace(',', '.') || '0')
 
 /** Alta de una deuda en pasos: a quién se le debe, qué tipo es, y solo los datos que ese tipo necesita. */
@@ -38,6 +38,7 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
   const [person, setPerson] = useState('')
   const [type, setType] = useState<TypeKey | null>(null)
   const [total, setTotal] = useState('')
+  const [limit, setLimit] = useState('')
   const [term, setTerm] = useState('')
   const [fee, setFee] = useState<string | null>(null)
   const [rate, setRate] = useState<string | null>(null)
@@ -68,6 +69,12 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
   const feeStr = fee ?? (calcFee > 0 ? String(calcFee) : '')
   const feeNum = Number(feeStr) || 0
 
+  // Si esa tarjeta ya está anotada, otra igual sumaría su saldo dos veces en «Falta pagar en total»
+  const dupCard = isCard ? sameNameCard(data.debts, `${bank ? bank.name : inst.trim()} · ${typeInfo?.label ?? ''}`.slice(0, 60)) : null
+
+  // Aviso en vivo: el campo deja escribir un dígito de más justo para poder decirlo
+  const limitProblem = isCard ? creditLimitProblem(limit) : null
+
   const plan = amount > 0 && feeNum > 0 ? payoffPlan(amount, feeNum, rateNum) : null
   const payoffMonths = amount > 0 && feeNum > 0 ? monthsToPayoff(amount, feeNum, rateNum) : undefined
 
@@ -92,10 +99,11 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
     if (!amount || amount <= 0) return setError('Escribe cuánto se debe hoy')
     if (Number.isNaN(rateNum) || rateNum < 0 || rateNum > 30) return setError('El interés mensual debe estar entre 0 y 30 %')
     if (dueDay !== null && (dueDay < 1 || dueDay > 31)) return setError('El día de vencimiento va de 1 a 31')
+    if (limitProblem) return setError(limitProblem)
     const name = isPerson ? `Préstamo de ${person.trim()}` : `${bank ? bank.name : inst.trim()} · ${typeInfo?.label ?? ''}`
     setBusy(true)
     setError(null)
-    const { error: err } = await supabase.from('debts').insert({
+    const fields = {
       household_id: hh.household.id,
       name: name.slice(0, 60),
       kind: isPerson ? 'prestamo' : (typeInfo?.kind ?? 'otro'),
@@ -105,14 +113,17 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
       monthly_rate: rateNum,
       due_day: dueDay,
       // Tarjeta: lo que escribes es el «cupo utilizado» del banco; queda como saldo informado y la app no le suma interés sola
-      ...(isCard ? { reported_balance: amount, reported_at: new Date().toLocaleDateString('en-CA') } : {}),
-    })
+      ...(isCard ? { reported_balance: amount, reported_at: todayISO() } : {}),
+      // Cupo total (opcional): la clave solo viaja si lo escribió
+      ...(isCard ? creditLimitPatch(limit) : {}),
+    }
+    const { error: err, droppedLimit } = await saveDebtKeepingData((f) => supabase.from('debts').insert(f as never), fields)
     setBusy(false)
     if (err) {
-      setError('No se pudo guardar la deuda. Revisa tu conexión e intenta de nuevo.')
+      setError(debtSaveMessage(err))
       return
     }
-    onToast('Deuda agregada\nYa aparece en tu plan de **pago**.')
+    onToast(droppedLimit ? 'Deuda agregada sin el cupo\nEsta versión del servidor todavía no guarda el cupo; la guardamos sin cupo.' : 'Deuda agregada\nYa aparece en tu plan de **pago**.')
     onClose()
     await data.refresh()
     onSaved?.()
@@ -129,6 +140,7 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
   if (isPerson) steps.push('person')
   if (!isPerson) steps.push('type')
   steps.push('total')
+  if (isCard) steps.push('limit')
   if (isPerson) steps.push('interest', 'fee')
   else steps.push('term', 'rate', 'fee')
   if (multi) steps.push('owner')
@@ -143,6 +155,7 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
     person: person.trim().length > 0,
     type: type !== null,
     total: amount > 0,
+    limit: limitProblem === null,
     interest: true,
     term: true,
     rate: true,
@@ -159,6 +172,7 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
     person: '¿A quién le debes?',
     type: '¿Qué tipo de deuda es?',
     total: isPerson ? '¿Cuánto le debes hoy?' : isCard ? '¿Cuánto tienes usado de la tarjeta?' : '¿Cuánto falta pagar hoy?',
+    limit: '¿Cuál es el cupo total de la tarjeta?',
     interest: '¿Te cobra interés?',
     term: typeInfo?.years ? '¿En cuántos años termina?' : '¿Cuántas cuotas te faltan?',
     rate: '¿Qué interés al mes tiene?',
@@ -241,8 +255,24 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
 
         {cur === 'total' && (
           <div className="stack tight">
-            <input id="g-total" aria-labelledby="g-q" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800000" value={dots(total)} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
+            <input id="g-total" aria-labelledby="g-q" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 800.000" value={dots(total)} onChange={(e) => setTotal(digitsOnly(e.target.value))} />
             {isCard && <span className="line-help">Es el «Cupo utilizado» de tu estado de cuenta o de la app del banco. Lo actualizas cuando llegue el siguiente.</span>}
+            {dupCard && (
+              <span className="hint" role="status">
+                Ya tienes «{dupCard.name}» anotada. Si es la misma, no la agregues de nuevo: en Deudas, ábrela y toca «Actualizar con mi estado de cuenta» para que no se cuente dos veces.
+              </span>
+            )}
+          </div>
+        )}
+
+        {cur === 'limit' && (
+          <div className="stack tight">
+            <input id="g-limit" aria-labelledby="g-q" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 960.000" value={dots(limit)} aria-invalid={limitProblem !== null} aria-describedby={limitProblem ? 'g-limit-err' : undefined} onChange={(e) => setLimit(creditLimitInput(e.target.value))} />
+            {limitProblem ? (
+              <span id="g-limit-err" className="error" role="alert">{limitProblem}</span>
+            ) : (
+              <span className="line-help">Es el cupo aprobado por el banco; sale en tu estado de cuenta. Si no lo sabes, sigue: es opcional.</span>
+            )}
           </div>
         )}
 
@@ -303,7 +333,7 @@ export default function DebtGuidedForm({ hh, data, onClose, onToast, onSaved, em
 
         {cur === 'fee' && (
           <div className="stack tight">
-            <input id="g-fee" aria-labelledby="g-q" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 65000" value={dots(feeStr)} onChange={(e) => setFee(digitsOnly(e.target.value))} />
+            <input id="g-fee" aria-labelledby="g-q" autoComplete="off" className="input" inputMode="numeric" placeholder="Ej. 65.000" value={dots(feeStr)} onChange={(e) => setFee(digitsOnly(e.target.value))} />
             {calcFee > 0 && <span className="line-help">Calculada para ti: {money(calcFee)}. Cámbiala si tu cuota real es distinta.</span>}
             {amount > 0 && feeNum > 0 && (
               <span className="hint">

@@ -51,7 +51,12 @@ export function scopeDebtShares(debts: Debt[], payments: DebtPayment[], scope: S
   const mine = scopeDebts(debts, scope)
   const shared = new Set(mine.filter((d) => d.owner_id === null).map((d) => d.id))
   return {
-    debts: mine.map((d) => (shared.has(d.id) ? { ...d, original_amount: Math.round(d.original_amount * f), monthly_payment: Math.round(d.monthly_payment * f) } : d)),
+    // El saldo informado de una tarjeta también se reparte: si no, la persona cargaría el saldo completo menos su parte de los pagos
+    debts: mine.map((d) =>
+      shared.has(d.id)
+        ? { ...d, original_amount: Math.round(d.original_amount * f), monthly_payment: Math.round(d.monthly_payment * f), ...(d.reported_balance != null ? { reported_balance: Math.round(d.reported_balance * f) } : {}) }
+        : d,
+    ),
     payments: payments.filter((p) => mine.some((d) => d.id === p.debt_id)).map((p) => (shared.has(p.debt_id) ? { ...p, amount: Math.round(p.amount * f) } : p)),
   }
 }

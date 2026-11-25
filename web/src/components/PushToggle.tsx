@@ -1,3 +1,4 @@
+import { userMessage } from '../lib/appError'
 import { useEffect, useState } from 'react'
 import { currentPushState, disablePush, enablePush, sendTest } from '../lib/push'
 import type { PushState } from '../lib/push'
@@ -37,7 +38,7 @@ function WebPushToggle({ isAdmin = false, onToast }: { isAdmin?: boolean; onToas
     try {
       await fn()
     } catch (e) {
-      onToast(e instanceof Error ? e.message : 'Algo salió mal', 'error')
+      onToast(userMessage(e), 'error')
     }
     setBusy(null)
     setState(await currentPushState())

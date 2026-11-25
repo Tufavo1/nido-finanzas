@@ -1,4 +1,5 @@
 import type { Category, Expense } from './data'
+import { groupByCategory } from './monthFigures'
 import { portion, splitOf } from './split'
 import type { Member } from './ui'
 
@@ -40,6 +41,7 @@ export interface Metrics {
   avgPerDay: number
   projection: number | null
   prevTotal: number
+  /** Variación cruda, sin tope: NO mostrarla; la pantalla usa compareMonths (homeSummary) */
   deltaPct: number | null
   settle: Settlement | null
   /** Día del mes con más gasto */
@@ -75,11 +77,9 @@ export function computeMetrics(
   const personal = total - shared
 
   const daily = new Map<number, number>()
-  const catSpent = new Map<string, number>()
   for (const e of expenses) {
     const d = dayOf(e.spent_on)
     daily.set(d, (daily.get(d) ?? 0) + e.amount)
-    catSpent.set(e.category_id, (catSpent.get(e.category_id) ?? 0) + e.amount)
   }
 
   // Reparto exacto en pesos enteros: cada quien recibe su parte hacia abajo y los pesos sueltos van a quien
@@ -129,9 +129,8 @@ export function computeMetrics(
   const avgPerDay = elapsed > 0 ? Math.round(total / elapsed) : 0
   const projection = isCurrent && elapsed >= 5 ? Math.round((total / elapsed) * daysInMonth) : null
 
-  const byCategory = categories
-    .map((c) => ({ id: c.id, name: c.name, spent: catSpent.get(c.id) ?? 0, budget: c.monthly_budget }))
-    .sort((a, b) => b.spent - a.spent)
+  // Con las categorías eliminadas en una línea aparte: así las categorías suman siempre el total
+  const byCategory = groupByCategory(expenses, categories)
 
   let topDay: Metrics['topDay'] = null
   for (const [day, amount] of daily) if (!topDay || amount > topDay.amount) topDay = { day, amount }

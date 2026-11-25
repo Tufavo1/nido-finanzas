@@ -1,14 +1,14 @@
 <!-- Copyright (c) 2026 Dinovance -->
 # Release del APK de Contigo (Android)
 
-Todo local. Nada de esto toca producción: el Worker y el Release de GitHub los hace el dueño.
+Compilar, verificar y preparar el APK es local y no toca producción. Producción la despliega UN solo proceso: el workflow `Despliegue` (`.github/workflows/deploy.yml`) al fusionar a `main` aplica `supabase db push`, despliega la función `notify` y el Worker (wrangler). El comando manual (`supabase db push`, `supabase functions deploy notify`, `npx wrangler deploy`) queda solo como alternativa. El Release de GitHub lo crea el dueño.
 
 ## 1. Qué hay y cómo se compila
-- `dist-apk/nido-release.apk` (+ `.sha256`): firmado, R8 activo, `debuggable` ausente, `minSdk 26`, `targetSdk 36`. Permisos: INTERNET, POST_NOTIFICATIONS, VIBRATE, ACCESS_NETWORK_STATE, WAKE_LOCK, `c2dm.RECEIVE` y el permiso propio `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`.
+- `dist-apk/nido-release.apk` (+ `.sha256`): firmado, R8 activo, `debuggable` ausente, `minSdk 26`, `targetSdk 36`. Permisos (9, exactos según `scripts/apk-security-policy.txt:11-19`): INTERNET, POST_NOTIFICATIONS, REQUEST_INSTALL_PACKAGES, VIBRATE, ACCESS_NETWORK_STATE, WAKE_LOCK, RECEIVE_BOOT_COMPLETED, `c2dm.RECEIVE` y el permiso propio `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`.
 - `dist-apk/nido-debug.apk`: SOLO desarrollo (debuggable, llave pública de depuración). No repartir.
 - Compilar: `ALLOW_LOCAL_BUILD=1 bash scripts/docker-android-build.sh release` (monta `~/.nido-signing` en `/signing`, solo lectura). Sin llave, Gradle aborta: nunca deja un APK sin firmar.
 - `VITE_API_BASE` (S-07): es variable de COMPILACIÓN y la pasa el dueño, p. ej. `VITE_API_BASE=https://<su-dominio>/supabase ALLOW_LOCAL_BUILD=1 bash scripts/docker-android-build.sh release`. En producción la app rechaza una URL que no sea `https:`. Vacía, la app apunta a `https://localhost/supabase` y no puede iniciar sesión: **los APK de `dist-apk/` actuales se compilaron sin ella**, hay que recompilar con la URL real antes de repartir. Los enlaces de correo y OAuth (`redirectTo` en nativo) siguen pendientes de diseño (S-07 de `seguridad.md`).
-- Versión: subir `versionCode` y `versionName` en `web/android/app/build.gradle` en cada release (Android no instala un `versionCode` menor o igual encima).
+- Versión: NO se edita a mano en `build.gradle`. Sale de `version` en `web/package.json` (X.Y.Z): `versionName` = esa versión y `versionCode` = major*10000 + minor*100 + patch (`web/android/app/build.gradle:12-16`). Android no instala un `versionCode` menor o igual encima.
 - CSP en el WebView (S-06): NO aplicada. Capacitor inyecta su puente como script en línea; una CSP estricta puede romperlo y no hay teléfono para probarlo. Pendiente de prueba en dispositivo.
 
 ## 2. Verificar el APK antes de repartir
@@ -37,15 +37,16 @@ Huella SHA-256 del certificado de esta llave: `41:1E:94:AC:69:94:77:B6:A3:06:18:
 1. **Parche S-01: YA NO es necesario.** La app nativa manda el `Origin` del Worker (derivado de `VITE_API_BASE`) en todas sus peticiones, así que `isSameSite` del Worker se queda como está. No aplique `worker-S01-sin-origin.patch` ni la sección Worker de `endurecimiento-android-worker.patch` (ambos OBSOLETOS).
 2. **`wrangler` observability:** `docs/mobile/patches/wrangler-observability.patch` (registros del Worker sin cuerpos ni datos personales).
 3. Revisar que el límite de tasa por IP del Worker aguante el tráfico de varias apps desde la misma red móvil.
-4. Migraciones nuevas para la base (staging probadas; en producción las aplica el dueño en orden): `20261121160000`, `20261121170000_seguridad_endurece_observabilidad`, `20261121180000_ingesta_detalle_numerico`, `20261122100000_alerta_gasto_mayor`. Orden para el aviso de gasto mayor: (1) aplicar la migración `20261122100000_alerta_gasto_mayor.sql`; (2) desplegar la función `notify` (`recipients.ts` + `index.ts`); (3) publicar la app. Con la función nueva y sin migración todos reciben el aviso normal. Programar `select public.purge_observability(90)` (pg_cron o tarea) para que la retención de `client_errors` y `security_events` funcione: la función existe pero nada la llama.
+4. Migraciones nuevas para la base (staging probadas; en producción las aplica el workflow `Despliegue` al fusionar a `main`, ver arriba): `20261121160000`, `20261121170000_seguridad_endurece_observabilidad`, `20261121180000_ingesta_detalle_numerico`, `20261122100000_alerta_gasto_mayor`. Orden para el aviso de gasto mayor: (1) fusionar a `main` (el workflow aplica la migración `20261122100000_alerta_gasto_mayor.sql` y despliega `notify`, con `recipients.ts` + `index.ts`); (2) instalar/publicar la app (APK) después. Con la función nueva y sin migración todos reciben el aviso normal. Con la función nueva y sin migración todos reciben el aviso normal. Programar `select public.purge_observability(90)` (pg_cron o tarea) para que la retención de `client_errors` y `security_events` funcione: la función existe pero nada la llama.
 
 ## 6. Crear el Release en BORRADOR (lo ejecuta el dueño)
+Orden: primero se fusiona el PR a `main` (el workflow `Despliegue` aplica la migración y despliega `notify`); después se instala el APK; y el Release se publica DESPUÉS de fusionar el PR. `<X.Y.Z>` es la `version` de `web/package.json`.
 ```bash
 cd dist-apk && sha256sum -c nido-release.apk.sha256
-gh release create v1.0 --draft --title "Contigo 1.0 (Android)" \
+gh release create v<X.Y.Z> --draft --title "Contigo <X.Y.Z> (Android)" \
   --notes "Instalar: ver docs/mobile/release.md. Huella del certificado SHA-256: 41:1E:94:AC:69:94:77:B6:A3:06:18:FC:48:E6:B9:B3:2E:4D:54:F1:37:10:8F:27:AF:98:07:EF:E1:A8:65:B6" \
   nido-release.apk nido-release.apk.sha256
-# Revise el borrador en GitHub; publíquelo con: gh release edit v1.0 --draft=false
+# Revise el borrador en GitHub; publíquelo con: gh release edit v<X.Y.Z> --draft=false
 ```
 No suba `nido-debug.apk`. Verifique `VITE_API_BASE` antes (punto 1).
 

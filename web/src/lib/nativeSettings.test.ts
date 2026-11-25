@@ -226,3 +226,31 @@ describe('errores nuevos del teléfono', () => {
     expect(src('../components/BankConsentSheet.tsx')).toMatch(/pluginErrorText\(e\)/)
   })
 })
+
+describe('avisos no leídos: un texto propio por motivo', () => {
+  const REASONS_UI = ['NO_AMOUNT', 'INCOME', 'BANK_OFF', 'LOGIN_REQUIRED', 'FOREIGN_CURRENCY', 'STALE_DATE', 'LOW_CONFIDENCE', 'DUPLICATE', 'QUEUE_FULL', 'CAP_EXCEEDED', 'CATEGORY_UNKNOWN', 'NOTIFICATIONS_OFF', 'PACKAGE_NOT_ALLOWED']
+  it('compra en dólares: dice que es otra moneda y qué hacer, aunque el teléfono mande la pista «sin monto»', () => {
+    const [r] = parseDiagnosticsDetailed({ items: [{ reason: 'FOREIGN_CURRENCY', hint: 'NO_AMOUNT_IN_TITLE_OR_TEXT', maskedText: 'Compra US$ ##,## en ****', at: 1 }] })
+    expect(r!.reason).toBe('Compra en otra moneda')
+    expect(r!.detail).toBe('Es una compra en otra moneda (por ejemplo dólares). Anótala tú con el monto en pesos que cobró tu banco.')
+    expect(r!.detail).not.toMatch(/sin monto/)
+  })
+  it('cada motivo tiene título y explicación distintos, en español simple y sin código', () => {
+    const titles = new Set<string>()
+    const details = new Set<string>()
+    for (const code of REASONS_UI) {
+      const [r] = parseDiagnosticsDetailed({ items: [{ reason: code, at: 1 }] })
+      expect(r!.reason, code).not.toBe('No pude leerlo')
+      expect(r!.detail, code).not.toBe(diagnosticDetail('ALGO_RARO'))
+      expect(r!.detail, code).not.toMatch(/[A-Z]{3,}_[A-Z]|paquete|listener|plugin/)
+      titles.add(r!.reason)
+      details.add(r!.detail)
+    }
+    expect(titles.size).toBe(REASONS_UI.length)
+    expect(details.size).toBe(REASONS_UI.length)
+  })
+  it('la pista solo aplica cuando el motivo es «sin monto»', () => {
+    const [r] = parseDiagnosticsDetailed({ items: [{ reason: 'INCOME', hint: 'EMPTY', at: 1 }] })
+    expect(r!.detail).toBe(diagnosticDetail('INCOME'))
+  })
+})

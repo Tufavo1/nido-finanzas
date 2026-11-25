@@ -23,5 +23,29 @@ object BankPresets {
         BankPreset(WALLET_ID, "Billetera Google"),
     )
 
+    /**
+     * UNICA lista nativa de fuentes con captura de avisos VERIFICADA (decision del dueno, 2026-11-24). Espejo de `CAPTURE_AVAILABLE` en
+     * web/src/lib/bankAuto.ts. Santander, Banco Estado y Banco de Chile siguen en [ALL] y conservan sus reglas de deteccion
+     * (BankMatcher), pero no se ofrecen, no se encienden y sus avisos no se leen ([CaptureSources]). Para reactivar uno basta agregar
+     * su id aqui (y `available: true` en el front).
+     */
+    val VERIFIED: Set<String> = setOf("banco-falabella", WALLET_ID)
+
     fun byId(id: String): BankPreset? = ALL.firstOrNull { it.id == id }
+}
+
+/**
+ * Reglas puras de que fuentes se ofrecen y se encienden. Una fuente NO verificada nunca se enciende ni se lee; si la persona la tenia
+ * encendida de antes, se sigue mostrando (solo para apagarla) y su preferencia guardada NO se borra: al reactivarla el dueno, vuelve
+ * tal como estaba. [verified] se inyecta solo en pruebas.
+ */
+object CaptureSources {
+    fun isVerified(bankId: String, verified: Set<String> = BankPresets.VERIFIED): Boolean = bankId in verified
+
+    /** getDetectedBanks: las verificadas (con not_found) y, de las ocultas, solo las ya encendidas con su app. */
+    fun visibleDetected(detected: List<DetectedBank>, autoOn: (String) -> Boolean, verified: Set<String> = BankPresets.VERIFIED): List<DetectedBank> =
+        detected.filter { isVerified(it.bankId, verified) || (it.status != DetectStatus.not_found && autoOn(it.bankId)) }
+
+    /** setBankAutoSave: apagar siempre se puede; encender, solo una fuente verificada. */
+    fun canSetAutoSave(bankId: String, enabled: Boolean, verified: Set<String> = BankPresets.VERIFIED): Boolean = !enabled || isVerified(bankId, verified)
 }

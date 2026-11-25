@@ -1,4 +1,5 @@
 /** Del sueldo bruto al líquido en Chile: AFP, salud, seguro de cesantía e impuesto de segunda categoría. */
+import { pctText } from './format'
 
 /**
  * Valores de referencia. Se revisan a mano al menos una vez al año (y cuando cambie alguna ley):
@@ -77,7 +78,7 @@ export function calcularLiquido(opts: { bruto: number; contrato: Contrato; afp: 
   const bruto = Math.max(0, Math.round(opts.bruto))
   if (opts.contrato === 'honorarios') {
     const monto = Math.round(bruto * CL.honorarios)
-    return resultado(bruto, [{ key: 'retencion', label: `Retención de honorarios (${String(CL.honorarios * 100).replace('.', ',')} %)`, monto }], false)
+    return resultado(bruto, [{ key: 'retencion', label: `Retención de honorarios (${pctText(CL.honorarios * 100)})`, monto }], false)
   }
   const afp = AFPS.find((a) => a.id === opts.afp) ?? AFPS[0]
   const topeAfp = CL.topeAfpUf * CL.uf
@@ -90,7 +91,7 @@ export function calcularLiquido(opts: { bruto: number; contrato: Contrato; afp: 
   const impuesto = impuestoUnico(bruto - fondo - comision - salud - cesantia)
   const lista: Descuento[] = [
     { key: 'afp', label: 'AFP (ahorro para tu jubilación)', monto: fondo },
-    { key: 'comision', label: `Comisión de la AFP ${afp.name} (${String(afp.comision).replace('.', ',')} %)`, monto: comision },
+    { key: 'comision', label: `Comisión de la AFP ${afp.name} (${pctText(afp.comision)})`, monto: comision },
     { key: 'salud', label: 'Salud (7 %)', monto: salud },
   ]
   if (cesantia > 0) lista.push({ key: 'cesantia', label: 'Seguro de cesantía (0,6 %)', monto: cesantia })

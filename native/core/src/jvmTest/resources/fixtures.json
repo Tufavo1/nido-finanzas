@@ -63,16 +63,13 @@
    "text": "Compra en 3 cuotas sin interés por $45.000 en PRUEBA ELECTRO. Primera cuota: $15.000.",
    "postedAtMillis": 1795273230000,
    "expected": {
-    "amountClp": 15000,
+    "amountClp": 45000,
     "merchant": "Prueba Electro",
     "kind": "EXPENSE",
     "confidence": "HIGH",
-    "installment": {
-     "n": 1,
-     "total": 3
-    }
+    "installment": null
    },
-   "nota": "se registra la cuota (RIESGO-04)"
+   "nota": "compra en cuotas: se registra el TOTAL y queda pendiente (decision del dueno 2026-11-24; antes RIESGO-04 registraba la cuota)"
   },
   {
    "id": "F05",
@@ -500,16 +497,13 @@
    "text": "Compra en 6 cuotas por $60.000 en TIENDA DEMO. Cuota 1 de 6: $10.000.",
    "postedAtMillis": 1795273230000,
    "expected": {
-    "amountClp": 10000,
+    "amountClp": 60000,
     "merchant": "Tienda Demo",
     "kind": "EXPENSE",
     "confidence": "HIGH",
-    "installment": {
-     "n": 1,
-     "total": 6
-    }
+    "installment": null
    },
-   "nota": "borde: cargo en cuotas"
+   "nota": "borde: compra en 6 cuotas, se registra el TOTAL (6 x 10.000) y queda pendiente (decision del dueno 2026-11-24)"
   },
   {
    "id": "E05",

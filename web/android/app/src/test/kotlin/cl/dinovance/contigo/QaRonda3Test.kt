@@ -45,7 +45,8 @@ class QaRonda3Test {
     private var now = 1_795_273_230_000L // 2026-11-21 (Chile)
     private val repo: DraftRepository = EncryptedDraftRepository(MemoryStorage(), JvmAesCipher()) { now }
     private var autoOn = true
-    private var assoc: String? = "santander"
+    // Migrado (2026-11-24): banco sintetico VERIFICADO; Santander ya no se captura (BankPresets.VERIFIED)
+    private var assoc: String? = "banco-falabella"
     private var activeOwner: String? = owner
     private var profile: AutoProfile? = AutoProfile(owner, uid, hid, uid, true, mapOf(MerchantKey.of("Cafe Demo Norte") to cat))
     private val logStore = object : TextStore { var v: String? = null; override fun read() = v; override fun write(value: String?) { v = value } }
@@ -72,7 +73,7 @@ class QaRonda3Test {
         // banco apagado
         autoOn = false; p.process(bank, null, text("$1.000"), now); now += 200_000; autoOn = true
         // banco sin app asociada (asociacion nula)
-        assoc = null; p.process(bank, null, text("$2.000"), now); now += 200_000; assoc = "santander"
+        assoc = null; p.process(bank, null, text("$2.000"), now); now += 200_000; assoc = "banco-falabella"
         // paquete en lista blanca pero no asociado a ningun banco
         p.process("cl.demo.otro", null, text("$3.000"), now); now += 200_000
         // sin perfil
@@ -274,7 +275,8 @@ class QaRonda3Test {
     @Test
     fun `r3-5c borrar todo lo capturado limpia borradores, registro y recientes`() {
         val b = body("clearCaptured")
-        assertTrue(b.contains("drafts.clear") && b.contains("autoLog.clear") && b.contains("recent.clear"))
+        // El borrado total de la cola paso a DraftCleanup.clearAllNow (bajo el cerrojo del envio); su efecto lo prueba EnviarAhoraYVaciarTest
+        assertTrue((b.contains("drafts.clear") || b.contains("DraftCleanup.clearAllNow(")) && b.contains("autoLog.clear") && b.contains("recent.clear"))
     }
 
     @Test

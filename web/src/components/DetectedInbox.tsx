@@ -13,6 +13,9 @@ import { suggestCategory } from '../lib/categorize'
 import type { AutoSavedItem, NativeDraft } from '../lib/nativeBridge'
 import { logError } from '../lib/safeLog'
 import type { DebtLite } from '../lib/debtMatch'
+import { detectedNote } from '../lib/detectedNote'
+import { cuotasText, installmentCase, installmentInfo, purchaseLabel, totalHint } from '../lib/installments'
+import { DIAGNOSTIC_REASONS } from '../lib/bankConsent'
 
 interface Props {
   /** null = cargando */
@@ -24,6 +27,8 @@ interface Props {
   /** Guarda el gasto con la categoría elegida; si falla lanza el error */
   onSaveWith: (d: NativeDraft, categoryId: string) => Promise<void>
   onIgnore: (d: NativeDraft) => void
+  /** «Es una cuota de una compra que ya anoté»: descarta el aviso sin crear ningún gasto */
+  onPriorCharge?: (d: NativeDraft) => void
   onRetry: () => void
   onSettings: () => void
   /** Borradores que la persona decidió conservar aunque parezcan repetidos */
@@ -58,7 +63,7 @@ const GROUPS = [
 const dayFmt = new Intl.DateTimeFormat('es-CL', { day: 'numeric', month: 'short' })
 
 /** «Movimientos detectados»: lo que el teléfono encontró en tus avisos del banco, para que tú lo apruebes. */
-export default function DetectedInbox({ drafts, failed, categories, history, onReview, onSaveWith, onIgnore, onRetry, onSettings, kept, onKeepBoth, appNames = new Map(), autoSaved = [], onUndoAuto, debts = [], debtsNote, onSaveIncome, onPayDebt, onPayNewDebt, monthLeft }: Props) {
+export default function DetectedInbox({ drafts, failed, categories, history, onReview, onSaveWith, onIgnore, onPriorCharge, onRetry, onSettings, kept, onKeepBoth, appNames = new Map(), autoSaved = [], onUndoAuto, debts = [], debtsNote, onSaveIncome, onPayDebt, onPayNewDebt, monthLeft }: Props) {
   const [picking, setPicking] = useState<NativeDraft | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -165,22 +170,53 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
             />
           )
         }
-        const suggested = d.merchant ? suggestCategory(d.merchant, categories, history) : null
+        const cuotas = installmentCase(d)
+        if (cuotas === 'PRIOR_CHARGE') {
+          const title = `Cuota de ${money(d.amountClp)}`
+          return (
+            <section className="card detected kind-expense" key={d.id} aria-label={`${title} ${d.merchant ?? ''}`}>
+              <div className="row between">
+                <strong>{DIAGNOSTIC_REASONS['INSTALLMENT_CHARGE']?.title}</strong>
+                <span className="muted small-text">{dayFmt.format(d.postedAtMillis)}</span>
+              </div>
+              <span className="num">
+                {title}
+                {d.merchant ? ` · ${d.merchant}` : ''}
+              </span>
+              {d.installment && <span className="muted small-text">Cuota {d.installment.n} de {d.installment.total}.</span>}
+              <span className="muted small-text">{DIAGNOSTIC_REASONS['INSTALLMENT_CHARGE']?.detail}</span>
+              <div className="row detected-actions">
+                <button type="button" className="btn" onClick={() => (onPriorCharge ?? onIgnore)(d)}>
+                  Es una cuota de una compra que ya anoté
+                </button>
+                <button type="button" className="btn ghost small" onClick={() => onIgnore(d)}>
+                  Ignorar
+                </button>
+              </div>
+            </section>
+          )
+        }
+        const info = installmentInfo(d)
+        const noTotal = cuotas === 'NO_TOTAL'
+        const suggested = noTotal ? null : d.merchant ? suggestCategory(d.merchant, categories, history) : null
         const name = categories.find((c) => c.id === suggested)?.name
         const duplicate = marks.has(d.id) && !kept.has(d.id)
         return (
           <section className={duplicate ? 'card detected kind-expense dup' : 'card detected kind-expense'} key={d.id} aria-label={`${money(d.amountClp)} ${d.merchant ?? ''}`}>
             <div className="row between">
-              <strong className="num">{money(d.amountClp)}</strong>
+              <strong className="num">{noTotal ? `Cuota de ${money(d.amountClp)}` : money(d.amountClp)}</strong>
               <span className="muted small-text">{dayFmt.format(d.postedAtMillis)}</span>
             </div>
             <span>{d.merchant ?? 'Sin comercio'}</span>
+            {info && (
+              <span className="small-text" role="note">
+                {noTotal ? (info.value ? totalHint(info.value) : `Compra en ${cuotasText(info.count, undefined)}. Escribe el total de la compra.`) : purchaseLabel(info, d.amountClp)}
+              </span>
+            )}
             {d.account && <span className="muted small-text">Con {d.account}</span>}
             {d.medium === 'CREDIT' && <span className="muted small-text">Es con tarjeta de crédito: no baja tu saldo de débito, sube lo usado de la tarjeta.</span>}
-            <span className="muted small-text">
-              {name ? `Categoría sugerida: ${name}` : 'Aún no sabemos la categoría.'}
-              {d.sourcePackage ? ` Detectado desde ${sourceLabel(d.sourcePackage, appNames)}.` : ''}
-              {d.installment ? ` Cuota ${d.installment.n} de ${d.installment.total}.` : ''}
+            <span className="muted small-text" style={{ whiteSpace: 'pre-line' }}>
+              {detectedNote({ category: name ?? null, source: d.sourcePackage ? sourceLabel(d.sourcePackage, appNames) : null, installment: d.installment ?? null })}
             </span>
             {duplicate && (
               <div className="dup-note" role="note">
@@ -210,19 +246,21 @@ export default function DetectedInbox({ drafts, failed, categories, history, onR
                 Ignorar
               </button>
             </div>
-            <details className="more">
-              <summary>Más opciones</summary>
-              <div className="row">
-                {suggested && (
-                  <button type="button" className="btn ghost small" onClick={() => onReview(d)}>
-                    Revisar
-                  </button>
+            {!noTotal && (
+              <details className="more">
+                <summary>Más opciones</summary>
+                <div className="row">
+                  {suggested && (
+                    <button type="button" className="btn ghost small" onClick={() => onReview(d)}>
+                      Revisar
+                    </button>
                 )}
                 <button type="button" className="btn ghost small" onClick={() => setPicking(d)}>
                   Cambiar categoría
                 </button>
               </div>
             </details>
+            )}
           </section>
         )
       })}

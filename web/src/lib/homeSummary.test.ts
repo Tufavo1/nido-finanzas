@@ -1,5 +1,6 @@
+import { money } from './format'
 import { describe, expect, it } from 'vitest'
-import { dayExpenses, deltaText, latestExpenses, monthStatus } from './homeSummary'
+import { compareMonths, dayExpenses, latestExpenses, monthStatus } from './homeSummary'
 
 const e = (id: string, spent_on: string) => ({ id, spent_on })
 
@@ -55,17 +56,51 @@ describe('dayExpenses (H3)', () => {
   })
 })
 
-describe('deltaText (H4)', () => {
-  it('sin mes pasado para comparar no dice nada', () => {
-    expect(deltaText(null, true)).toBeNull()
+describe('compareMonths: una sola regla para Inicio y Gastos', () => {
+  const cur = true
+  it('base cero: sin datos del mes pasado', () => {
+    const c = compareMonths(467506, 0, cur)
+    expect(c.kind).toBe('none')
+    expect(c.text).toBe('Sin datos del mes pasado')
+  })
+  it('base minúscula (33.000 vs 467.506): no muestra porcentaje, muestra la diferencia en pesos', () => {
+    const c = compareMonths(467506, 33000, cur)
+    expect(c.kind).toBe('pesos')
+    expect(c.text).toBe(`${money(434506)} más que el mes pasado a esta fecha`)
+    expect(c.text).not.toMatch(/%/)
+    expect(c.figure).not.toMatch(/%/)
+  })
+  it('base normal: porcentaje', () => {
+    const c = compareMonths(150000, 100000, cur)
+    expect(c.kind).toBe('pct')
+    expect(c.text).toBe('50 % más que el mes pasado a esta fecha')
+    expect(c.figure).toBe('+50 %')
+  })
+  it('base menor a 20.000 pesos aunque sea proporcional: pesos', () => {
+    expect(compareMonths(30000, 15000, cur).kind).toBe('pesos')
+  })
+  it('base mayor que la actual (baja)', () => {
+    const c = compareMonths(60000, 100000, false)
+    expect(c.kind).toBe('pct')
+    expect(c.text).toBe('40 % menos que el mes pasado')
+    expect(c.figure).toBe('−40 %')
+  })
+  it('baja desde una base chica: pesos', () => {
+    expect(compareMonths(1000, 15000, cur).text).toBe(`${money(14000)} menos que el mes pasado a esta fecha`)
   })
   it('igual', () => {
-    expect(deltaText(0, true)).toBe('Igual que el mes pasado')
+    expect(compareMonths(100000, 100000, cur).text).toBe('Igual que el mes pasado')
   })
-  it('más, en el mes actual aclara «a esta fecha»', () => {
-    expect(deltaText(12, true)).toBe('12 % más que el mes pasado a esta fecha')
+  it('tope: más del triple, nunca un porcentaje sobre 300 %', () => {
+    const c = compareMonths(450000, 100000, cur)
+    expect(c.kind).toBe('triple')
+    expect(c.text).toBe('Más del triple que el mes pasado a esta fecha')
   })
-  it('menos, en un mes cerrado no aclara la fecha', () => {
-    expect(deltaText(-8, false)).toBe('8 % menos que el mes pasado')
+  it('mismos casos en tres alcances: Hogar, Yo y pareja usan su propia base', () => {
+    const hogar = compareMonths(467506, 33000, cur)
+    const yo = compareMonths(233753, 16500, cur)
+    const pareja = compareMonths(233753, 120000, cur)
+    expect([hogar.kind, yo.kind, pareja.kind]).toEqual(['pesos', 'pesos', 'pct'])
+    expect(pareja.text).toBe('95 % más que el mes pasado a esta fecha')
   })
 })

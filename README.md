@@ -152,12 +152,14 @@ docker exec supabase_db_nido psql -U postgres -c \
 
 ## Despliegue
 
+En producción esto lo hace UN solo proceso: el workflow `Despliegue` (`.github/workflows/deploy.yml`) al fusionar a `main` (aplica `supabase db push`, despliega `notify` y el Worker con wrangler). Los comandos siguientes son la alternativa manual.
+
 ### 1. Base de datos (Supabase)
 
 ```bash
 supabase link --project-ref <tu-proyecto>
-supabase db push                          # aplica las migraciones
-supabase functions deploy notify          # notificaciones push
+supabase db push                          # aplica las migraciones (alternativa manual)
+supabase functions deploy notify          # notificaciones push (alternativa manual)
 ```
 
 En el panel de Supabase: pega las plantillas de `supabase/templates/` en *Authentication → Email Templates*, activa el CAPTCHA de Turnstile con la clave **secreta**, y confirma que las confirmaciones de correo estén activas.

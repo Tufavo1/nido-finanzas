@@ -1,8 +1,10 @@
+import { plural } from './plural'
 import type { Debt, DebtPayment } from './data'
 import type { Cushion } from './numbers'
 import type { DebtInsights } from './debtAnalysis'
+import type { PaidExpense } from './finance'
 import { extraEffect } from './debtAnalysis'
-import { money } from './format'
+import { decimalEs, money } from './format'
 import { isNeed } from './analysis'
 import type { AlertTab } from './engine'
 
@@ -35,6 +37,8 @@ export interface PlanInput {
   debtInsights: DebtInsights
   debts: Debt[]
   debtPayments: DebtPayment[]
+  /** Compras con tarjeta desde el saldo informado de cada tarjeta */
+  expenses: PaidExpense[]
   /** Gastado en el mes por categoría (tuyo) */
   categories: { name: string; amount: number }[]
 }
@@ -60,7 +64,7 @@ export function buildPlan(input: PlanInput): Plan | null {
         key: 'ritmo',
         title: target > 0 ? `Baja tu gasto diario de ${money(Math.round(input.variableDaily))} a ${money(target)}` : 'Frena el gasto variable lo que queda del mes',
         amount: Math.round(gap),
-        why: target > 0 ? `Durante los ${daysLeft} días que quedan, eso cubre los ${money(Math.round(gap))} que faltan.` : `Aun sin gastar nada más, faltarían ${money(Math.round(gap))}: toca ver ingresos extra o postergar pagos.`,
+        why: target > 0 ? `Con ${plural(daysLeft, 'día', 'días')} por delante, eso cubre los ${money(Math.round(gap))} que faltan.` : `Aun sin gastar nada más, faltarían ${money(Math.round(gap))}: toca ver ingresos extra o postergar pagos.`,
         tab: 'home',
       })
     }
@@ -90,7 +94,7 @@ export function buildPlan(input: PlanInput): Plan | null {
 
   if (w.debt > 0 && costly) {
     const amt = round(spare * w.debt)
-    const eff = amt >= MIN_STEP ? extraEffect(input.debts, input.debtPayments, amt, now) : null
+    const eff = amt >= MIN_STEP ? extraEffect(input.debts, input.debtPayments, amt, now, input.expenses) : null
     if (amt >= MIN_STEP) {
       steps.push({
         key: 'deuda',
@@ -105,7 +109,7 @@ export function buildPlan(input: PlanInput): Plan | null {
     const missing = Math.max(0, cushion.target3 - cushion.saved)
     const amt = Math.min(round(spare * w.cushion), round(missing))
     if (amt >= MIN_STEP) {
-      steps.push({ key: 'imprevistos', title: `Aparta ${money(amt)} para imprevistos`, amount: amt, why: `Hoy cubres ${cushion.covered.toFixed(1).replace('.', ',')} meses de gastos; la primera meta son 3 (${money(cushion.target3)}).`, tab: 'goals' })
+      steps.push({ key: 'imprevistos', title: `Aparta ${money(amt)} para imprevistos`, amount: amt, why: `Hoy cubres ${decimalEs(cushion.covered, 1, 1)} meses de gastos; la primera meta son 3 (${money(cushion.target3)}).`, tab: 'goals' })
     }
   }
   const used = steps.reduce((s, x) => s + x.amount, 0)

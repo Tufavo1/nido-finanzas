@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Dinovance
 import { useCallback, useEffect, useState } from 'react'
 import BankAutoSection from './BankAutoSection'
+import { CAPTURE_AVAILABLE_TEXT } from '../lib/bankAuto'
 import BankConsentSheet from './BankConsentSheet'
 import BankTrustSheet from './BankTrustSheet'
 import CaptureDiagnostics from './CaptureDiagnostics'
@@ -15,7 +16,8 @@ import { activatedMessage, parseDetectedBanks, summarizeCapture } from '../lib/b
 import type { DetectedBank, DetectedBanksApi } from '../lib/bankConsent'
 import { effectivePackages } from '../lib/captureApps'
 import type { CaptureConfig } from '../lib/captureConfig'
-import { ContigoNative } from '../lib/nativeBridge'
+import { ContigoNative, countUnsentSaved, wipeCapturedAll } from '../lib/nativeBridge'
+import { wipeUnsentWarning } from '../lib/draftFlags'
 import { useCaptureStatus } from '../lib/useCaptureStatus'
 import { logError } from '../lib/safeLog'
 
@@ -47,6 +49,7 @@ function Switch({ id, label, hint, on, onChange }: { id: string; label: string; 
 export default function CaptureSettings({ config, onConfig, onToast, onCleared, onSendNow }: Props) {
   const { state, reload } = useCaptureStatus()
   const [confirmWipe, setConfirmWipe] = useState(false)
+  const [unsentToLose, setUnsentToLose] = useState(0)
   const [advanced, setAdvanced] = useState(false)
   const [connect, setConnect] = useState(false)
   const [trust, setTrust] = useState(false)
@@ -108,12 +111,19 @@ export default function CaptureSettings({ config, onConfig, onToast, onCleared, 
     }
   }
 
+  /** Paso 1: antes de preguntar se cuentan los guardados sin enviar, para decir qué se perdería */
+  async function askWipe() {
+    setUnsentToLose(await countUnsentSaved(ContigoNative).catch(() => 0))
+    setConfirmWipe(true)
+  }
+
+  /** Paso 2: borrado TOTAL; el aviso cuenta lo que de verdad se borró */
   async function wipeCaptured() {
     setConfirmWipe(false)
     try {
-      await ContigoNative.clearCaptured()
+      const lost = (await wipeCapturedAll(ContigoNative)) ?? unsentToLose
       onCleared()
-      onToast('Borrado\nSe borró todo lo capturado en este teléfono.', 'info')
+      onToast(lost > 0 ? `Borrado\n${lost === 1 ? 'Se perdió 1 gasto guardado que no se había enviado.' : `Se perdieron ${lost} gastos guardados que no se habían enviado.`}` : 'Borrado\nSe borró todo lo capturado en este teléfono.', 'info')
     } catch (e) {
       logError(e, 'CaptureSettings')
       onToast('No se pudo borrar\nInténtalo de nuevo.', 'error')
@@ -165,6 +175,7 @@ export default function CaptureSettings({ config, onConfig, onToast, onCleared, 
           <span className="muted small-text">Aún no hay bancos conectados.</span>
         )}
         <span className="muted small-text">Solo lee avisos de gasto de tus bancos; nunca claves ni mensajes personales.</span>
+        <span className="muted small-text">{CAPTURE_AVAILABLE_TEXT}</span>
         <div className="row">
           {(detected === null || detected.length === 0 || !status.listenerAllowed) && (
             <button type="button" className="btn small" onClick={() => setConnect(true)}>
@@ -201,8 +212,8 @@ export default function CaptureSettings({ config, onConfig, onToast, onCleared, 
 
           <section className="card">
             <strong>Borrar todo lo capturado</strong>
-            <span className="muted small-text">Quita de este teléfono lo detectado que aún no confirmaste. Lo ya guardado no se toca.</span>
-            <button type="button" className="btn danger small" onClick={() => setConfirmWipe(true)}>
+            <span className="muted small-text">Borra del teléfono todo lo detectado, también lo guardado que aún no se envió. Los gastos que ya están en tu cuenta no se tocan.</span>
+            <button type="button" className="btn danger small" onClick={() => void askWipe()}>
               Borrar lo capturado
             </button>
           </section>
@@ -228,7 +239,8 @@ export default function CaptureSettings({ config, onConfig, onToast, onCleared, 
         <Modal onClose={() => setConfirmWipe(false)} label="Borrar lo capturado">
           <div className="stack picker">
             <h2 className="perm-title">¿Borrar lo capturado?</h2>
-            <p className="muted">Se borran los gastos detectados que están esperando en este teléfono.</p>
+            <p className="muted">Se borran los gastos detectados que están en este teléfono.</p>
+            {wipeUnsentWarning(unsentToLose) && <p className="muted" role="alert"><strong>{wipeUnsentWarning(unsentToLose)}</strong></p>}
             <button type="button" className="btn danger" onClick={() => void wipeCaptured()}>
               Sí, borrar
             </button>

@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Dinovance
 import { describe, expect, it } from 'vitest'
-import { buildAutoCategories, parseAutoSaved, ownerKeyOf, pendingToSendCount, createPluginSecureBackend, needsPermissionGuide, parseNativeDraft, parseNotifyingApp, readDrafts, readRecentApps, type CaptureStatus } from './nativeBridge'
+import { buildAutoCategories, parseAutoSaved, ownerKeyOf, pendingToSendCount, createPluginSecureBackend, needsPermissionGuide, clearPendingDrafts, parseNativeDraft, parseSyncNowResult, wipeCapturedAll, countUnsentSaved, parseNotifyingApp, readDrafts, readRecentApps, type CaptureStatus } from './nativeBridge'
 
 const valid = {
   id: 'd-1',
@@ -191,5 +191,127 @@ describe('adaptDiagnostics: pista aditiva', () => {
     const r = adaptDiagnostics({ items: [{ reason: 'NO_AMOUNT', atMillis: 1, hint: 'EMPTY', shape: { title: 0 } }, { reason: 'INCOME', atMillis: 2, hint: null }] })
     expect(r.items[0]).toEqual({ reason: 'NO_AMOUNT', at: 1, hint: 'EMPTY' })
     expect(r.items[1]).toEqual({ reason: 'INCOME', at: 2 })
+  })
+})
+
+describe('parseNativeDraft: cuotas (installmentRole / Count / ValueClp)', () => {
+  const cuotas = { ...valid, installmentRole: 'PURCHASE', installmentCount: 3, installmentValueClp: 10_000 }
+  it('conserva los tres campos válidos', () => {
+    expect(parseNativeDraft(cuotas)).toMatchObject({ installmentRole: 'PURCHASE', installmentCount: 3, installmentValueClp: 10_000 })
+    expect(parseNativeDraft({ ...cuotas, installmentRole: 'PRIOR_CHARGE' })).toMatchObject({ installmentRole: 'PRIOR_CHARGE' })
+  })
+  it('null o ausentes: el borrador no los lleva (borradores antiguos)', () => {
+    const nulos = parseNativeDraft({ ...valid, installmentRole: null, installmentCount: null, installmentValueClp: null })!
+    expect(nulos.installmentRole).toBeUndefined()
+    expect(nulos.installmentCount).toBeUndefined()
+    expect(nulos.installmentValueClp).toBeUndefined()
+    expect(parseNativeDraft(valid)).toEqual(valid)
+  })
+  it.each([
+    ['rol desconocido', { installmentRole: 'OTRO' }, 'installmentRole'],
+    ['rol no texto', { installmentRole: 1 }, 'installmentRole'],
+    ['cantidad 1', { installmentCount: 1 }, 'installmentCount'],
+    ['cantidad decimal', { installmentCount: 2.5 }, 'installmentCount'],
+    ['cantidad texto', { installmentCount: '3' }, 'installmentCount'],
+    ['cuota cero', { installmentValueClp: 0 }, 'installmentValueClp'],
+    ['cuota negativa', { installmentValueClp: -5 }, 'installmentValueClp'],
+    ['cuota decimal', { installmentValueClp: 10.5 }, 'installmentValueClp'],
+    ['cuota sobre el límite', { installmentValueClp: 10_000_000_000 }, 'installmentValueClp'],
+  ])('%s: descarta solo ese campo, no el borrador', (_n, malo, campo) => {
+    const d = parseNativeDraft({ ...cuotas, ...malo })
+    expect(d).not.toBeNull()
+    expect(d).not.toHaveProperty(campo)
+    expect(d).toMatchObject({ id: 'd-1', amountClp: 12_990 })
+    for (const otro of ['installmentRole', 'installmentCount', 'installmentValueClp'].filter((c) => c !== campo)) expect(d).toHaveProperty(otro)
+  })
+})
+
+describe('clearPendingDrafts: vaciar la bandeja sin perder lo guardado', () => {
+  const row = (id: string, status: string) => ({ ...valid, id, status })
+  it('borra solo los PENDING con removeDraft y conserva los CONFIRMED sin enviar', async () => {
+    const removed: string[] = []
+    const plugin = {
+      listDrafts: async () => ({ drafts: [row('a', 'PENDING'), row('b', 'CONFIRMED'), row('c', 'PENDING'), null] }),
+      removeDraft: async ({ id }: { id: string }) => void removed.push(id),
+    }
+    expect(await clearPendingDrafts(plugin)).toEqual({ removed: 2, keptSaved: 1 })
+    expect(removed).toEqual(['a', 'c'])
+  })
+  it('si un borrado falla lanza (la pantalla avisa) y no sigue borrando a ciegas', async () => {
+    const plugin = { listDrafts: async () => ({ drafts: [row('a', 'PENDING'), row('b', 'PENDING')] }), removeDraft: async () => Promise.reject(new Error('x')) }
+    await expect(clearPendingDrafts(plugin)).rejects.toThrow()
+  })
+  it('un confirmado nunca se borra al vaciar la bandeja', async () => {
+    const removed: string[] = []
+    const plugin = { listDrafts: async () => ({ drafts: [row('z', 'CONFIRMED')] }), removeDraft: async ({ id }: { id: string }) => void removed.push(id) }
+    expect(await clearPendingDrafts(plugin)).toEqual({ removed: 0, keptSaved: 1 })
+    expect(removed).toEqual([])
+  })
+})
+
+describe('parseNativeDraft: categoryId que entrega el plugin', () => {
+  it('conserva un categoryId válido', () => {
+    expect(parseNativeDraft({ ...valid, categoryId: 'cat-1' })).toMatchObject({ categoryId: 'cat-1' })
+  })
+  it.each([['vacío', ''], ['número', 5], ['con espacios o símbolos', 'a b<script>'], ['demasiado largo', 'a'.repeat(65)], ['null', null]])('descarta un categoryId %s sin perder el borrador', (_n, categoryId) => {
+    const d = parseNativeDraft({ ...valid, categoryId })
+    expect(d).not.toBeNull()
+    expect(d).not.toHaveProperty('categoryId')
+  })
+})
+
+describe('parseSyncNowResult: lo que responde syncNow', () => {
+  it('lee las cuentas y el motivo', () => {
+    expect(parseSyncNowResult({ sent: 2, failed: 1, needsPerson: 0, result: 'RETRY' })).toEqual({ sent: 2, failed: 1, needsPerson: 0, result: 'RETRY' })
+  })
+  it.each([undefined, null, 'ok', { sent: 1 }, { sent: -1, failed: 0, needsPerson: 0, result: 'ALL_SENT' }, { sent: 1, failed: 0, needsPerson: 0, result: 'RARO' }])('un nativo viejo o una respuesta rara da null: %j', (raw) => {
+    expect(parseSyncNowResult(raw)).toBeNull()
+  })
+})
+
+describe('clearPendingDrafts con clearPending nativo', () => {
+  const row = (id: string, status: string) => ({ ...valid, id, status })
+  it('usa clearPending y no el bucle de removeDraft', async () => {
+    const removed: string[] = []
+    const plugin = {
+      listDrafts: async () => ({ drafts: [row('b', 'CONFIRMED')] }),
+      removeDraft: async ({ id }: { id: string }) => void removed.push(id),
+      clearPending: async () => ({ removed: 3 }),
+    }
+    expect(await clearPendingDrafts(plugin)).toEqual({ removed: 3, keptSaved: 1 })
+    expect(removed).toEqual([])
+  })
+  it('STORE_UNAVAILABLE se propaga: no se borró nada y no se cae al bucle', async () => {
+    const removed: string[] = []
+    const plugin = {
+      listDrafts: async () => ({ drafts: [row('a', 'PENDING')] }),
+      removeDraft: async ({ id }: { id: string }) => void removed.push(id),
+      clearPending: async () => Promise.reject(Object.assign(new Error('x'), { code: 'STORE_UNAVAILABLE' })),
+    }
+    await expect(clearPendingDrafts(plugin)).rejects.toMatchObject({ code: 'STORE_UNAVAILABLE' })
+    expect(removed).toEqual([])
+  })
+  it('un nativo viejo (UNIMPLEMENTED) usa el bucle de siempre', async () => {
+    const removed: string[] = []
+    const plugin = {
+      listDrafts: async () => ({ drafts: [row('a', 'PENDING'), row('b', 'CONFIRMED')] }),
+      removeDraft: async ({ id }: { id: string }) => void removed.push(id),
+      clearPending: async () => Promise.reject(Object.assign(new Error('x'), { code: 'UNIMPLEMENTED' })),
+    }
+    expect(await clearPendingDrafts(plugin)).toEqual({ removed: 1, keptSaved: 1 })
+    expect(removed).toEqual(['a'])
+  })
+})
+
+describe('borrado total de lo capturado', () => {
+  const row = (id: string, status: string) => ({ ...valid, id, status })
+  it('cuenta solo los CONFIRMED sin enviar', async () => {
+    expect(await countUnsentSaved({ listDrafts: async () => ({ drafts: [row('a', 'PENDING'), row('b', 'CONFIRMED'), row('c', 'CONFIRMED')] }) })).toBe(2)
+  })
+  it('devuelve lo realmente borrado que informa el nativo', async () => {
+    expect(await wipeCapturedAll({ clearCaptured: async () => ({ unsentRemoved: 2 }) })).toBe(2)
+  })
+  it('con un nativo viejo (sin respuesta) devuelve null', async () => {
+    expect(await wipeCapturedAll({ clearCaptured: async () => undefined })).toBeNull()
   })
 })

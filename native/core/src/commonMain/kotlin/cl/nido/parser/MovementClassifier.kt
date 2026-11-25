@@ -12,16 +12,24 @@ internal data class Movement(val type: Kind, val isWithdrawal: Boolean, val isTr
 internal object MovementClassifier {
     private val INCOME_WORDS = listOf(
         "recibiste", "abono", "deposit", "te han transferido", "te transfirieron", "transferencia recibida",
-        "devolucion", "devolvimos", "reverso", "reversa", "reversad", "anulaste", "anulacion", "anulad", "reembolso",
+        "devolucion", "devolvimos", "devuelt", "reverso", "reversa", "reversad", "anulaste", "anulacion", "anulad", "anulo\\b", "anulamos",
+        "reembolso",
     )
     private val INCOME = Regex(INCOME_WORDS.joinToString("|", prefix = "\\b(?:", postfix = ")"))
     private val RECEIVED = Regex("^recibiste\\b|\\b(?:te han transferido|te transfirieron|transferencia recibida)\\b")
-    private val REFUND = Regex("\\b(?:abono|deposit|devolucion|devolvimos|reverso|reversa|reversad|anulaste|anulacion|anulad|reembolso)")
+    private val REFUND = Regex("\\b(?:abono|deposit|devolucion|devolvimos|devuelt|reverso|reversa|reversad|anulaste|anulacion|anulad|anulo\\b|anulamos|reembolso)")
     // «Giro»/«Giraste» es como se dice en Chile un retiro de efectivo.
-    private val WITHDRAWAL = Regex("\\b(?:retiro|retiraste|giro|giraste)\\b")
+    // «Avance» / «Super Avance» (CMR): plata en efectivo con cargo a la tarjeta; como un giro, sin comercio y confianza BAJA.
+    private val WITHDRAWAL = Regex("\\b(?:retiro|retiraste|giro|giraste|avances?)\\b")
     private val TRANSFER = Regex("\\btransfer")
     // «Pagaste $34.400 [14:35] a tu CMR Mastercard Premium»: pago a la propia tarjeta o linea. «Pagaste $5.000 en Cafe» sigue siendo gasto.
-    private val DEBT_PAYMENT = Regex("\\bpagaste\\b(?:[^a-z]|clp|a las|hrs?|el)*\\ba\\s+(?:tu|su)\\s+(?:cmr|tarjeta|credito|linea)\\b")
+    // Tambien el acuse del banco: «Recibimos tu pago de $X a tu CMR», «Pago recibido por $X en tu CMR», «Pago de tu CMR por $X».
+    private val DEBT_PAYMENT = Regex(
+        "\\bpagaste\\b(?:[^a-z]|clp|a las|hrs?|el)*\\ba\\s+(?:tu|su)\\s+(?:cmr|tarjeta|credito|linea)\\b" +
+            "|\\b(?:recibimos|registramos)\\s+(?:tu|el|un|su)\\s+pago\\b" +
+            "|\\bpago\\s+(?:recibido|registrado)\\b" +
+            "|\\bpago\\s+(?:de|a)\\s+(?:tu|su)\\s+(?:cmr|tarjeta|linea)\\b",
+    )
 
     fun classify(rawText: String): Movement {
         val t = TextNormalizer.forKeywords(rawText)

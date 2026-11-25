@@ -18,6 +18,16 @@ function fakeStorage(init: Record<string, string>) {
 
 afterEach(() => vi.unstubAllGlobals())
 
+describe('wipeSessionData: token de avisos', () => {
+  it('M1 borra el token de push guardado (clave nueva y la vieja)', () => {
+    const ls = fakeStorage({ 'contigo-push-token-u1': 't', 'contigo.push.token.u1': 't', 'contigo-theme': 'dark' })
+    vi.stubGlobal('localStorage', ls)
+    vi.stubGlobal('sessionStorage', fakeStorage({}))
+    wipeSessionData()
+    expect(ls.keys()).toEqual(['contigo-theme'])
+  })
+})
+
 describe('wipeSessionData', () => {
   it('borra lo personal y conserva las preferencias del aparato', () => {
     const ls = fakeStorage({

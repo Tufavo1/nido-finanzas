@@ -66,14 +66,36 @@ class CaptureProcessor(
     private val purchases: PurchaseMemory = PurchaseMemory(MemoryTextStore()),
     /** Zona de la persona en un instante (America/Santiago): solo para notar un aviso viejo por la fecha de su texto. */
     private val utcOffset: (Long) -> Long = { SANTIAGO.getOffset(it).toLong() },
+    /** Fuentes con captura verificada (BankPresets.VERIFIED); se inyecta solo en pruebas. */
+    private val verifiedSources: Set<String> = BankPresets.VERIFIED,
 ) {
     private class Stored(val fingerprint: String, val key: String, val amount: Long, var blankMerchant: Boolean, val draftId: String, val at: Long)
 
     // Solo recuerda lo GUARDADO; un descarte no renueva la ventana (H-04).
     private val recent = ArrayList<Stored>()
 
-    /** RF-01: el servicio pregunta ANTES de leer el contenido del aviso. */
-    fun accepts(packageName: String): Boolean = packageName != ownPackage && packageName in whitelist()
+    /**
+     * RF-01: el servicio pregunta ANTES de leer el contenido del aviso. Una app asociada a una fuente NO verificada nunca se acepta,
+     * aunque este en la lista o la persona la tuviera encendida: no se lee su texto, no crea borrador ni se guarda sola (2026-11-24).
+     */
+    fun accepts(packageName: String): Boolean = packageName != ownPackage && packageName in whitelist() && !unverifiedSource(packageName)
+
+    /**
+     * Motivo para el diagnostico cuando [accepts] dice que no (sin leer el texto): SOURCE_UNAVAILABLE si es una fuente oculta que la
+     * persona tenia encendida; PACKAGE_NOT_ALLOWED si es una fuente verificada fuera de la lista (como antes); null en otro caso
+     * (app cualquiera, o fuente oculta que nunca se encendio: no se llena el diagnostico con avisos de un banco que no se uso).
+     */
+    fun rejection(packageName: String): DiagReason? {
+        val cfg = auto ?: return null
+        val bank = cfg.bankOfPackage(packageName) ?: return null
+        return when {
+            bank !in verifiedSources -> if (cfg.autoEnabled(bank)) DiagReason.SOURCE_UNAVAILABLE else null
+            packageName == ownPackage -> null
+            else -> DiagReason.PACKAGE_NOT_ALLOWED
+        }
+    }
+
+    private fun unverifiedSource(packageName: String): Boolean = auto?.bankOfPackage(packageName)?.let { it !in verifiedSources } == true
 
     fun process(packageName: String, title: String?, text: String?, postedAtMillis: Long): Outcome =
         process(IncomingNotice(packageName, title, text, postedAtMillis))
@@ -109,7 +131,12 @@ class CaptureProcessor(
         val candidate = parsed.candidate
         val raw = listOfNotNull(title?.takeIf { it.isNotBlank() }, text).joinToString(" | ")
         if (candidate == null) {
-            val reason = if (parsed.rejection == ParseRejection.DISCARDED) DiagReason.NOT_AN_EXPENSE else DiagReason.NO_AMOUNT
+            val reason = when (parsed.rejection) {
+                ParseRejection.DISCARDED -> DiagReason.NOT_AN_EXPENSE
+                // Compra en dolares u otra moneda: nunca se guarda como pesos; el diagnostico lo dice para anotarla a mano
+                ParseRejection.FOREIGN_CURRENCY -> DiagReason.FOREIGN_CURRENCY
+                else -> DiagReason.NO_AMOUNT
+            }
             diag(reason, bankId, raw, shape)
             return Outcome.NOT_A_MOVEMENT
         }
@@ -136,18 +163,28 @@ class CaptureProcessor(
         val key = dedupeKey(candidate.kind, candidate.amountClp, candidate.merchant)
         // Mismo aviso repetido: misma huella o mismo monto y comercio a menos de 45 s de lo ULTIMO GUARDADO (el sistema reenvia
         // el aviso, p. ej. al cambiar de minuto). Se mide en segundos, no por el minuto de la huella (R2-01); no renueva la ventana.
-        if (recent.any { (it.fingerprint == candidate.fingerprint || it.key == key) && now - it.at < SAME_NOTICE_WINDOW_MILLIS }) {
+        val repeated = recent.lastOrNull { (it.fingerprint == candidate.fingerprint || it.key == key) && now - it.at < SAME_NOTICE_WINDOW_MILLIS }
+        if (repeated != null) {
             diag(DiagReason.DUPLICATE, bankId, raw, shape)
+            // Se anota: si el sistema reenvia ESTE aviso (misma clave y mismo `when`) pasada la ventana, sigue siendo el mismo
+            remember(ids, n, repeated.draftId)
             return Outcome.DUPLICATE
         }
         // Un cargo sin comercio que se actualiza con mas detalle completa SU borrador, una sola vez (H-14, R2-02).
         // Con otro comercio despues ya no se fusiona: son compras distintas.
         val refined = recent.firstOrNull { it.blankMerchant && it.amount == candidate.amountClp && candidate.merchant != null && isExpense && now - it.at < REFINE_WINDOW_MILLIS }
         if (refined != null) {
-            val updated = repository.list().firstOrNull { it.id == refined.draftId }?.copy(candidate = candidate)
-            if (updated != null && repository.update(refined.draftId) { updated }) {
+            // Se completa dentro de update (leer-modificar-escribir de una vez) y SOLO si sigue esperando a la persona: si ya lo
+            // confirmo o se guardo solo, no se le cambia nada y el aviso cuenta como el mismo (B2).
+            var updated: Draft? = null
+            var settled = false
+            val found = repository.update(refined.draftId) { d ->
+                if (d.status == DraftStatus.PENDING) d.copy(candidate = candidate).also { updated = it } else d.also { settled = true }
+            }
+            if (found && (updated != null || settled)) {
                 refined.blankMerchant = false
-                if (!orphan) notifier.show(updated)
+                if (!orphan) updated?.let(notifier::show)
+                remember(ids, n, refined.draftId)
                 return Outcome.DUPLICATE
             }
         }
@@ -157,12 +194,14 @@ class CaptureProcessor(
         // perfil vigente y sin duda de duplicado. Cualquier otra cosa pide confirmacion como siempre.
         // Un aviso viejo reentregado (la fecha de su texto es de otro dia) nunca se guarda solo: queda para que la persona decida.
         val stale = parsed.staleDate
-        val autoCategory = if (orphan || maybe || stale || !isExpense) null else autoCategory(packageName, candidate, owner)
-        val autoIncome = !orphan && !maybe && !stale && isIncome && autoIncome(packageName, candidate, owner)
+        // Un aviso con dos montos distintos (compra y comision) tampoco: se pudo tomar el equivocado (M1).
+        val unsure = orphan || maybe || stale || parsed.ambiguousAmount
+        val autoCategory = if (unsure || !isExpense) null else autoCategory(packageName, candidate, owner)
+        val autoIncome = !unsure && isIncome && autoIncome(packageName, candidate, owner)
         val saveAlone = autoCategory != null || autoIncome
         val draft = Draft(
             newId(), candidate, postedAtMillis, now, if (saveAlone) DraftStatus.CONFIRMED else DraftStatus.PENDING,
-            packageName, owner, maybe, autoCategory, saveAlone,
+            packageName, owner, maybe, autoCategory, saveAlone, ambiguousAmount = parsed.ambiguousAmount, staleDate = stale,
         )
         if (!addOrMakeRoom(draft, owner)) {
             health.recordFailure("QueueFull", now)
@@ -179,8 +218,11 @@ class CaptureProcessor(
             diag(DiagReason.NO_SESSION, bankId, raw, shape)
             return Outcome.NO_SESSION
         }
-        if (parsed.ambiguousAmount) diag(DiagReason.AMBIGUOUS_AMOUNT, bankId, raw, shape)
-        if (draft.status == DraftStatus.PENDING && (isExpense || isIncome)) whyNotAuto(packageName, candidate, owner, maybe, bankId, raw, stale)
+        // Compra en cuotas: su motivo propio (no un «monto ambiguo» falso) y ya explica por que no se guardo sola
+        val installmentReason = installmentReason(candidate)
+        if (installmentReason != null) diag(installmentReason, bankId, raw, shape)
+        else if (parsed.ambiguousAmount) diag(DiagReason.AMBIGUOUS_AMOUNT, bankId, raw, shape)
+        if (installmentReason == null && draft.status == DraftStatus.PENDING && (isExpense || isIncome)) whyNotAuto(packageName, candidate, owner, maybe, bankId, raw, stale)
         if (!notificationsAllowed()) diag(DiagReason.NOTIFICATIONS_OFF, bankId, raw, shape)
         if (draft.autoSaved) {
             val merchant = candidate.merchant?.trim().orEmpty()
@@ -212,16 +254,37 @@ class CaptureProcessor(
     ): Boolean {
         val match = purchases.claim(n.packageName, c.amountClp, n.postedAtMillis, now) ?: return false
         val old = repository.list().firstOrNull { it.id == match.draftId }
-        if (old != null && old.status == DraftStatus.PENDING && old.candidate.kind == Kind.EXPENSE && old.candidate.merchant.isNullOrBlank() && !c.merchant.isNullOrBlank()) {
-            val merged = old.candidate.copy(merchant = c.merchant, confidence = c.confidence, account = old.candidate.account ?: c.account)
-            if (repository.update(old.id) { it.copy(candidate = merged) }) {
-                recent.firstOrNull { it.draftId == old.id }?.blankMerchant = false
-                if (!orphan) repository.list().firstOrNull { it.id == old.id }?.let(notifier::show)
+        if (old != null && old.status == DraftStatus.PENDING && old.candidate.kind == Kind.EXPENSE) {
+            // Se completa dentro de update (leer-modificar-escribir de una vez) y solo si sigue esperando a la persona
+            var changed: Draft? = null
+            repository.update(old.id) { d ->
+                val merged = if (d.status == DraftStatus.PENDING) completeFromMirror(d.candidate, c) else d.candidate
+                if (merged == d.candidate) d else d.copy(candidate = merged).also { changed = it }
+            }
+            changed?.let { d ->
+                recent.firstOrNull { it.draftId == d.id }?.blankMerchant = d.candidate.merchant.isNullOrBlank()
+                if (!orphan) notifier.show(d)
             }
         }
         diag(DiagReason.DUPLICATE, bankId, raw, shape)
         remember(ids, n, match.draftId)
         return true
+    }
+
+    /**
+     * Lo que el aviso espejo agrega a un borrador pendiente: el comercio (con su confianza y cuenta) si no tenia, una sola vez; y las
+     * cuotas si el espejo las trae (el banco dice «en 3 cuotas», Billetera no). Mismo monto: el total sigue siendo el mismo.
+     */
+    private fun completeFromMirror(old: cl.nido.parser.ParsedCandidate, c: cl.nido.parser.ParsedCandidate): cl.nido.parser.ParsedCandidate {
+        val fillMerchant = old.merchant.isNullOrBlank() && !c.merchant.isNullOrBlank()
+        val adoptPlan = old.installmentPlan == null && c.installmentPlan != null
+        return old.copy(
+            merchant = if (fillMerchant) c.merchant else old.merchant,
+            confidence = if (fillMerchant) c.confidence else old.confidence,
+            account = if (fillMerchant) old.account ?: c.account else old.account,
+            installment = if (adoptPlan) c.installment else old.installment,
+            installmentPlan = if (adoptPlan) c.installmentPlan else old.installmentPlan,
+        )
     }
 
     /** Resumenes del aviso: identidad (ranura + `when` + contenido), ranura (paquete + clave de Android) y monto. Solo hashes. */
@@ -266,6 +329,7 @@ class CaptureProcessor(
                     confidence = if (om.isNullOrBlank() && !c.merchant.isNullOrBlank()) c.confidence else old.candidate.confidence,
                     installment = old.candidate.installment ?: c.installment,
                     account = old.candidate.account ?: c.account,
+                    installmentPlan = old.candidate.installmentPlan ?: c.installmentPlan,
                 )
                 if (merged != old.candidate && repository.update(old.id) { it.copy(candidate = merged) }) {
                     recent.firstOrNull { it.draftId == old.id }?.blankMerchant = merged.merchant.isNullOrBlank()
@@ -275,6 +339,16 @@ class CaptureProcessor(
         }
         remember(ids, n, prev.draftId)
         return true
+    }
+
+    /** Motivo de una compra en cuotas o del cobro de una cuota (siempre pendiente); null si no es en cuotas. */
+    private fun installmentReason(c: cl.nido.parser.ParsedCandidate): DiagReason? {
+        val plan = c.installmentPlan ?: return null
+        return when {
+            plan.role == cl.nido.parser.InstallmentRole.PRIOR_CHARGE -> DiagReason.INSTALLMENT_CHARGE
+            c.installmentTotalUnknown -> DiagReason.INSTALLMENT_TOTAL_UNKNOWN
+            else -> DiagReason.INSTALLMENT_PURCHASE
+        }
     }
 
     /** Solo para bancos asociados: por que este gasto no se guardo solo (el primero que aplique). */

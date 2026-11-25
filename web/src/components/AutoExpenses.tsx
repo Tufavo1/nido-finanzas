@@ -2,28 +2,37 @@
 import { useCallback, useEffect, useState } from 'react'
 import AmountChoices from './AmountChoices'
 import BankConsentSheet from './BankConsentSheet'
+import ClearAllNotices from './ClearAllNotices'
+import { useClearNotices } from '../lib/useClearNotices'
 import Modal from './Modal'
+import WipeTray from './WipeTray'
 import ScanButton from './ScanButton'
 import { SkeletonCard } from './Skeleton'
 import SyncStatus from './SyncStatus'
 import type { Notify } from './Toast'
-import { BANKS, parseBankPresets, parseSyncState } from '../lib/bankAuto'
+import { CAPTURE_AVAILABLE, CAPTURE_AVAILABLE_TEXT, CAPTURE_UNAVAILABLE_LABEL, parseBankPresets, parseSyncState } from '../lib/bankAuto'
 import type { BankAutoApi, BankPreset, SyncState } from '../lib/bankAuto'
 import { parseDetectedBanks, readConsent, shouldAskConsent } from '../lib/bankConsent'
 import type { DetectedBank, DetectedBanksApi } from '../lib/bankConsent'
 import { effectivePackages } from '../lib/captureApps'
 import { MAX_CAP_CLP, MIN_CAP_CLP } from '../lib/captureConfig'
 import type { CaptureConfig } from '../lib/captureConfig'
-import { ContigoNative, readRecentApps } from '../lib/nativeBridge'
+import { ContigoNative, clearPendingDrafts, readDrafts, readRecentApps } from '../lib/nativeBridge'
 import type { NotifyingApp } from '../lib/nativeBridge'
 import { captureHeadline, clpLabel, openBatterySettings, parseDiagnosticsDetailed, pluginErrorText, readCaptureHealth } from '../lib/nativeSettings'
 import type { CaptureHealth, DetailedDiagnostic, Headline, HeadlineAction } from '../lib/nativeSettings'
+import { isNative } from '../lib/platform'
 import { rescanNow } from '../lib/rescan'
+import { useAppResume } from '../lib/useAppResume'
+import { countDrafts } from '../lib/wipeTray'
 import { logError } from '../lib/safeLog'
 import { useCaptureStatus } from '../lib/useCaptureStatus'
+import { DeadlineError, DIAGNOSTICS_DEADLINE_MS, withDeadline } from '../lib/deadline'
 
 // Contratos del plugin que ya usan las demás pantallas de captura (ver lib/bankAuto.ts y lib/bankConsent.ts)
 const api = ContigoNative as unknown as BankAutoApi & DetectedBanksApi
+
+const readTrayCounts = () => readDrafts(ContigoNative).then(countDrafts, () => null)
 
 /** Una línea con el estado y, si hace falta, el botón que lo arregla. */
 export function StatusLine({ headline, hint, onAction }: { headline: Headline; hint?: string; onAction: (type: HeadlineAction['type']) => void }) {
@@ -51,10 +60,26 @@ export function FirstUseCard({ onConnect }: { onConnect: () => void }) {
         Anota tus gastos sin escribirlos
       </h3>
       <p className="muted">Contigo lee los avisos de gasto de tu banco, solo en tu teléfono, y los guarda por ti. Nunca lee claves ni mensajes personales.</p>
+      <p className="muted small-text">{CAPTURE_AVAILABLE_TEXT}</p>
       <button type="button" className="btn" onClick={onConnect}>
         Conectar mi banco
       </button>
     </section>
+  )
+}
+
+/** Un banco que ya no se ofrece pero tenía encendido: solo se puede apagar. */
+export function UnavailableBankRow({ name, busy, onOff }: { name: string; busy: boolean; onOff: () => void }) {
+  return (
+    <div className="row between auto-row">
+      <div className="stack tight">
+        <strong>{name}</strong>
+        <span className="muted small-text">{CAPTURE_UNAVAILABLE_LABEL}</span>
+      </div>
+      <button type="button" className="btn ghost small" disabled={busy} onClick={onOff}>
+        Apagar
+      </button>
+    </div>
   )
 }
 
@@ -86,6 +111,24 @@ export function BankSwitchRow({ id, name, on, busy, onChange }: { id: string; na
   )
 }
 
+/** Cómo quedan los gastos que se guardan solos. Personales salvo que la persona elija compartirlos. */
+export function SavedAsChoice({ shared, busy, onPick }: { shared: boolean; busy: boolean; onPick: (shared: boolean) => void }) {
+  return (
+    <section className="card" aria-labelledby="auto-shared-title">
+      <strong id="auto-shared-title">Los gastos detectados se guardan como</strong>
+      <span className="muted small-text">{shared ? 'Compartidos: cuentan en lo de los dos y tu pareja los ve.' : 'Personales: solo cuentan para ti.'}</span>
+      <div className="seg" role="group" aria-labelledby="auto-shared-title">
+        <button type="button" aria-pressed={!shared} disabled={busy} onClick={() => shared && onPick(false)}>
+          Personales
+        </button>
+        <button type="button" aria-pressed={shared} disabled={busy} onClick={() => !shared && onPick(true)}>
+          Compartidos
+        </button>
+      </div>
+    </section>
+  )
+}
+
 interface Props {
   config: CaptureConfig
   onConfig: (next: CaptureConfig) => Promise<void>
@@ -110,21 +153,31 @@ export default function AutoExpenses({ config, onConfig, onToast, onCleared, onS
   const [advanced, setAdvanced] = useState(false)
   const [picking, setPicking] = useState<{ id: string; name: string } | null>(null)
   const [apps, setApps] = useState<NotifyingApp[] | null>(null)
-  const [confirmWipe, setConfirmWipe] = useState(false)
-  const [issues, setIssues] = useState<DetailedDiagnostic[] | null | 'unavailable'>(null)
+  const [pending, setPending] = useState<{ pending: number; saved: number } | null>(null)
+  const [issues, setIssues] = useState<DetailedDiagnostic[] | null | 'unavailable' | 'failed'>(null)
 
   const refresh = useCallback(async () => {
-    const [d, p, s, h] = await Promise.all([
+    const [d, p, s, h, n] = await Promise.all([
       api.getDetectedBanks().then(parseDetectedBanks, () => [] as DetectedBank[]),
       api.getBankPresets().then(parseBankPresets, () => null),
       api.getSyncState().then(parseSyncState, () => null),
       readCaptureHealth(ContigoNative),
+      readTrayCounts(),
     ])
     setDetected(d)
     setPresets(p)
     setSync(s)
     setHealth(h)
+    setPending(n)
   }, [])
+  /** Lee la bandeja del teléfono en este momento y actualiza el conteo de la tarjeta «Movimientos pendientes» */
+  const refreshTray = useCallback(async () => setPending(await readTrayCounts()), [])
+  useAppResume(() => void refreshTray())
+  useEffect(() => {
+    if (!isNative()) return
+    const handles = [ContigoNative.addListener('draftsChanged', () => void refreshTray())]
+    return () => void Promise.all(handles).then((hs) => hs.forEach((h) => void h.remove()), () => undefined)
+  }, [refreshTray])
   useEffect(() => {
     const t = window.setTimeout(() => void refresh(), 0)
     return () => window.clearTimeout(t)
@@ -132,11 +185,18 @@ export default function AutoExpenses({ config, onConfig, onToast, onCleared, onS
 
   const loadIssues = useCallback(() => {
     setIssues(null)
-    api.getCaptureDiagnostics().then(
+    // Tope de tiempo: si el teléfono no responde, se avisa y se ofrece Reintentar en vez de dejar el esqueleto
+    withDeadline(api.getCaptureDiagnostics(), DIAGNOSTICS_DEADLINE_MS).then(
       (r) => setIssues(parseDiagnosticsDetailed(r)),
-      () => setIssues('unavailable'),
+      (e: unknown) => setIssues(e instanceof DeadlineError ? 'failed' : 'unavailable'),
     )
   }, [])
+  const clearNotices = useClearNotices(ContigoNative, onToast, loadIssues)
+  // Abrir «Avanzado» por cualquier camino («Elegir app», «Elegir a mano») pide los avisos: sin llamada no hay tope y el esqueleto quedaría
+  const openAdvanced = useCallback(() => {
+    if (!advanced) loadIssues()
+    setAdvanced(true)
+  }, [advanced, loadIssues])
 
   if (state.kind === 'loading' || detected === null) return <SkeletonCard lines={4} label="Leyendo el estado de tus gastos automáticos…" />
   if (state.kind === 'web') return null
@@ -166,6 +226,22 @@ export default function AutoExpenses({ config, onConfig, onToast, onCleared, onS
     } finally {
       setBusy(false)
     }
+  }
+
+  /** Vacía la bandeja de este teléfono; la confirmación con el número ya la pidió WipeTray */
+  function wipePending() {
+    // Solo los pendientes: lo guardado en la notificación que aún no se envía no se toca
+    clearPendingDrafts(ContigoNative).then(
+      ({ keptSaved }) => {
+        setPending({ pending: 0, saved: keptSaved })
+        onCleared()
+        onToast(keptSaved > 0 ? 'Listo\nSe vació la bandeja. Tus gastos guardados siguen ahí y se enviarán.' : 'Listo\nSe vació la bandeja de este teléfono.', 'info')
+      },
+      (e: unknown) => {
+        logError(e, 'AutoExpenses')
+        onToast('No se pudo vaciar\nInténtalo de nuevo.', 'error')
+      },
+    )
   }
 
   /** Aplica la preferencia en el teléfono y la guarda */
@@ -209,7 +285,7 @@ export default function AutoExpenses({ config, onConfig, onToast, onCleared, onS
         setConnect(false)
         if (choose) {
           setManual(true)
-          setAdvanced(true)
+          openAdvanced()
         }
         void reload()
         void refresh()
@@ -217,8 +293,12 @@ export default function AutoExpenses({ config, onConfig, onToast, onCleared, onS
     />
   )
 
+  const manualBanks = (presets ?? CAPTURE_AVAILABLE.map((b) => ({ ...b, packageName: null, autoSave: false }))).filter((b) => b.available)
+  // Ocultas pero que ya estaban encendidas: solo se pueden apagar
+  const legacyBanks = (presets ?? []).filter((b) => !b.available && b.autoSave)
+
   // Primer uso: sin bancos conectados, una tarjeta y un botón
-  if (detected.length === 0 && !manual) {
+  if (detected.length === 0 && legacyBanks.length === 0 && !manual) {
     return (
       <>
         <FirstUseCard onConnect={() => setConnect(true)} />
@@ -238,22 +318,25 @@ export default function AutoExpenses({ config, onConfig, onToast, onCleared, onS
     }
   }
 
-  const manualBanks = presets ?? BANKS.map((b) => ({ ...b, packageName: null, autoSave: false }))
   const needsSend = sync !== null && (sync.pending > 0 || sync.state === 'error')
 
   return (
     <div className="stack">
       <StatusLine headline={headline} hint={headline.kind === 'no-access' && status.restrictedSettingsLikely ? RESTRICTED_HINT : undefined} onAction={onHeadline} />
 
-      {detected.length > 0 && (
+      {(detected.length > 0 || legacyBanks.length > 0) && (
         <section className="card" aria-label="Mis bancos">
           {detected.map((b) => (
             <BankSwitchRow key={b.id} id={b.id} name={b.name} on={presets?.find((p) => p.id === b.id)?.autoSave === true} busy={busy} onChange={(v) => toggleBank(b, v)} />
           ))}
+          {legacyBanks.map((b) => (
+            <UnavailableBankRow key={b.id} name={b.name} busy={busy} onOff={() => void guard(() => api.setBankAutoSave({ bankId: b.id, enabled: false }))} />
+          ))}
+          <span className="muted small-text">{CAPTURE_AVAILABLE_TEXT}</span>
         </section>
       )}
 
-      <ScanButton onPickApp={() => setAdvanced(true)} />
+      <ScanButton onPickApp={openAdvanced} />
 
       <section className="card" aria-labelledby="auto-cap-title">
         <strong id="auto-cap-title">Guardar solo hasta {clpLabel(config.maxClp)}</strong>
@@ -271,6 +354,8 @@ export default function AutoExpenses({ config, onConfig, onToast, onCleared, onS
           }}
         />
       </section>
+
+      <SavedAsChoice shared={config.autoShared} busy={busy} onPick={(v) => void guard(() => onConfig({ ...config, autoShared: v }))} />
 
       {needsSend && <SyncStatus state={sync} onSend={() => void onSendNow().then(refresh)} />}
 
@@ -290,8 +375,8 @@ export default function AutoExpenses({ config, onConfig, onToast, onCleared, onS
       {advanced && (
         <div className="stack" id="auto-advanced">
           <section className="card" aria-labelledby="auto-manual-title">
-            <strong id="auto-manual-title">Si no aparece tu banco</strong>
-            <span className="muted small-text">Elige a mano la app de tu banco. Solo mostramos apps que mandaron avisos hace poco: haz un pago con tu banco si no la ves.</span>
+            <strong id="auto-manual-title">Si no aparece tu app</strong>
+            <span className="muted small-text">{CAPTURE_AVAILABLE_TEXT} Elige a mano su app: solo mostramos apps que mandaron avisos hace poco.</span>
             {manualBanks.map((b) => (
               <div className="row between auto-row" key={b.id}>
                 <div className="stack tight">
@@ -316,6 +401,14 @@ export default function AutoExpenses({ config, onConfig, onToast, onCleared, onS
           <section className="card" aria-labelledby="auto-issues-title">
             <strong id="auto-issues-title">Avisos que no pude leer</strong>
             {issues === null && <SkeletonCard lines={2} label="Buscando avisos…" />}
+            {issues === 'failed' && (
+              <>
+                <span className="muted small-text">No pude cargar los avisos. Revisa que Contigo tenga acceso a las notificaciones e inténtalo de nuevo.</span>
+                <button type="button" className="btn ghost small" onClick={loadIssues}>
+                  Reintentar
+                </button>
+              </>
+            )}
             {issues === 'unavailable' && <span className="muted small-text">Esta versión de la app todavía no muestra esto.</span>}
             {Array.isArray(issues) && issues.length === 0 && <span className="muted small-text">No hay avisos sin leer.</span>}
             {Array.isArray(issues) && (
@@ -324,33 +417,35 @@ export default function AutoExpenses({ config, onConfig, onToast, onCleared, onS
                   <li key={i} className="stack tight auto-issue">
                     <strong>{it.reason}</strong>
                     <span className="muted small-text">{it.detail}</span>
-                    {it.masked && (
-                      <button
-                        type="button"
-                        className="btn ghost small"
-                        onClick={() =>
-                          void navigator.clipboard.writeText(it.masked as string).then(
-                            () => onToast('Copiado\nPuedes pegarlo donde quieras compartirlo.'),
-                            () => onToast('No se pudo copiar\nInténtalo de nuevo.', 'error'),
-                          )
-                        }
-                      >
-                        Copiar aviso
-                      </button>
-                    )}
+                    <div className="row">
+                      {it.masked && (
+                        <button
+                          type="button"
+                          className="btn ghost small"
+                          onClick={() =>
+                            void navigator.clipboard.writeText(it.masked as string).then(
+                              () => onToast('Copiado\nPuedes pegarlo donde quieras compartirlo.'),
+                              () => onToast('No se pudo copiar\nInténtalo de nuevo.', 'error'),
+                            )
+                          }
+                        >
+                          Copiar aviso
+                        </button>
+                      )}
+                      {it.at !== null && (
+                        <button type="button" className="btn ghost small" onClick={() => void clearNotices(it.at as number)}>
+                          Borrar
+                        </button>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>
             )}
+            {Array.isArray(issues) && issues.length > 0 && <ClearAllNotices onClear={() => void clearNotices()} />}
           </section>
 
-          <section className="card">
-            <strong>Vaciar la bandeja</strong>
-            <span className="muted small-text">Quita de este teléfono los gastos detectados que aún no confirmaste. Lo que ya guardaste no se toca.</span>
-            <button type="button" className="btn danger" onClick={() => setConfirmWipe(true)}>
-              Vaciar la bandeja
-            </button>
-          </section>
+          <WipeTray count={pending?.pending ?? 0} saved={pending?.saved ?? 0} onWipe={wipePending} onBeforeArm={refreshTray} />
         </div>
       )}
 
@@ -378,37 +473,6 @@ export default function AutoExpenses({ config, onConfig, onToast, onCleared, onS
               </button>
             ))}
             <button type="button" className="btn ghost" onClick={() => setPicking(null)}>
-              Cancelar
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {confirmWipe && (
-        <Modal onClose={() => setConfirmWipe(false)} label="Vaciar la bandeja">
-          <div className="stack picker">
-            <h2 className="perm-title">¿Vaciar la bandeja?</h2>
-            <p className="muted">Se borran los gastos detectados que están esperando en este teléfono.</p>
-            <button
-              type="button"
-              className="btn danger"
-              onClick={() => {
-                setConfirmWipe(false)
-                ContigoNative.clearCaptured().then(
-                  () => {
-                    onCleared()
-                    onToast('Listo\nSe vació la bandeja de este teléfono.', 'info')
-                  },
-                  (e: unknown) => {
-                    logError(e, 'AutoExpenses')
-                    onToast('No se pudo vaciar\nInténtalo de nuevo.', 'error')
-                  },
-                )
-              }}
-            >
-              Sí, vaciar
-            </button>
-            <button type="button" className="btn ghost" onClick={() => setConfirmWipe(false)}>
               Cancelar
             </button>
           </div>

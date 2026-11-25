@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Dinovance
 // Conectar mis bancos: consentimiento, bancos detectados, estado y avisos no leídos. Lógica pura.
 // Los métodos del plugin (DetectedBanksApi) están DISEÑADOS POR TIPOS: el backend los confirma en backend-android.md.
-import { BANKS } from './bankAuto'
+import { CAPTURE_AVAILABLE } from './bankAuto'
 import { isPackageName } from './captureApps'
 
 /** Contrato esperado del plugin para el flujo simple */
@@ -81,7 +81,8 @@ export function parseDetectedBanks(raw: unknown): DetectedBank[] {
   const out: DetectedBank[] = []
   for (const r of rows) {
     if (!isRecord(r)) continue
-    const bank = BANKS.find((b) => b.id === r['id'])
+    // Solo las fuentes verificadas: las ocultas no se ofrecen ni se encienden aunque el teléfono las detecte
+    const bank = CAPTURE_AVAILABLE.find((b) => b.id === r['id'])
     const pkg = r['packageName']
     if (!bank || typeof pkg !== 'string' || !isPackageName(pkg) || out.some((o) => o.id === bank.id)) continue
     out.push({ id: bank.id, name: bank.name, packageName: pkg })
@@ -103,13 +104,30 @@ export function summarizeCapture(s: { listenerAllowed: boolean; enabled: boolean
   return s.enabled ? { kind: 'active', label: 'Activo' } : { kind: 'paused', label: 'Pausado' }
 }
 
-const REASONS: Record<string, string> = {
-  NO_AMOUNT: 'No encontré un monto',
-  INCOME: 'Parece un abono',
-  BANK_OFF: 'Banco apagado',
-  LOGIN_REQUIRED: 'Falta iniciar sesión',
+/** Por qué un aviso no se guardó solo: título corto y explicación, uno propio por cada motivo que manda el teléfono */
+export const DIAGNOSTIC_REASONS: Record<string, { title: string; detail: string }> = {
+  NO_AMOUNT: { title: 'No encontré un monto', detail: 'No encontré un monto claro en el aviso, así que no lo guardé.' },
+  INCOME: { title: 'Parece un abono', detail: 'Parece un abono o un ingreso, y yo solo guardo gastos.' },
+  BANK_OFF: { title: 'Banco apagado', detail: 'Ese banco está apagado en Gastos automáticos. Enciéndelo si quieres que lea sus avisos.' },
+  LOGIN_REQUIRED: { title: 'Falta iniciar sesión', detail: 'Falta iniciar sesión en Contigo para guardarlo. Abre la app e ingresa a tu cuenta.' },
+  FOREIGN_CURRENCY: {
+    title: 'Compra en otra moneda',
+    detail: 'Es una compra en otra moneda (por ejemplo dólares). Anótala tú con el monto en pesos que cobró tu banco.',
+  },
+  STALE_DATE: { title: 'Fecha antigua', detail: 'El aviso trae una fecha de hace varios días, así que no lo guardé solo. Si es un gasto nuevo, anótalo tú.' },
+  LOW_CONFIDENCE: { title: 'No quedó claro', detail: 'No tuve claro si era un gasto, así que lo dejé para que lo revises.' },
+  DUPLICATE: { title: 'Posible repetido', detail: 'Se parece a un gasto que ya tenías anotado, así que no lo guardé de nuevo.' },
+  QUEUE_FULL: { title: 'Hay muchos por revisar', detail: 'Tienes muchos gastos detectados sin revisar. Revísalos para que pueda guardar los nuevos.' },
+  CAP_EXCEEDED: { title: 'Pasa tu tope', detail: 'El monto supera el tope que pusiste para guardar solo, así que lo dejé para que lo confirmes.' },
+  INSTALLMENT_PURCHASE: { title: 'Compra en cuotas', detail: 'La anoté por el total. Confírmala.' },
+  INSTALLMENT_TOTAL_UNKNOWN: { title: 'Falta el total', detail: 'El aviso solo trae el valor de la cuota. Pon el total de la compra.' },
+  SOURCE_UNAVAILABLE: { title: 'Banco no disponible por ahora', detail: 'Por ahora solo leemos avisos de Banco Falabella y Billetera de Google. Puedes apagar este banco en Gastos automáticos.' },
+  INSTALLMENT_CHARGE: { title: 'Cuota de una compra anterior', detail: 'Es el cobro de una cuota de algo que ya anotaste, no un gasto nuevo.' },
+  CATEGORY_UNKNOWN: { title: 'Sin categoría', detail: 'No supe en qué categoría ponerlo. Elígela tú al revisarlo.' },
+  NOTIFICATIONS_OFF: { title: 'Avisos apagados', detail: 'Las notificaciones de esa app están apagadas, así que no pude leerlas.' },
+  PACKAGE_NOT_ALLOWED: { title: 'App sin permiso', detail: 'Esa app no está en tu lista de apps a leer. Agrégala en Gastos automáticos si quieres que lea sus avisos.' },
 }
-export const diagnosticText = (code: unknown): string => (typeof code === 'string' ? (REASONS[code] ?? 'No pude leerlo') : 'No pude leerlo')
+export const diagnosticText = (code: unknown): string => (typeof code === 'string' ? (DIAGNOSTIC_REASONS[code]?.title ?? 'No pude leerlo') : 'No pude leerlo')
 
 export interface DiagnosticItem {
   reason: string

@@ -8,28 +8,29 @@ const NOW = new Date(2026, 9, 20)
 const card = { id: 't', household_id: 'h', name: 'Tarjeta', kind: 'tarjeta', owner_id: null, original_amount: 900_000, monthly_payment: 90_000, monthly_rate: 2.5, due_day: 10, archived: false, created_at: '' } as Debt
 const input = (o: Partial<PlanInput> = {}): PlanInput => ({
   now: NOW,
+  expenses: [],
   endOfMonth: 200_000,
   variableDaily: 30_000,
   income: 1_400_000,
   cushion: { saved: 100_000, covered: 0.5, target3: 900_000, target6: 1_800_000, monthsTo3: 4, monthsTo6: 9 },
-  debtInsights: analyzeDebts([], [], NOW),
+  debtInsights: analyzeDebts([], [], NOW, []),
   debts: [],
   debtPayments: [],
   categories: [],
   ...o,
 })
-const withDebt = () => ({ debtInsights: analyzeDebts([card], [], NOW), debts: [card] })
+const withDebt = () => ({ debtInsights: analyzeDebts([card], [], NOW, []), debts: [card] })
 
 describe('extra a la deuda', () => {
   it('pagar más termina antes y ahorra interés', () => {
-    const e = extraEffect([card], [], 50_000, NOW)
+    const e = extraEffect([card], [], 50_000, NOW, [])
     expect(e?.target).toBe('Tarjeta')
     expect(e?.monthsSaved).toBeGreaterThan(0)
     expect(e?.interestSaved).toBeGreaterThan(0)
   })
   it('sin deudas o sin extra no hay efecto', () => {
-    expect(extraEffect([], [], 50_000, NOW)).toBeNull()
-    expect(extraEffect([card], [], 0, NOW)).toBeNull()
+    expect(extraEffect([], [], 50_000, NOW, [])).toBeNull()
+    expect(extraEffect([card], [], 0, NOW, [])).toBeNull()
   })
 })
 

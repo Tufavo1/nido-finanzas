@@ -22,6 +22,7 @@ const base = (over: Partial<AnalysisInput> = {}): AnalysisInput => ({
   meId: 'a',
   memberCount: 2,
   month: OCT,
+  cardExpenses: [],
   now: NOW,
   history: [],
   categories: cats,

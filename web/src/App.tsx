@@ -10,6 +10,7 @@ import { consumeOAuthCallback } from './lib/oauth'
 import { consumeRecoveryLink } from './lib/recovery'
 import { hasPassword, usesGoogle } from './lib/account'
 import { useMfaGate } from './lib/mfa'
+import { signOutClean } from './lib/signOut'
 
 const AuthScreen = lazy(() => import('./screens/AuthScreen'))
 const Onboarding = lazy(() => import('./screens/Onboarding'))
@@ -160,7 +161,8 @@ export default function App() {
       <ErrorPage
         status={loadError}
         onRetry={() => void reload()}
-        onExit={() => void supabase.auth.signOut()}
+        // Con 401/403 la sesión ya es inválida: el servidor no dejaría borrar el aviso, se cierra directo. Con otro error la sesión sigue vigente: se limpia el aviso.
+        onExit={() => void (loadError === 401 || loadError === 403 ? supabase.auth.signOut() : signOutClean())}
         exitLabel="Cerrar sesión"
       />
     )

@@ -12,8 +12,10 @@ import UpcomingCard from './UpcomingCard'
 import type { Plan } from '../lib/advisor'
 import type { Numbers } from '../lib/numbers'
 import type { Finding, Level } from '../lib/finance'
-import { money } from '../lib/format'
+import { decimalEs, money } from '../lib/format'
+import { salaryBreakdown, salaryLeft } from '../lib/monthFigures'
 import { monthName } from '../lib/ui'
+import { moreCount, per100Label } from '../lib/plural'
 import { SLICE_COLORS, levelColor } from '../lib/chartColors'
 import { Bars, Donut, Gauge } from './Charts'
 import Logo from './Logo'
@@ -64,7 +66,7 @@ function ruleNote(a: Analysis): string {
 
 
 const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${money(Math.abs(n))}`
-const comma = (x: number, d = 1) => x.toFixed(d).replace('.', ',')
+const comma = (x: number) => decimalEs(x, 1, 1)
 
 function FlowCard({ f, isCurrent }: { f: NonNullable<Numbers['flow']>; isCurrent: boolean }) {
   const pct = f.savingsPct
@@ -76,7 +78,7 @@ function FlowCard({ f, isCurrent }: { f: NonNullable<Numbers['flow']>; isCurrent
           <span className="amount-sm num">{money(f.income)}</span>
         </div>
         <div className="tile">
-          <span className="muted small-text">Gastas</span>
+          <span className="muted small-text">Gastas (tu parte)</span>
           <span className="amount-sm num">{money(f.spent)}</span>
         </div>
         {f.commitments > 0 && (
@@ -98,13 +100,14 @@ function FlowCard({ f, isCurrent }: { f: NonNullable<Numbers['flow']>; isCurrent
           </div>
         )}
         <div className="tile">
-          <span className="muted small-text">{f.realFree < 0 ? 'Te faltará' : isCurrent && f.pendingFixed > 0 ? 'Libre de verdad' : 'Te sobra hoy'}</span>
-          <span className={f.realFree < 0 ? 'amount-sm num over' : 'amount-sm num'}>{money(Math.abs(isCurrent ? f.realFree : f.free))}</span>
+          <span className="muted small-text">{salaryLeft(f).label}</span>
+          <span className={f.realFree < 0 ? 'amount-sm num over' : 'amount-sm num'}>{money(salaryLeft(f).amount)}</span>
         </div>
       </div>
+      <span className="muted small-text">{salaryBreakdown(f)}</span>
       <div className="stack tight">
         <span className="strong">De cada $100 que ganas</span>
-        <div className="split" role="img" aria-label={`Gastos ${f.per100.spent} pesos, deudas ${f.per100.debts} pesos, fijos por venir ${f.per100.pending} pesos, ahorro ${f.per100.saved} pesos, te sobran ${f.per100.left} pesos`}>
+        <div className="split" role="img" aria-label={per100Label(f.per100)}>
           <span style={{ width: `${Math.min(100, f.per100.spent)}%`, background: 'var(--blue)' }} />
           <span style={{ width: `${Math.min(100 - Math.min(100, f.per100.spent), f.per100.debts)}%`, background: 'var(--warn)' }} />
           <span style={{ width: `${Math.min(100 - Math.min(100, f.per100.spent + f.per100.debts), f.per100.pending)}%`, background: 'var(--amber)' }} />
@@ -517,13 +520,13 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
                 <span className="amount-sm num">{money(flow.income)}</span>
               </span>
               <span className="tile">
-                <span className="muted small-text">Gastas</span>
+                <span className="muted small-text">Gastos y cuotas (tu parte)</span>
                 <span className="amount-sm num">{money(flow.spent + flow.commitments)}</span>
               </span>
             </span>
             <span className="row between">
-              <span className="muted">{flow.free < 0 ? 'Te faltará' : 'Te sobra'}</span>
-              <strong className={flow.free < 0 ? 'amount-sm num over' : 'amount-sm num'}>{money(Math.abs(flow.free))}</strong>
+              <span className="muted">{salaryLeft(flow).label}</span>
+              <strong className={flow.realFree < 0 ? 'amount-sm num over' : 'amount-sm num'}>{money(salaryLeft(flow).amount)}</strong>
             </span>
             <span className="card-cta" aria-hidden="true">
               Toca para ver el detalle <Icon name="chevR" size={16} />
@@ -534,7 +537,7 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
 
       {a.slices.length > 0 && (
         <>
-          <SectionHead title="En qué se va tu plata" hint="Tus gastos por categoría" />
+          <SectionHead title="En qué se va tu plata" hint="Tu parte: lo personal tuyo más lo que te toca de lo compartido (el total del hogar está en Inicio)" />
           <section className="card donut-card" aria-label="En qué se va tu plata">
             <div className="donut-row">
               <Donut
@@ -557,7 +560,7 @@ export default function AnalysisPanel({ hh, data, month, onGoSalary }: Props) {
             </div>
             {a.slices.length > 3 && (
               <button type="button" className="btn ghost small wide" aria-expanded={showSlices} onClick={() => setShowSlices((v) => !v)}>
-                {showSlices ? 'Ver menos' : `Ver más (${a.slices.length - 3} categorías más)`}
+                {showSlices ? 'Ver menos' : `Ver más (${moreCount(a.slices.length - 3, 'categoría', 'categorías')})`}
               </button>
             )}
           </section>

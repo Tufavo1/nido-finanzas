@@ -1,3 +1,4 @@
+import { toAppError, userMessage, UserError } from '../lib/appError'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { confirmPassword } from '../lib/reauth'
@@ -20,10 +21,10 @@ export default function DeleteAccountInline() {
     try {
       await confirmPassword(pw)
       const { error: err } = await supabase.rpc('delete_account')
-      if (err) throw new Error(err.message)
+      if (err) throw new UserError(toAppError(err).message)
       await supabase.auth.signOut({ scope: 'local' })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo borrar la cuenta')
+      setError(userMessage(err))
       setBusy(false)
     } finally {
       setPw('')

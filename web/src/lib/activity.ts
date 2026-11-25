@@ -74,10 +74,16 @@ export function beginWait(): () => void {
   }
 }
 
+/** Cómo se muestra una escritura en curso: con internet bloquea la pantalla; sin internet es solo un aviso, la app sigue usable */
+export function loaderView(writing: boolean, delayed: boolean, offline: boolean): 'blocking' | 'banner' | 'none' {
+  if (!writing || !delayed) return 'none'
+  return offline ? 'banner' : 'blocking'
+}
+
 /** Texto del cargador según qué se está haciendo y cómo va la conexión */
 export function loaderText(method: string, slow: boolean, offline: boolean, label = ''): { title: string; detail: string } {
   const title = label || (method === 'DELETE' ? 'Eliminando…' : method === 'POST' ? 'Guardando…' : 'Guardando cambios…')
-  if (offline) return { title: 'Sin conexión', detail: 'Esperamos a que vuelva el internet para terminar. No cierres la app.' }
+  if (offline) return { title: 'Sin conexión', detail: 'Tu cambio se enviará cuando vuelva el internet.' }
   if (slow) return { title, detail: 'Está tardando más de lo normal. Sigue intentando, no cierres la app.' }
   return { title, detail: 'Un momento, por favor.' }
 }

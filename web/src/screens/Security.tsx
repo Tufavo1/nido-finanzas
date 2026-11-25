@@ -22,7 +22,7 @@ import PushToggle from '../components/PushToggle'
 import ThemeToggle from '../components/ThemeToggle'
 import HapticsToggle from '../components/HapticsToggle'
 import { useIsAdmin } from '../lib/admin'
-import { supabase } from '../lib/supabase'
+import { signOutClean } from '../lib/signOut'
 import type { Notify } from '../components/Toast'
 
 const Admin = lazy(() => import('./Admin'))
@@ -191,7 +191,7 @@ export default function Security({
         </SettingsItem>
       </div>
 
-      <button className="btn danger" type="button" onClick={() => void supabase.auth.signOut()}>
+      <button className="btn danger" type="button" onClick={() => void signOutClean()}>
         Cerrar sesión
       </button>
       <p className="muted small-text app-footer">{copyright()}</p>

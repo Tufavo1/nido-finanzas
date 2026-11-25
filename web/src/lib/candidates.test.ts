@@ -65,6 +65,14 @@ describe('RF-07 candidateToDraft: candidato → borrador de gasto', () => {
     expect(d.note).toMatch(/cuota 1\/3/i)
   })
 
+  it('compra en cuotas: la nota dice cantidad y valor de la cuota, como la del teléfono', () => {
+    const c = cand({ amountClp: 30_000, merchant: 'Prueba Electro', installmentRole: 'PURCHASE', installmentCount: 3, installmentValueClp: 10_000 })
+    expect(candidateToDraft(c, OPTS).note).toBe('Prueba Electro (3 cuotas de $10.000)')
+    expect(candidateToDraft({ ...c, installmentValueClp: undefined }, OPTS).note).toBe('Prueba Electro (3 cuotas)')
+    expect(candidateToDraft({ ...c, installmentValueClp: 1_234_567 }, OPTS).note).toBe('Prueba Electro (3 cuotas de $1.234.567)')
+    expect(candidateToDraft({ ...c, merchant: null }, OPTS).note).toBe('3 cuotas de $10.000')
+  })
+
   it('no filtra la huella ni otros campos del candidato al borrador', () => {
     const d = candidateToDraft(cand(), OPTS)
     expect(Object.keys(d).sort()).toEqual(['amount', 'category_id', 'note', 'paid_by', 'shared', 'spent_on'])

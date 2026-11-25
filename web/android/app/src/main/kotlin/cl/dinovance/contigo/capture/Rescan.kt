@@ -24,7 +24,10 @@ class ActiveNotice(
  * hashes SHA-256 de paquete+clave+hora (jamas texto), maximo 200, de forma persistente y cifrada (sobrevive a un cierre de sesion:
  * un gasto ya enviado no debe volver a nacer desde la barra).
  */
-class SeenNotices(private val store: TextStore, private val max: Int = MAX) {
+class SeenNotices(store: TextStore, private val max: Int = MAX, onFailure: (String) -> Unit = {}) {
+    // R7: leer-modificar-escribir seguro; un fallo pasajero del Keystore no olvida los avisos ya vistos
+    private val hashes = CheckedJsonList(store, ::parse, { JSONArray(it).toString() }, max, onFailure)
+
     @Synchronized
     fun has(pkg: String, key: String, postTime: Long): Boolean = hash(pkg, key, postTime) in load()
 
@@ -33,16 +36,16 @@ class SeenNotices(private val store: TextStore, private val max: Int = MAX) {
 
     @Synchronized
     fun markAll(items: List<Triple<String, String, Long>>) {
-        val list = load().toMutableList()
-        items.map { hash(it.first, it.second, it.third) }.forEach { if (it !in list) list.add(it) }
-        store.write(JSONArray(list.takeLast(max)).toString())
+        val fresh = items.map { hash(it.first, it.second, it.third) }
+        hashes.update { list -> (list + fresh.filterNot { it in list }.distinct()).takeLast(max) }
     }
 
-    private fun load(): List<String> = try {
-        val a = JSONArray(store.read() ?: "[]")
-        (0 until a.length()).map { a.getString(it) }
-    } catch (e: Exception) {
-        emptyList()
+    private fun load(): List<String> = hashes.view()
+
+    /** Lanza si el JSON esta dañado. */
+    private fun parse(raw: String): List<String> {
+        val a = JSONArray(raw)
+        return (0 until a.length()).map { a.getString(it) }
     }
 
     companion object {

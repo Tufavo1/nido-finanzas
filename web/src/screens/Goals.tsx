@@ -7,17 +7,19 @@ import Icon from '../components/Icon'
 import SectionHead from '../components/SectionHead'
 import Ring from '../components/Ring'
 import type { Notify } from '../components/Toast'
-import { goalProgress } from '../lib/goals'
+import { goalProgress, goalSaved, goalsOverview } from '../lib/goals'
 import type { GoalState } from '../lib/goals'
 import { money, todayISO } from '../lib/format'
 import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
 import { notifyPartner } from '../lib/push'
 import { digitsOnly, shortDate, dots } from '../lib/ui'
+import { moreCount, plural } from '../lib/plural'
 import ScopeBar from '../components/ScopeBar'
 import { resolveScope, scopeContributions } from '../lib/scope'
 import type { Scope } from '../lib/scope'
 import Modal from '../components/Modal'
+import GoalCreateForm from '../components/GoalCreateForm'
 import Spin from '../components/Spin'
 
 const STATE: Record<GoalState, { label: string; tone: 'ok' | 'info' | 'warn' | 'bad' }> = {
@@ -28,7 +30,6 @@ const STATE: Record<GoalState, { label: string; tone: 'ok' | 'info' | 'warn' | '
   open: { label: 'Sin fecha', tone: 'info' },
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 export default function Goals({ hh, data, onToast, scope, onScope }: { hh: Household; data: HouseholdData; onToast: Notify; scope: Scope; onScope: (s: Scope) => void }) {
   const { goals, contributions } = data
@@ -47,6 +48,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
   const [cDate, setCDate] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [creating, setCreating] = useState(false)
   const setError = useToastError(onToast)
 
   const members = new Map(hh.everyone.map((m) => [m.user_id, m] as const))
@@ -159,15 +161,13 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
     const mine = contributions.filter((c) => c.goal_id === g.id)
     // El avance de la meta es de los dos, pero el historial y los montos se ven de quien se eligió
     const shown = scopeContributions(mine, who)
-    return { g, mine, shown, personSaved: shown.reduce((s, c) => s + c.amount, 0), p: goalProgress(g.target_amount, g.target_date, mine) }
+    return { g, mine, shown, personSaved: goalSaved(shown), p: goalProgress(g.target_amount, g.target_date, mine) }
   })
   // Primero lo que requiere atención; las cumplidas al final
   const order: Record<GoalState, number> = { overdue: 0, behind: 1, ontrack: 2, open: 3, done: 4 }
   rows.sort((a, b) => order[a.p.state] - order[b.p.state])
-  const totalSaved = rows.reduce((s, r) => s + r.p.saved, 0)
-  const personTotal = rows.reduce((s, r) => s + r.personSaved, 0)
-  const totalTarget = rows.reduce((s, r) => s + r.g.target_amount, 0)
-  const totalPct = totalTarget > 0 ? Math.min(100, Math.floor((totalSaved * 100) / totalTarget)) : 0
+  // El avance de las metas es de los dos: lo aportado por una persona se muestra aparte, nunca en lugar del avance
+  const overview = goalsOverview(goals, contributions, who === 'all' ? null : who)
   const doneCount = rows.filter((r) => r.p.state === 'done').length
   const attention = rows.filter((r) => r.p.state === 'behind' || r.p.state === 'overdue').length
 
@@ -278,7 +278,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
                 </div>
               ) : (
                 hh.everyone
-                  .map((m) => ({ m, total: mine.filter((c) => c.user_id === m.user_id).reduce((t, c) => t + c.amount, 0) }))
+                  .map((m) => ({ m, total: goalSaved(mine.filter((c) => c.user_id === m.user_id)) }))
                   .filter((x) => x.total > 0)
                   .map(({ m, total }) => (
                     <div className="tile" key={m.user_id}>
@@ -297,7 +297,7 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
                     id={`ap-${g.id}`}
                     className="input"
                     inputMode="numeric"
-                    placeholder="Ej. 20000"
+                    placeholder="Ej. 20.000"
                     value={dots(amt)}
                     onChange={(e) => setAmt(digitsOnly(e.target.value))}
                     aria-describedby={`ap-hint-${g.id}`}
@@ -420,7 +420,10 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
       {goals.length === 0 && (
         <section className="card goal-empty" aria-labelledby="goal-empty">
           <strong id="goal-empty">Aún no tienen metas</strong>
-          <span className="muted">Creen la primera desde «Registrar» y empiecen a ahorrar con un objetivo claro: un viaje, un fondo de emergencia, un auto…</span>
+          <span className="muted">Creen la primera y empiecen a ahorrar con un objetivo claro: un viaje, un fondo de emergencia, un auto…</span>
+          <button type="button" className="btn" onClick={() => setCreating(true)}>
+            Crear meta
+          </button>
         </section>
       )}
 
@@ -429,11 +432,11 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
           <SectionHead title={heading} hint="Cuánto llevan ahorrado" />
           <section className="card hero goal-summary" aria-label="Resumen de metas">
             <div className="hero-top">
-              <Ring pct={totalPct} />
+              <Ring pct={overview.pct} />
               <div className="grow">
-                <span className="muted small-text">{person ? `Aportado por ${who === hh.me.user_id ? 'ti' : person.display_name}` : 'Ahorrado en total'}</span>
-                <span className="amount small num">{money(person ? personTotal : totalSaved)}</span>
-                <span className="muted num small-text">de {money(totalTarget)} · {plural(goals.length, 'meta', 'metas')}</span>
+                <span className="muted small-text">Ahorrado en total</span>
+                <span className="amount small num">{money(overview.saved)}</span>
+                <span className="muted num small-text">de {money(overview.target)} · {plural(goals.length, 'meta', 'metas')}</span>
               </div>
             </div>
             <div className="stats">
@@ -445,7 +448,16 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
                 <span className="muted small-text">Necesitan atención</span>
                 <span className={attention > 0 ? 'num strong goal-warn' : 'num strong'}>{attention}</span>
               </div>
+              {person && (
+                <div>
+                  <span className="muted small-text">{who === hh.me.user_id ? 'Aportado por ti' : `Aportado por ${person.display_name}`}</span>
+                  <span className="num strong">{money(overview.personSaved)}</span>
+                </div>
+              )}
             </div>
+            <button type="button" className="btn ghost small" onClick={() => setCreating(true)}>
+              Crear meta
+            </button>
           </section>
         </>
       )}
@@ -489,10 +501,16 @@ export default function Goals({ hh, data, onToast, scope, onScope }: { hh: House
           </div>
           {rows.length > PAGE && (
             <button type="button" className="btn ghost small wide" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
-              {showAll ? 'Ver menos metas' : `Ver más (${rows.length - PAGE} metas más)`}
+              {showAll ? 'Ver menos metas' : `Ver más (${moreCount(rows.length - PAGE, 'meta', 'metas')})`}
             </button>
           )}
         </>
+      )}
+
+      {creating && (
+        <Modal label="Crear una meta" onClose={() => setCreating(false)}>
+          <GoalCreateForm hh={hh} data={data} onToast={onToast} onSaved={() => setCreating(false)} />
+        </Modal>
       )}
 
       {selRow && (

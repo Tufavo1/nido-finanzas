@@ -13,6 +13,8 @@ vi.mock('./supabase', () => ({
   },
 }))
 
+import { analyzeDebts } from './debtAnalysis'
+import { buildUpcoming } from './upcoming'
 import { buildAnalysis } from './analysis'
 import type { AnalysisInput, HistExpense } from './analysis'
 import { BACKUP_TABLES, restoreExpenseRow } from './backup'
@@ -32,6 +34,7 @@ import {
   myDebtPaidThisMonth,
   myDebtShare,
   salaryFlows,
+  unassignedCardExpenses,
 } from './finance'
 import { expenseRow } from './inbox'
 import { monthFreeNow } from './monthLeft'
@@ -187,7 +190,7 @@ describe('R7 myDebtPaidThisMonth', () => {
   const theirs = debt({ id: 'ajena', kind: 'consumo', owner_id: OTHER, original_amount: 1_000_000, monthly_payment: 50_000 })
   const payments = [pay('mia', 30_000, '2026-11-05'), pay('comun', 80_000, '2026-11-06'), pay('ajena', 50_000, '2026-11-07'), pay('mia', 99_000, '2026-10-05')]
   it('R7 cuenta lo realmente pagado este mes (no max(cuota, pagado) como myDebtShare)', () => {
-    expect(myDebtShare([mine], payments, ME, 2, now)).toBe(100_000)
+    expect(myDebtShare([mine], payments, ME, 2, now, [])).toBe(100_000)
     expect(myDebtPaidThisMonth([mine], payments, ME, 2, now)).toBe(30_000)
   })
   it('R7 mía 100 %, sin dueño según el reparto, de la otra persona 0', () => {
@@ -200,20 +203,20 @@ describe('R8 myDebtDue', () => {
   const now = new Date(2026, 10, 20)
   const d = (o: Partial<Debt>) => debt({ kind: 'consumo', original_amount: 1_000_000, monthly_payment: 100_000, ...o })
   it('R8 cuota − pagado de este mes', () => {
-    expect(myDebtDue([d({ id: 'x' })], [pay('x', 30_000, '2026-11-02')], ME, 2, now)).toBe(70_000)
+    expect(myDebtDue([d({ id: 'x' })], [pay('x', 30_000, '2026-11-02')], ME, 2, now, [])).toBe(70_000)
   })
   it('R8 es 0 si ya pagó la cuota o si el saldo es 0', () => {
-    expect(myDebtDue([d({ id: 'x' })], [pay('x', 100_000, '2026-11-02')], ME, 2, now)).toBe(0)
-    expect(myDebtDue([d({ id: 'y', original_amount: 50_000 })], [pay('y', 50_000, '2026-10-02')], ME, 2, now)).toBe(0)
+    expect(myDebtDue([d({ id: 'x' })], [pay('x', 100_000, '2026-11-02')], ME, 2, now, [])).toBe(0)
+    expect(myDebtDue([d({ id: 'y', original_amount: 50_000 })], [pay('y', 50_000, '2026-10-02')], ME, 2, now, [])).toBe(0)
   })
   it('R8 se reparte igual que lo pagado y no pasa del saldo', () => {
-    expect(myDebtDue([d({ id: 'c', owner_id: null })], [], ME, 2, now)).toBe(50_000)
-    expect(myDebtDue([d({ id: 'o', owner_id: OTHER })], [], ME, 2, now)).toBe(0)
-    expect(myDebtDue([d({ id: 's', original_amount: 20_000 })], [], ME, 2, now)).toBe(20_000)
+    expect(myDebtDue([d({ id: 'c', owner_id: null })], [], ME, 2, now, [])).toBe(50_000)
+    expect(myDebtDue([d({ id: 'o', owner_id: OTHER })], [], ME, 2, now, [])).toBe(0)
+    expect(myDebtDue([d({ id: 's', original_amount: 20_000 })], [], ME, 2, now, [])).toBe(20_000)
   })
   it('R8 una tarjeta usa su saldo con las compras con tarjeta', () => {
     const t = debt({ monthly_payment: 100_000 })
-    expect(myDebtDue([t], [], ME, 2, now)).toBe(0)
+    expect(myDebtDue([t], [], ME, 2, now, [])).toBe(0)
     expect(myDebtDue([t], [], ME, 2, now, [card(50_000, '2026-11-03')])).toBe(50_000)
   })
 })
@@ -300,10 +303,10 @@ describe('R13 salaryFlows', () => {
   const expenses = [exp(300_000, '2026-11-02'), card(200_000, '2026-11-03')]
   const debtPayments = [pay(t.id, 150_000, '2026-11-04')]
   it('R13 spent sin tarjeta, commitments lo pagado y pendingDebt lo que falta de la cuota', () => {
-    expect(salaryFlows({ expenses, debts: [t], debtPayments, meId: ME, split: 2, month: NOV, now, trueCost: 500_000 })).toEqual({ spent: 300_000, commitments: 150_000, pendingDebt: 50_000 })
+    expect(salaryFlows({ expenses, cardExpenses: expenses, debts: [t], debtPayments, meId: ME, split: 2, month: NOV, now, trueCost: 500_000 })).toEqual({ spent: 300_000, commitments: 150_000, pendingDebt: 50_000 })
   })
   it('R13 spent nunca es negativo y en un mes pasado no hay cuota pendiente', () => {
-    const r = salaryFlows({ expenses, debts: [t], debtPayments, meId: ME, split: 2, month: NOV, now: new Date(2026, 11, 5), trueCost: 100_000 })
+    const r = salaryFlows({ expenses, cardExpenses: expenses, debts: [t], debtPayments, meId: ME, split: 2, month: NOV, now: new Date(2026, 11, 5), trueCost: 100_000 })
     expect(r).toEqual({ spent: 0, commitments: 150_000, pendingDebt: 0 })
   })
 })
@@ -322,13 +325,13 @@ describe('R14-R16 escenario completo', () => {
 
   const viaMonthLeft = (cuota: number) => {
     const { t, expenses, debtPayments } = make(cuota)
-    const data = { ready: true, financeReady: true, salary, incomes: [], expenses, debts: [t], debtPayments, contributions: [], recurring: [] }
+    const data = { ready: true, financeReady: true, salary, incomes: [], expenses, cardExpenses: expenses, debts: [t], debtPayments, contributions: [], recurring: [] }
     return monthFreeNow(data as never, ME, 2, now)
   }
   const analysisInput = (cuota: number): AnalysisInput => {
     const { t, expenses, debtPayments } = make(cuota)
     return {
-      meId: ME, memberCount: 2, month: NOV, now, history: expenses as HistExpense[], categories: [{ id: 'cat-1', name: 'Supermercado', monthly_budget: 0 }],
+      meId: ME, memberCount: 2, month: NOV, now, history: expenses as HistExpense[], cardExpenses: expenses, categories: [{ id: 'cat-1', name: 'Supermercado', monthly_budget: 0 }],
       salary, incomes: [], debts: [t], debtPayments, contributions: [], goals: [], recurring: [],
     }
   }
@@ -336,7 +339,7 @@ describe('R14-R16 escenario completo', () => {
     const { t, expenses, debtPayments } = make(cuota)
     const me = { user_id: ME, display_name: 'Persona A', color: 'blue', household_id: 'hogar-1', joined_at: '' }
     const hh = { household: { id: 'hogar-1', name: 'Hogar demo', invite_code: null, created_at: '' }, members: [me, { ...me, user_id: OTHER, display_name: 'Persona B' }], me }
-    const data = { categories: [{ id: 'cat-1', name: 'Supermercado', monthly_budget: 0, position: 0, archived: false, household_id: 'hogar-1' }], expenses, prevExpenses: [], goals: [], contributions: [], debts: [t], debtPayments, salary, incomes: [], recurring: [], profiles: [], financeReady: true, ready: true }
+    const data = { categories: [{ id: 'cat-1', name: 'Supermercado', monthly_budget: 0, position: 0, archived: false, household_id: 'hogar-1' }], expenses, cardExpenses: expenses, prevExpenses: [], goals: [], contributions: [], debts: [t], debtPayments, salary, incomes: [], recurring: [], profiles: [], financeReady: true, ready: true }
     return salaryAnalysisFor(hh as never, data as never, NOV, now)
   }
 
@@ -367,5 +370,67 @@ describe('R14-R16 escenario completo', () => {
     const a = buildAnalysis(analysisInput(150_000))
     expect(a.cost).toBe(500_000)
     expect(a.slices.find((s) => s.id === 'cat-1')?.amount).toBe(500_000)
+  })
+})
+
+describe('A1 compras con tarjeta sin tarjeta asignable', () => {
+  const NOV = new Date(2026, 10, 1)
+  const now = new Date(2026, 10, 20)
+  const base = { debtPayments: [] as DebtPayment[], meId: ME, split: 2, month: NOV, now }
+  it('sin tarjetas registradas la compra cuenta como gasto normal del mes', () => {
+    const expenses = [exp(100_000, '2026-11-02'), card(40_000, '2026-11-03')]
+    expect(salaryFlows({ ...base, expenses, cardExpenses: expenses, debts: [], trueCost: 140_000 }).spent).toBe(140_000)
+    expect(unassignedCardExpenses(expenses, [], NOV)).toHaveLength(1)
+  })
+  it('con 2 tarjetas y compra sin tarjeta elegida: gasto normal y queda como sin asignar', () => {
+    const t1 = debt({ id: 't1' })
+    const t2 = debt({ id: 't2' })
+    const expenses = [card(40_000, '2026-11-03'), card(10_000, '2026-11-04', { card_debt_id: 't2' })]
+    expect(salaryFlows({ ...base, expenses, cardExpenses: expenses, debts: [t1, t2], trueCost: 50_000 }).spent).toBe(40_000)
+    expect(unassignedCardExpenses(expenses, [t1, t2], NOV)).toHaveLength(1)
+  })
+  it('una compra de otra persona no se carga a la única tarjeta de alguien más', () => {
+    const t = debt({ owner_id: ME })
+    const ajena = card(30_000, '2026-11-03', { paid_by: OTHER, created_by: OTHER })
+    expect(cardCharges(t, [ajena], [t])).toEqual([])
+    expect(salaryFlows({ ...base, expenses: [ajena], cardExpenses: [ajena], debts: [t], trueCost: 30_000 }).spent).toBe(30_000)
+    const compartida = debt({ owner_id: null })
+    expect(cardCharges(compartida, [ajena], [compartida])).toHaveLength(1)
+  })
+  it('compra con tarjeta asignada a una tarjeta existente no cuenta como sin asignar', () => {
+    const t = debt()
+    expect(unassignedCardExpenses([card(40_000, '2026-11-03')], [t], NOV)).toEqual([])
+  })
+})
+
+describe('A3 una tarjeta con saldo 0 y compras sigue debiendo en todas las vistas', () => {
+  const now = new Date(2026, 10, 20)
+  const t = debt({ original_amount: 0, monthly_payment: 50_000, due_day: 25 })
+  const compras = [card(300_000, '2026-11-05')]
+  it('analyzeDebts y myDebtShare cuentan las compras', () => {
+    expect(analyzeDebts([t], [], now, compras).payments.due.length).toBe(1)
+    expect(analyzeDebts([t], [], now, []).payments.due.length).toBe(0)
+    expect(myDebtShare([t], [], ME, 2, now, compras)).toBe(50_000)
+    expect(myDebtShare([t], [], ME, 2, now, [])).toBe(0)
+  })
+  it('buildUpcoming muestra la cuota de la tarjeta', () => {
+    const input = { now, meId: ME, split: 2, recurring: [], debts: [t], debtPayments: [], salary: null, free: null, variableDaily: 0 }
+    expect(buildUpcoming({ ...input, expenses: compras }).events.some((e) => e.kind === 'deuda')).toBe(true)
+    expect(buildUpcoming({ ...input, expenses: [] }).events.some((e) => e.kind === 'deuda')).toBe(false)
+  })
+})
+
+describe('M6/M7 fecha local del alta y porcentaje sin denominador', () => {
+  it('M6 una tarjeta dada de alta de noche (local) cuenta las compras de ese mismo día local', () => {
+    const alta = new Date(2026, 9, 1, 23, 0)
+    const t = debt({ created_at: alta.toISOString() })
+    expect(cardBalance(t, [], [card(10_000, '2026-10-01')], [t]).used).toBe(10_000)
+    expect(cardBalance(t, [], [card(10_000, '2026-09-30')], [t]).used).toBe(0)
+  })
+  it('M7 una tarjeta sin monto original no da NaN ni porcentajes raros', () => {
+    const t = debt({ original_amount: 0 })
+    expect(debtView(t, [], new Date(2026, 10, 20), [], [t]).progressPct).toBe(0)
+    const normal = debt({ kind: 'prestamo', original_amount: 0 } as Partial<Debt>)
+    expect(debtView(normal, [], new Date(2026, 10, 20)).progressPct).toBe(0)
   })
 })

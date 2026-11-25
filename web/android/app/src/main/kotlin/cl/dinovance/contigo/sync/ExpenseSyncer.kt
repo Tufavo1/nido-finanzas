@@ -32,7 +32,17 @@ interface SessionSource {
     fun refresh(): Boolean
 }
 
-enum class SyncResult { NOTHING_TO_SEND, ALL_SENT, RETRY, REJECTED, NO_SESSION }
+/**
+ * Resultado de un envio. NEEDS_PERSON = hay gastos confirmados que el telefono no puede enviar solo (sin categoria posible o una
+ * cuota que no es gasto nuevo): siguen en la bandeja y la app los resuelve; reintentar solo no los arregla.
+ */
+enum class SyncResult(
+    /** true = el trabajo en segundo plano debe reintentar (Result.retry); el resto termina el trabajo. */
+    val retriesInBackground: Boolean = false,
+) { NOTHING_TO_SEND, ALL_SENT, RETRY(true), REJECTED, NO_SESSION, NEEDS_PERSON }
+
+/** Resumen de una pasada de envio (solo cuentas). */
+data class SyncReport(val result: SyncResult, val sent: Int, val failed: Int, val needsPerson: Int)
 
 /** Contadores para el panel de estado (sin datos personales). */
 interface SyncStatusStore {
@@ -65,22 +75,40 @@ class ExpenseSyncer(
     /** Mutua exclusion con el envio: Deshacer y syncOnce nunca corren a la vez (R3-07). */
     fun <T> coordinated(block: () -> T): T = synchronized(this) { block() }
 
-    fun syncOnce(): SyncResult = coordinated { run() }
+    fun syncOnce(): SyncResult = syncWithReport().result
 
-    private fun run(): SyncResult {
+    /**
+     * Envia y cuenta (para «Enviar ahora» de la app): [SyncReport.sent] filas aceptadas en esta pasada, [SyncReport.failed] las que
+     * se intentaron y siguen en la cola (red, servidor, rechazo), [SyncReport.needsPerson] las confirmadas que el telefono no puede
+     * enviar solo. Solo cuentas: ningun monto ni comercio.
+     */
+    fun syncWithReport(): SyncReport = coordinated {
+        val tally = Tally()
+        val result = run(tally)
+        SyncReport(result, tally.sent, tally.attempted - tally.sent, tally.needsPerson)
+    }
+
+    /** Contadores de una pasada (solo dentro del cerrojo). */
+    private class Tally { var attempted = 0; var sent = 0; var needsPerson = 0 }
+
+    private fun run(tally: Tally): SyncResult {
         val me = owner() ?: return SyncResult.NO_SESSION
-        val p = profile()?.takeIf { it.ownerKey == me } ?: return SyncResult.NO_SESSION
+        val confirmed = repository.list().filter { it.status == DraftStatus.CONFIRMED && ReminderPolicy.sendsAlone(it.candidate.kind) && it.ownerKey == me && !it.syncRejected }
+        val p = profile()?.takeIf { it.ownerKey == me } ?: return noProfile(confirmed)
         val base = apiBase()?.takeIf { it.startsWith("https://") } ?: return SyncResult.NO_SESSION
-        val todo = repository.list().filter { it.status == DraftStatus.CONFIRMED && ReminderPolicy.sendsAlone(it.candidate.kind) && it.ownerKey == me && !it.syncRejected }
-            .mapNotNull { d -> val path = pathOf(d); val row = rowOf(d, p); if (path != null && row != null) Triple(d, path, row) else null }
+        val todo = confirmed.mapNotNull { d -> val path = pathOf(d); val row = rowOf(d, p); if (path != null && row != null) Triple(d, path, row) else null }
+        // Confirmados que el telefono no puede enviar solo (sin categoria posible, o una cuota que no es gasto nuevo): quedan en la
+        // bandeja para la persona y el resultado lo dice; jamas un «nada que enviar» mudo (falla QA 2026-11-24).
+        val needPerson = confirmed.size - todo.size
+        tally.needsPerson = needPerson
+        tally.attempted = todo.size
         // Solo gastos: un ingreso extra es privado (la pareja no lo ve) y nunca dispara notify.
         val pendingNotify = log?.listFor(me)?.filter { it.kind == Kind.EXPENSE && it.synced && !it.notified && !it.rejected && clock() - it.at < NOTIFY_WINDOW_MILLIS }.orEmpty()
-        if (todo.isEmpty() && pendingNotify.isEmpty()) return SyncResult.NOTHING_TO_SEND
+        if (todo.isEmpty() && pendingNotify.isEmpty()) return if (needPerson > 0) needsPerson() else SyncResult.NOTHING_TO_SEND
         var token = session.accessToken(clock() / 1000) ?: if (session.refresh()) session.accessToken(clock() / 1000) else null
-        if (token == null) {
-            status.recordError("AUTH", clock())
-            return SyncResult.NO_SESSION
-        }
+        // Sin token vigente (con la app abierta no se renueva aqui: lo hace supabase-js y lo deja en el Keystore) se reintenta:
+        // es pasajero y hay gastos de la persona esperando. Al cerrar sesion owner() es null y no se llega aqui.
+        if (token == null) return retry("AUTH")
         // R3-02: el token debe ser de la persona del perfil; si no, no se envia nada y se limpia el perfil
         if (!tokenBelongsTo(token, p.userId)) {
             status.recordError("OWNER", clock())
@@ -88,6 +116,7 @@ class ExpenseSyncer(
             return SyncResult.NO_SESSION
         }
         var rejected = false
+        var schemaPending = false
         for ((draft, path, row) in todo) {
             var r = post(base, path, token!!, row.toString()) ?: return retry("NETWORK")
             if (r.status == 401 && session.refresh()) {
@@ -102,11 +131,15 @@ class ExpenseSyncer(
             when {
                 r.status in 200..299 || (r.status == 409 && r.body.contains("23505")) -> {
                     repository.remove(draft.id)
+                    tally.sent++
                     log?.markSynced(draft.id.lowercase())
                     if (draft.candidate.kind == Kind.EXPENSE && !notify(base, token, draft.id.lowercase())) return retry("NOTIFY")
                 }
                 r.status == 401 -> return retry("AUTH")
                 r.status == 429 || r.status >= 500 -> return retry("SERVER")
+                // La base aun no tiene la columna nueva (migracion sin aplicar): no es culpa del gasto. Se deja en la cola sin
+                // marcarlo rechazado y se reintenta despues; los demas siguen saliendo (M4).
+                schemaNotReady(r) -> schemaPending = true
                 else -> {
                     // La base lo rechazo (dato invalido, permiso): no se reintenta solo, y no tapa el exito de las demas (R3-09)
                     rejected = true
@@ -120,8 +153,20 @@ class ExpenseSyncer(
             status.recordError("REJECTED", clock())
             return SyncResult.REJECTED
         }
+        if (schemaPending) return retry("SCHEMA")
         status.recordSuccess(clock())
-        return SyncResult.ALL_SENT
+        return if (needPerson > 0) needsPerson() else SyncResult.ALL_SENT
+    }
+
+    private fun needsPerson(): SyncResult {
+        status.recordError(NEEDS_PERSON, clock())
+        return SyncResult.NEEDS_PERSON
+    }
+
+    /** Sin perfil del dueno no se puede armar la fila; si hay gastos confirmados esperando, el motivo queda a la vista. */
+    private fun noProfile(confirmed: List<Draft>): SyncResult {
+        if (confirmed.isNotEmpty()) status.recordError(NO_PROFILE, clock())
+        return SyncResult.NO_SESSION
     }
 
     /**
@@ -133,6 +178,13 @@ class ExpenseSyncer(
         val done = r != null && r.status !in intArrayOf(429) && r.status < 500 && r.status != 401
         if (done) log?.markNotified(expenseId)
         return done
+    }
+
+    /** 400 de PostgREST por una columna que la base no conoce (PGRST204) o error de Postgres de columna inexistente (42703). */
+    private fun schemaNotReady(r: HttpResult): Boolean {
+        if (r.status != 400) return false
+        val code = try { JSONObject(r.body).optString("code") } catch (e: Exception) { "" }
+        return code == "PGRST204" || code == "42703"
     }
 
     private fun retry(kind: String): SyncResult {
@@ -178,17 +230,19 @@ class ExpenseSyncer(
         val day = Instant.ofEpochMilli(d.postedAtMillis).atZone(zone).toLocalDate().toString()
         // Segunda barrera: solo un GASTO arma fila de expenses y solo un INGRESO de incomes; pago de deuda y transferencia jamas.
         when (d.candidate.kind) {
-            Kind.EXPENSE -> {}
+            // Tercera barrera: el cobro de una cuota de una compra anterior o una compra en cuotas sin total nunca se envian solos
+            // (un borrador CONFIRMED heredado de una version anterior o de una notificacion vieja tambien se frena aqui).
+            Kind.EXPENSE -> if (!d.savableFromNotification) return null
             // Igual que incomeRow de web/src/lib/movements.ts: user_id lo pone la base (auth.uid()), received_on = dia del aviso en Chile
             Kind.INCOME -> return if (d.candidate.amountClp <= 0) null else JSONObject()
                 .put("id", id).put("household_id", p.householdId).put("amount", d.candidate.amountClp)
                 .put("source", CaptureProcessor.INCOME_SOURCE).put("received_on", day)
             Kind.DEBT_PAYMENT, Kind.TRANSFER_OUT -> return null
         }
-        val category = d.categoryId ?: p.categoryFor(d.candidate.merchant) ?: return null
-        val merchant = d.candidate.merchant?.trim().orEmpty()
-        val inst = d.candidate.installment
-        val note = safeTake(if (inst == null) merchant else if (merchant.isEmpty()) "cuota ${inst.n}/${inst.total}" else "$merchant (cuota ${inst.n}/${inst.total})", MAX_NOTE)
+        // Igual que el guardado automatico (CaptureProcessor.autoCategory): la aprendida del comercio o, si es nuevo, la general del
+        // perfil. Antes faltaba la general: un comercio nuevo guardado con «Guardar» nunca salia (falla QA 2026-11-24).
+        val category = d.categoryId ?: p.categoryFor(d.candidate.merchant) ?: p.defaultCategoryId ?: return null
+        val note = safeTake(ExpenseNote.of(d.candidate), MAX_NOTE)
         val row = JSONObject()
             .put("id", id).put("household_id", p.householdId).put("category_id", category)
             .put("amount", d.candidate.amountClp).put("paid_by", if (p.shared) p.paidBy else p.userId).put("shared", p.shared)
@@ -207,6 +261,9 @@ class ExpenseSyncer(
 
         private val UUID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
         const val MAX_NOTE = 120
+        /** Codigos de error del estado de envio (getSyncState.lastError). */
+        const val NEEDS_PERSON = "NEEDS_PERSON"
+        const val NO_PROFILE = "NO_PROFILE"
         /** notify solo acepta gastos de menos de 5 minutos; pasado ese plazo no se insiste. */
         private const val NOTIFY_WINDOW_MILLIS = 5L * 60 * 1000
         /** El Worker pone la clave real; supabase-js manda este marcador (ver supabase.ts). */

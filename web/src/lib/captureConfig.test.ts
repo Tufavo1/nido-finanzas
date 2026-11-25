@@ -3,7 +3,7 @@ import { DEFAULT_CAPTURE_CONFIG, MAX_CAP_CLP, MIN_CAP_CLP, parseCaptureConfig, s
 
 describe('captureConfig', () => {
   it('por defecto el modo automático está apagado, con tope de 50.000 y sin apps guardadas', () => {
-    expect(DEFAULT_CAPTURE_CONFIG).toEqual({ mode: 'CONFIRM', maxClp: 50_000, shared: true, savedPackages: [], enabled: true })
+    expect(DEFAULT_CAPTURE_CONFIG).toEqual({ mode: 'CONFIRM', maxClp: 50_000, shared: true, autoShared: false, savedPackages: [], enabled: true })
   })
   it('lo que no existe o no se entiende vuelve a los valores por defecto', () => {
     expect(parseCaptureConfig(null)).toEqual(DEFAULT_CAPTURE_CONFIG)
@@ -11,7 +11,7 @@ describe('captureConfig', () => {
     expect(parseCaptureConfig('[1,2]')).toEqual(DEFAULT_CAPTURE_CONFIG)
   })
   it('guarda y lee de vuelta lo mismo', () => {
-    const c = { mode: 'AUTO' as const, maxClp: 100_000, shared: false, savedPackages: ['cl.banco.app'], enabled: false }
+    const c = { mode: 'AUTO' as const, maxClp: 100_000, shared: false, autoShared: true, savedPackages: ['cl.banco.app'], enabled: false }
     expect(parseCaptureConfig(serializeCaptureConfig(c))).toEqual(c)
   })
   it('descarta valores peligrosos: modo raro, tope fuera de lo permitido, paquetes inválidos', () => {

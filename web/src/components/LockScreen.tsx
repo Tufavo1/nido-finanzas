@@ -1,7 +1,8 @@
+import { signOutClean } from '../lib/signOut'
+import { userMessage } from '../lib/appError'
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { confirmPassword } from '../lib/reauth'
-import { supabase } from '../lib/supabase'
 import { createThrottle } from '../lib/security'
 import Logo from './Logo'
 import Spin from './Spin'
@@ -36,7 +37,7 @@ export default function LockScreen({ onUnlock }: { onUnlock: () => void }) {
       onUnlock()
     } catch (err) {
       throttle.fail()
-      setError(err instanceof Error ? err.message : 'No se pudo verificar')
+      setError(userMessage(err))
     }
     setBusy(false)
   }
@@ -72,7 +73,7 @@ export default function LockScreen({ onUnlock }: { onUnlock: () => void }) {
             {busy ? <Spin label="Verificando…" /> : 'Desbloquear'}
           </button>
         )}
-        <button type="button" className="link-btn" onClick={() => void supabase.auth.signOut()}>
+        <button type="button" className="link-btn" onClick={() => void signOutClean()}>
           Cerrar sesión
         </button>
       </form>

@@ -14,9 +14,12 @@ import { money, todayISO } from '../lib/format'
 import { useToastError } from '../lib/useToastError'
 import { supabase } from '../lib/supabase'
 import { computeMetrics } from '../lib/metrics'
+import { compareMonths } from '../lib/homeSummary'
+import { categoryKey, REMOVED_CATEGORY_ID, REMOVED_CATEGORY_NAME } from '../lib/monthFigures'
 import { whereItWent } from '../lib/moves'
 import { Rich } from '../lib/rich'
 import { dayHeading, digitsOnly, monthName, dots } from '../lib/ui'
+import { moreCount } from '../lib/plural'
 import type { Notify } from '../components/Toast'
 import Modal from '../components/Modal'
 import Spin from '../components/Spin'
@@ -83,8 +86,6 @@ export default function Expenses({
   const householdMetrics = useMemo(() => computeMetrics(data.expenses, data.prevExpenses, data.categories, hh.members, month), [data.expenses, data.prevExpenses, data.categories, hh.members, month])
   const person = who === 'all' ? null : members.get(who)
   const isMe = person?.user_id === hh.me.user_id
-  /** Conjuga según lo que se mira: tú, otra persona o el hogar */
-  const verb = (tu: string, el: string, ellos: string) => (isMe ? tu : person ? el : ellos)
 
   const spent = new Map<string, number>()
   for (const e of list) spent.set(e.category_id, (spent.get(e.category_id) ?? 0) + e.amount)
@@ -99,9 +100,12 @@ export default function Expenses({
   const householdTotal = data.expenses.reduce((s, e) => s + e.amount, 0)
   const topCat = metrics.byCategory[0]
   const personStats = person ? householdMetrics.people.find((p) => p.userId === person.user_id) : null
-  const delta = metrics.deltaPct
+  const nowD = new Date()
+  const cmp = compareMonths(metrics.total, metrics.prevTotal, month.getFullYear() === nowD.getFullYear() && month.getMonth() === nowD.getMonth())
 
-  const byCat = catFilter === 'all' ? list : list.filter((e) => e.category_id === catFilter)
+  const byCat = catFilter === 'all' ? list : list.filter((e) => categoryKey(e.category_id, catName) === catFilter)
+  // Gastos de categorías que ya no existen: van juntos para que las categorías sumen el total
+  const removedSpent = list.reduce((s, e) => (catName.has(e.category_id) ? s : s + e.amount), 0)
   // La fecha buscada solo vale dentro del mes que se está mirando
   const monthPrefix = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`
   const activeDay = dayFilter.startsWith(monthPrefix) ? dayFilter : 'all'
@@ -357,7 +361,7 @@ export default function Expenses({
             <label className="line-help" htmlFor={`cn-${c.id}`}>Nombre de la categoría</label>
             <input id={`cn-${c.id}`} className="input" maxLength={40} value={nameValue} onChange={(e) => setNameValue(e.target.value)} />
             <label className="line-help" htmlFor={`cb-${c.id}`}>Cuánto quieren gastar al mes en {c.name} (CLP)</label>
-            <input id={`cb-${c.id}`} className="input" inputMode="numeric" placeholder="Ej. 250000" value={dots(value)} onChange={(e) => setValue(digitsOnly(e.target.value))} />
+            <input id={`cb-${c.id}`} className="input" inputMode="numeric" placeholder="Ej. 250.000" value={dots(value)} onChange={(e) => setValue(digitsOnly(e.target.value))} />
             <div className="row">
               <button type="button" className="btn small" disabled={busy} onClick={() => void saveBudget(c.id)}>
                 {busy ? <Spin label="Guardando…" /> : 'Guardar'}
@@ -439,10 +443,8 @@ export default function Expenses({
               </div>
               <div className="tile">
                 <span className="muted small-text">Frente al mes pasado</span>
-                <span className="amount-sm num">{delta === null ? 'Sin datos' : delta === 0 ? 'Igual' : `${delta > 0 ? '+' : '−'}${Math.abs(delta)} %`}</span>
-                <span className="line-help">
-                  {delta === null ? 'Aún no hay un mes anterior para comparar' : delta > 0 ? `${verb('Gastas', 'Gasta', 'Gastan')} más que el mes pasado` : delta < 0 ? `${verb('Gastas', 'Gasta', 'Gastan')} menos que el mes pasado: ¡bien!` : `${verb('Gastas', 'Gasta', 'Gastan')} lo mismo que el mes pasado`}
-                </span>
+                <span className="amount-sm num">{cmp.figure}</span>
+                <span className="line-help">{cmp.text}</span>
               </div>
               {desktop && topCat && topCat.spent > 0 && (
                 <div className="tile">
@@ -528,10 +530,28 @@ export default function Expenses({
           })}
       </div>
 
+      {removedSpent > 0 && (
+        <button
+          type="button"
+          className="fixed-card paused"
+          aria-label={`${REMOVED_CATEGORY_NAME}, ${money(removedSpent)} gastado. Toca para ver esos gastos`}
+          onClick={() => setCatFilter(REMOVED_CATEGORY_ID)}
+        >
+          <span className="fixed-top">
+            <span className="grow fixed-name">
+              <strong>{REMOVED_CATEGORY_NAME}</strong>
+              <span className="muted small-text">{totalSpent > 0 ? Math.round((removedSpent * 100) / totalSpent) : 0} % de todo lo gastado</span>
+            </span>
+            <span className="fixed-amount num">{money(removedSpent)}</span>
+          </span>
+          <span className="muted small-text">Sin límite: son gastos de categorías que ya no existen.</span>
+        </button>
+      )}
+
       <div className="cat-actions">
         {sortedCats.length > CAT_PAGE && (
           <button type="button" className="btn ghost small wide" aria-expanded={showAllCats} onClick={() => setShowAllCats((v) => !v)}>
-            {showAllCats ? 'Ver menos categorías' : `Ver más (${sortedCats.length - CAT_PAGE} categorías más)`}
+            {showAllCats ? 'Ver menos categorías' : `Ver más (${moreCount(sortedCats.length - CAT_PAGE, 'categoría', 'categorías')})`}
           </button>
         )}
       </div>
@@ -597,6 +617,11 @@ export default function Expenses({
                     {c.name} · {money(spent.get(c.id) ?? 0)}
                   </option>
                 ))}
+              {removedSpent > 0 && (
+                <option value={REMOVED_CATEGORY_ID}>
+                  {REMOVED_CATEGORY_NAME} · {money(removedSpent)}
+                </option>
+              )}
             </select>
           </div>
           <div className="filter-field">
@@ -607,12 +632,16 @@ export default function Expenses({
               type="date"
               min={`${monthPrefix}-01`}
               max={`${monthPrefix}-${String(new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()).padStart(2, '0')}`}
+              aria-describedby="f-date-hint"
               value={activeDay === 'all' ? '' : activeDay}
               onChange={(e) => {
                 setDayFilter(e.target.value || 'all')
                 setShowAll(false)
               }}
             />
+            <span id="f-date-hint" className="line-help">
+              {activeDay === 'all' ? 'Todos los días. Toca para elegir uno.' : 'Mostrando solo ese día.'}
+            </span>
           </div>
           <div className="filter-field">
             <label htmlFor="f-sort">Orden</label>
@@ -628,7 +657,7 @@ export default function Expenses({
         {filtering && (
           <div className="filter-active">
             <span className="muted small-text">Filtros puestos:</span>
-            {catFilter !== 'all' && <span className="pill">{catName.get(catFilter) ?? 'Categoría'}</span>}
+            {catFilter !== 'all' && <span className="pill">{catName.get(catFilter) ?? (catFilter === REMOVED_CATEGORY_ID ? REMOVED_CATEGORY_NAME : 'Categoría')}</span>}
             {activeDay !== 'all' && <span className="pill">{dayHeading(activeDay)}</span>}
             {q !== '' && <span className="pill">«{query.trim()}»</span>}
             <button type="button" className="link-btn" onClick={clearFilters}>
@@ -686,7 +715,7 @@ export default function Expenses({
 
       {visible.length > PAGE && (
         <button type="button" className="btn ghost small wide" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
-          {showAll ? 'Ver menos gastos' : `Ver más (${visible.length - PAGE} gastos más)`}
+          {showAll ? 'Ver menos gastos' : `Ver más (${moreCount(visible.length - PAGE, 'gasto', 'gastos')})`}
         </button>
       )}
 

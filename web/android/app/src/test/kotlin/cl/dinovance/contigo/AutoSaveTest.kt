@@ -40,7 +40,8 @@ class AutoSaveTest {
     private var cap = 50_000L
     private var synced = 0
     private val cfg = object : AutoConfig {
-        override fun bankOfPackage(packageName: String) = if (packageName == bank) "santander" else null
+        // Migrado (2026-11-24): banco sintetico VERIFICADO; Santander ya no se captura (BankPresets.VERIFIED)
+        override fun bankOfPackage(packageName: String) = if (packageName == bank) "banco-falabella" else null
         override fun autoEnabled(bank: String) = autoOn
         override fun maxClp() = cap
     }
@@ -178,7 +179,8 @@ class AutoSaveTest {
     @Test
     fun `sin sesion o sin http no envia nada y deja el borrador`() {
         saveOne()
-        assertEquals(SyncResult.NO_SESSION, syncer(Net(mutableListOf()), FakeSession(token = null, refreshOk = false)).syncOnce())
+        // Sin token vigente con gastos esperando: es pasajero, se reintenta (antes terminaba en silencio; falla QA 2026-11-24)
+        assertEquals(SyncResult.RETRY, syncer(Net(mutableListOf()), FakeSession(token = null, refreshOk = false)).syncOnce())
         val noHttps = ExpenseSyncer(repo, { profile }, { owner }, { "http://x.test" }, FakeSession(), Net(mutableListOf()), FakeStatus(), { now })
         assertEquals(SyncResult.NO_SESSION, noHttps.syncOnce())
         assertEquals(1, repo.list().size)
@@ -191,7 +193,9 @@ class AutoSaveTest {
         assertEquals(SyncResult.NO_SESSION, other.syncOnce())
         profile = profile!!.copy(categories = emptyMap())
         repo.update(repo.list().single().id) { it.copy(categoryId = null, autoSaved = false) }
-        assertEquals(SyncResult.NOTHING_TO_SEND, syncer(Net(mutableListOf())).syncOnce())
+        // Confirmado sin categoria posible (ni aprendida ni general): no se envia, pero tampoco es «nada que enviar» mudo
+        assertEquals(SyncResult.NEEDS_PERSON, syncer(Net(mutableListOf())).syncOnce())
+        assertEquals(1, repo.list().size)
     }
 
     @Test

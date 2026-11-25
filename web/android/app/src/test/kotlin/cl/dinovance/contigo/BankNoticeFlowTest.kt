@@ -116,7 +116,8 @@ class BankNoticeFlowTest {
         }
         val net = Net()
         val r = ExpenseSyncer(repo, { profile }, { owner }, { "https://api.demo.test/supabase" }, S(), net, St(), { now }).syncOnce()
-        assertEquals(SyncResult.NOTHING_TO_SEND, r); assertTrue(net.sent.isEmpty())
+        // Nada sale; el ingreso confirmado con un id que no es UUID no se puede enviar solo: lo resuelve la app (NEEDS_PERSON, no un «nada» mudo)
+        assertEquals(SyncResult.NEEDS_PERSON, r); assertTrue(net.sent.isEmpty())
     }
 
     @Test

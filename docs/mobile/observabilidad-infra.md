@@ -1,7 +1,7 @@
 <!-- Copyright (c) 2026 Dinovance -->
 # Observabilidad de infraestructura (staging, solo 127.0.0.1)
 
-Código en `/home/jromero/proyectos/nido-selfhost` (`observability/`, `docker-compose.yml`, `Makefile`) y la migración `supabase/migrations/20261121150000_ingesta_seguridad_gateway.sql`. Todo lo de abajo se ejecutó en staging el 2026-11-21.
+Código en `<ruta local>/nido-selfhost` (`observability/`, `docker-compose.yml`, `Makefile`) y la migración `supabase/migrations/20261121150000_ingesta_seguridad_gateway.sql`. Todo lo de abajo se ejecutó en staging el 2026-11-21.
 
 ## Arquitectura
 ```

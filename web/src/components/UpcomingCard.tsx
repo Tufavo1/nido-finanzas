@@ -52,7 +52,7 @@ export default function UpcomingCard({ u }: { u: Upcoming }) {
           {u.heaviest && u.heaviest.names.length > 1 ? `; el ${longDate(u.heaviest.date)} se juntan ${u.heaviest.names.length} pagos por ${money(u.heaviest.total)}` : ''}.
         </span>
       )}
-      <span className="muted small-text">Las cuotas ya están descontadas de «lo que te sobra»; aquí solo se restan los gastos fijos que aún no se anotan.</span>
+      <span className="muted small-text">Las cuotas ya están descontadas de «Te queda»; aquí solo se restan los gastos fijos que aún no se anotan.</span>
     </section>
   )
 }

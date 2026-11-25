@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Dinovance
+import { signOutClean } from '../lib/signOut'
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { Household } from '../App'
 import type { HouseholdData } from '../lib/data'
@@ -255,7 +256,7 @@ export default function NativeSettings({ hh, data, month, reload, onToast, onHel
         {isAdmin && <SettingsItem {...item} id="admin" icon="users" title="Administración" summary="Cuánta gente usa la app" open={false} onGo={() => setShowAdmin(true)} />}
       </div>
 
-      <button className="btn danger" type="button" onClick={() => void supabase.auth.signOut()}>
+      <button className="btn danger" type="button" onClick={() => void signOutClean()}>
         Cerrar sesión
       </button>
       <p className="muted small-text app-footer">{copyright()}</p>

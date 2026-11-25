@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Dinovance
 // Ajustes pensados para la APK: pocos grupos, textos simples y el estado de Gastos automáticos. Lógica pura.
-import { diagnosticText } from './bankConsent'
+import { DIAGNOSTIC_REASONS, diagnosticText } from './bankConsent'
 
 /** Los grupos de Ajustes en la APK, por frecuencia de uso */
 export const NATIVE_GROUPS = [
@@ -143,6 +143,33 @@ export function pluginErrorText(e: unknown): string | null {
   return code === 'STORE_FAILED' || code === 'RESERVED_KEY' ? 'No se pudo guardar de forma segura en este teléfono\nReinicia Contigo e inténtalo de nuevo.' : null
 }
 
+export type ClearNoticesResult = 'cleared' | 'unsupported' | 'failed'
+
+/** Lo mínimo del puente nativo que usa el borrado (el método puede no existir en una versión vieja de la app) */
+export interface ClearNoticesApi {
+  clearDiagnostics?: (options: { atMillis?: number }) => Promise<unknown>
+}
+
+/**
+ * Borra el diagnóstico local de «Avisos que no pude leer»: la entrada con esa hora (`atMillis`) o, sin hora, todas.
+ * No toca borradores ni gastos. Si el puente nativo aún no tiene `clearDiagnostics`, devuelve 'unsupported' sin borrar nada.
+ */
+export async function clearUnreadNotices(api: ClearNoticesApi, atMillis?: number): Promise<ClearNoticesResult> {
+  if (typeof api.clearDiagnostics !== 'function') return 'unsupported'
+  try {
+    await api.clearDiagnostics(atMillis === undefined ? {} : { atMillis })
+    return 'cleared'
+  } catch (e) {
+    return (e as { code?: unknown } | null)?.code === 'UNIMPLEMENTED' ? 'unsupported' : 'failed'
+  }
+}
+
+/** Aviso para la persona cuando el borrado no se pudo hacer; null si salió bien */
+export function clearNoticesToast(r: ClearNoticesResult): string | null {
+  if (r === 'unsupported') return 'Aún no se puede borrar\nActualiza Contigo para borrar estos avisos.'
+  return r === 'failed' ? 'No se pudo borrar\nInténtalo de nuevo.' : null
+}
+
 const HINTS: Record<string, string> = {
   NO_AMOUNT_IN_TITLE_OR_TEXT: 'El aviso llegó sin monto en el título ni en el texto.',
   EMPTY: 'El aviso llegó vacío.',
@@ -150,15 +177,9 @@ const HINTS: Record<string, string> = {
   ONLY_EXTRA_FIELDS: 'El banco puso los datos en un lugar que no pude leer.',
 }
 
-const DETAIL: Record<string, string> = {
-  NO_AMOUNT: 'No encontré un monto claro en el aviso, así que no lo guardé.',
-  INCOME: 'Parece un abono o un ingreso, y yo solo guardo gastos.',
-  BANK_OFF: 'Ese banco está apagado en Gastos automáticos. Enciéndelo si quieres que lea sus avisos.',
-  LOGIN_REQUIRED: 'Falta iniciar sesión en Contigo para guardarlo. Abre la app e ingresa a tu cuenta.',
-}
 const DETAIL_OTHER = 'No pude entender este aviso. Puedes copiarlo y mostrárselo a quien te ayuda con Contigo.'
 
-export const diagnosticDetail = (code: unknown): string => (typeof code === 'string' ? (DETAIL[code] ?? DETAIL_OTHER) : DETAIL_OTHER)
+export const diagnosticDetail = (code: unknown): string => (typeof code === 'string' ? (DIAGNOSTIC_REASONS[code]?.detail ?? DETAIL_OTHER) : DETAIL_OTHER)
 
 export interface DetailedDiagnostic {
   reason: string
@@ -175,7 +196,8 @@ export function parseDiagnosticsDetailed(raw: unknown): DetailedDiagnostic[] {
     .slice(0, 20)
     .map((r) => ({
       reason: diagnosticText(r['reason']),
-      detail: (typeof r['hint'] === 'string' ? HINTS[r['hint']] : undefined) ?? diagnosticDetail(r['reason']),
+      // La pista de qué traía el aviso solo explica el «sin monto»; los demás motivos ya se explican solos
+      detail: (r['reason'] === 'NO_AMOUNT' && typeof r['hint'] === 'string' ? HINTS[r['hint']] : undefined) ?? diagnosticDetail(r['reason']),
       masked: typeof r['maskedText'] === 'string' && r['maskedText'] ? r['maskedText'] : null,
       at: typeof r['at'] === 'number' && Number.isFinite(r['at']) ? r['at'] : null,
     }))

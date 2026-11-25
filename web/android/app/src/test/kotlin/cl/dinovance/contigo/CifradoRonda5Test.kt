@@ -125,7 +125,9 @@ class CifradoRonda5Test {
         assertEquals(emptySet<String>(), lost.whitelist())
         assertNull(lost.maxClp()); assertFalse(lost.bankAutoSave("banco-falabella")) // apagado: nada se guarda solo
         assertNull(lost.activeOwner())
-        // El bloque ilegible se borro (no queda basura cifrada con la clave vieja)
+        // El bloque ilegible ya no se lee: queda solo apartado en cuarentena (.bad), que cerrar sesion tambien borra (A1)
+        assertTrue(dir.listFiles().orEmpty().all { it.name.endsWith(".bad") })
+        kv.clear()
         assertTrue(dir.listFiles().orEmpty().isEmpty())
     }
 
@@ -135,9 +137,13 @@ class CifradoRonda5Test {
         val repo = EncryptedDraftRepository(MemoryStorage().apply { bytes = ByteArray(40) { 1 } }, broken) { 1L }
         assertTrue(repo.list().isEmpty())
         val kv = store(broken)
-        AutoSavedLog(text(kv, "auto-log")) { 1L }.apply { add(AutoSavedEntry("id", 1_000, "Cafe", 1L, false, "u1:h1")); assertTrue(list().isEmpty()) }
-        DiagnosticsLog(text(kv, "diag-log")) { 1L }.apply { add(DiagReason.NO_AMOUNT, null, "Compraste \$1.000 en Cafe"); assertTrue(list().isEmpty()) }
-        SeenNotices(text(kv, "seen-notices")).apply { mark(bank, "k", 1L); assertFalse(has(bank, "k", 1L)) }
+        // R7: lo que no se pudo escribir espera en memoria de ESTE proceso (no se pierde mientras viva) y no llega a disco
+        AutoSavedLog(text(kv, "auto-log"), { failures += it }) { 1L }.apply { add(AutoSavedEntry("id", 1_000, "Cafe", 1L, false, "u1:h1")); assertEquals(listOf("id"), list().map { it.id }) }
+        assertTrue(AutoSavedLog(text(kv, "auto-log")) { 1L }.list().isEmpty())
+        DiagnosticsLog(text(kv, "diag-log"), { failures += it }) { 1L }.apply { add(DiagReason.NO_AMOUNT, null, "Compraste \$1.000 en Cafe"); assertEquals(1, list().size) }
+        assertTrue(DiagnosticsLog(text(kv, "diag-log")) { 1L }.list().isEmpty())
+        SeenNotices(text(kv, "seen-notices"), onFailure = { failures += it }).apply { mark(bank, "k", 1L); assertTrue(has(bank, "k", 1L)) }
+        assertFalse(SeenNotices(text(kv, "seen-notices")).has(bank, "k", 1L))
         assertFalse(kv.trySet("x", "y"))
         // Ninguna excepcion lleva texto del aviso ni montos: solo se registran nombres de clase
         assertTrue(failures.none { it.contains("1.000") || it.contains("Cafe") })

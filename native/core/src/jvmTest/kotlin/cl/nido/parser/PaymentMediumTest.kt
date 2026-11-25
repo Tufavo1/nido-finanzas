@@ -50,7 +50,25 @@ class PaymentMediumTest {
         assertEquals(PaymentMedium.UNKNOWN, PaymentMediumClassifier.of(null))
         assertEquals(PaymentMedium.UNKNOWN, PaymentMediumClassifier.of("Tarjeta"))
         assertEquals(PaymentMedium.DEBIT, PaymentMediumClassifier.of("Débito Mastercard"))
-        assertEquals(PaymentMedium.CREDIT, PaymentMediumClassifier.of("Visa ·1234"))
+    }
+
+    // M2: la marca sola (Visa, Mastercard, Amex) no dice si es credito: hay tarjetas de debito Visa/Mastercard. Solo «credito» o la CMR.
+    @Test
+    fun `la marca sola no es credito, solo credito explicito o la CMR`() {
+        assertEquals(PaymentMedium.UNKNOWN, PaymentMediumClassifier.of("Visa ·1234"))
+        assertEquals(PaymentMedium.UNKNOWN, PaymentMediumClassifier.of("Mastercard ·5678"))
+        assertEquals(PaymentMedium.UNKNOWN, PaymentMediumClassifier.of("Amex"))
+        assertEquals(PaymentMedium.CREDIT, PaymentMediumClassifier.of("Visa Crédito ·1234"))
+        assertEquals(PaymentMedium.CREDIT, PaymentMediumClassifier.of("Tarjeta de credito"))
+        assertEquals(PaymentMedium.CREDIT, PaymentMediumClassifier.of("CMR Mastercard Premium ·5766"))
+        assertEquals(PaymentMedium.CREDIT, PaymentMediumClassifier.of("CMR"))
+    }
+
+    @Test
+    fun `Billetera de Google con Visa sin tipo no se cuenta como credito`() {
+        val w = NotificationParser(setOf("cl.demo.wallet"))
+        val c = w.parseDetailed("cl.demo.wallet", "Cafe Demo", "CLP 3,500 · Visa ••1234", 1_700_000_000_000, NoticeStyle.WALLET, 0).candidate!!
+        assertEquals("Visa ·1234", c.account); assertEquals(PaymentMedium.UNKNOWN, c.medium)
     }
 
     @Test

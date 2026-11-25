@@ -3,7 +3,7 @@
 
 | Contenedor | Dónde | Para qué | Puertos |
 |---|---|---|---|
-| Pila de staging (`nido-selfhost-*`: db, auth, rest, realtime, gateway/Kong, mailpit) | `/home/jromero/proyectos/nido-selfhost` (`make up`) | Backend Supabase local contra el que prueba la app | 127.0.0.1:55321 gateway (API), :55322 Postgres, :55324 Mailpit |
+| Pila de staging (`nido-selfhost-*`: db, auth, rest, realtime, gateway/Kong, mailpit) | `<ruta local>/nido-selfhost` (`make up`) | Backend Supabase local contra el que prueba la app | 127.0.0.1:55321 gateway (API), :55322 Postgres, :55324 Mailpit |
 | `nido-mobile-android-build` (servicios `build`, `test`, `shell`) | `docker-compose.mobile.yml` | Compila APK y corre vitest + tests JVM Kotlin | ninguno publicado |
 | `cloudflared` (opcional, profile `tunnel`) | `nido-selfhost/docker-compose.yml` | Túnel Cloudflare hacia `http://gateway:8000` | ninguno publicado (conexión saliente); NO activado |
 

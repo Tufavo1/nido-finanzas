@@ -1,3 +1,5 @@
+import { pctText } from '../lib/format'
+
 export default function Ring({ pct }: { pct: number }) {
   const r = 34
   const c = 2 * Math.PI * r
@@ -19,7 +21,7 @@ export default function Ring({ pct }: { pct: number }) {
           transform="rotate(-90 42 42)"
         />
       </svg>
-      <span className="ring-label num">{pct}%</span>
+      <span className="ring-label num">{pctText(pct)}</span>
     </div>
   )
 }
